@@ -15,8 +15,8 @@ if (!jwtSecret || jwtSecret.length < 32) throw new Error('Defina um JWT_SECRET f
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || false }));
 app.use(express.json({ limit: '1mb' }));
 const here = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(here, '../public');
-app.use(express.static(webRoot));
+app.get('/', (_req, res) => res.sendFile(path.join(here, 'index.html')));
+app.get('/logo-gport.png', (_req, res) => res.sendFile(path.join(here, 'logo-gport.png')));
 
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const tokenFor = user => jwt.sign({ sub: user.id, username: user.username, role: user.role }, jwtSecret, { expiresIn: '8h' });
