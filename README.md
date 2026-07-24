@@ -1,20 +1,26 @@
-# Atlas Export Web
+# Atlas Export API
 
-Estrutura inicial da aplicação web que substituirá progressivamente o MVP em arquivo único.
+API Node.js para o sistema de gestão de processos de exportação. Usa PostgreSQL, autenticação JWT e senhas com hash bcrypt.
 
-## Organização
+## Executar localmente
 
-- `index.html`: ponto de entrada do navegador.
-- `assets/app.css`: estilos globais e componentes visuais.
-- `assets/app.js`: inicialização da interface e futura comunicação com a API.
-- `docs/api-contract.md`: contrato inicial das rotas do backend.
-
-Nesta primeira etapa a interface continua sendo estática. A próxima etapa é criar o servidor e banco de dados para que processos, usuários e clientes sejam compartilhados entre os computadores.
-
-Para abrir localmente, execute na pasta `atlas-export-web`:
+1. Instale Node.js 20+ e PostgreSQL.
+2. Para Supabase, siga `docs/supabase-setup.md`; para PostgreSQL local, crie um banco chamado `atlas_export` e execute `database/schema.sql` nele.
+3. Copie `.env.example` para `.env` e preencha `DATABASE_URL` e `JWT_SECRET`.
+4. Execute:
 
 ```powershell
-python -m http.server 8080
+npm install
+npm run dev
 ```
 
-Depois acesse `http://localhost:8080`.
+5. Acesse `http://localhost:3000/api/health`. O primeiro usuário criado em `POST /api/auth/register` torna-se administrador.
+
+## Publicação no Azure
+
+- Banco: **Supabase PostgreSQL** ou **Azure Database for PostgreSQL Flexible Server**.
+- API: **Azure App Service** com Node.js 20+.
+- Configure no App Service as variáveis `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN` e `PORT`.
+- Execute `database/schema.sql` uma vez no banco antes de publicar a API.
+
+Nunca inclua `.env` ou senhas no GitHub.
