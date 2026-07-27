@@ -17,3 +17,4 @@
     .release-table{min-width:0!important;table-layout:fixed;font-size:12px}.release-table th,.release-table td{padding:10px 7px;white-space:normal;overflow-wrap:anywhere}.release-table th{font-size:11px}.release-table input,.release-table select{width:100%;padding:7px 6px;font-size:12px}.release-table .sub{font-size:11px}
   
 .load-more-processes{margin-top:12px}
+.release-port-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-4px 0 16px}.release-port-filters>span{font-size:12px;font-weight:700;color:var(--muted);margin-right:2px}.release-port-filters .btn{padding:7px 10px;font-size:12px}.release-port-filters .btn.active{background:#0d4f85;color:#fff;border-color:#0d4f85}
