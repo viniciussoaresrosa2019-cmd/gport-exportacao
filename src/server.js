@@ -326,9 +326,17 @@ const cleanOptionalDate = (value, field) => {
   }
   return text;
 };
+const normalizeBrazilianNumber = value => {
+  if (typeof value === 'number') return value;
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  // A interface usa ponto como separador de milhar e vírgula para decimais.
+  // Ex.: 1.000,125. O PostgreSQL recebe o número normalizado com ponto.
+  return Number(text.includes(',') ? text.replaceAll('.', '').replace(',', '.') : text.replaceAll('.', ''));
+};
 const cleanNonNegative = (value, max, field, { integer = false } = {}) => {
   if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
+  const number = normalizeBrazilianNumber(value);
   if (!Number.isFinite(number) || number < 0 || number > max || (integer && !Number.isInteger(number))) throw Object.assign(new Error(`${field} inválido.`), { status: 400 });
   return number;
 };
@@ -375,7 +383,7 @@ const validateContainerDetails = (value, quantity, mapaInspection) => {
   return value.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw Object.assign(new Error(`Contêiner ${index + 1} inválido.`), { status: 400 });
     return {
-      number: cleanText(item.number, 40, 'Número do contêiner'), tare: cleanNonNegative(item.tare, 999999, 'Tara'),
+      number: cleanText(item.number, 40, 'Número do contêiner'), tare: cleanNonNegative(item.tare, 999999, 'Tara', { integer: true }),
       seal: cleanText(item.seal, 80, 'Lacre'), new_seal: mapaInspection ? cleanText(item.new_seal, 80, 'Novo lacre') : null
     };
   });

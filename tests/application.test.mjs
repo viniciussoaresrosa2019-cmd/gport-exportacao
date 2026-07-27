@@ -14,6 +14,15 @@ test('API possui as proteções essenciais de autenticação e processos', async
   ]) assert.ok(server.includes(required), `Item obrigatório ausente: ${required}`);
 });
 
+test('API normaliza valores numéricos no formato brasileiro para contêineres', async () => {
+  const server = await read('src/server.js');
+  assert.match(server, /const normalizeBrazilianNumber = value =>/);
+  assert.match(server, /text\.replaceAll\('\.', ''\)\.replace\(',', '\.'\)/);
+  assert.match(server, /tare: cleanNonNegative\(item\.tare, 999999, 'Tara', \{ integer: true \}\)/);
+  assert.match(await read('public/index.html'), /data-currency-value/);
+  assert.match(await read('public/index.html'), /formatCurrencyValue/);
+});
+
 test('sessão, CSRF, autorização e validação têm proteções regressivas', async () => {
   const server = await read('src/server.js');
   for (const required of [
