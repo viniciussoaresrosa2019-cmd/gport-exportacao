@@ -91,6 +91,12 @@
     (() => {
       const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
       let availableAssignees = [];
+      // Clientes e responsáveis quase não mudam durante uma sessão. Mantê-los
+      // em memória evita duas requisições extras a cada busca, paginação ou
+      // atualização da planilha. O cache não persiste no navegador e expira
+      // rapidamente para que alterações feitas por outra pessoa apareçam.
+      const referenceDataCache = { expiresAt: 0 };
+      const referenceDataTtlMs = 5 * 60 * 1000;
       const autoSaveTimers = new Map();
       const scheduleAutoSave = (key, task) => {
         clearTimeout(autoSaveTimers.get(key));
@@ -323,18 +329,30 @@
         button.textContent = `Carregar mais processos (${data.length} de ${processPagination.total})`;
       };
       let serverProcessFilter = null;
-      async function refreshData({ append=false } = {}) {
+      async function refreshData({ append=false, refreshReferenceData=false } = {}) {
         const offset = append ? processPagination.offset + processPagination.limit : 0;
         const searchParams = new URLSearchParams({ limit:'50', offset:String(offset) });
         if (serverProcessFilter) { searchParams.set('field', serverProcessFilter.field); searchParams.set('search', serverProcessFilter.value); }
-        const [remoteClients, remoteProcesses, remoteAssignees] = await Promise.all([
-          request('/api/clients'), request(`/api/processes?${searchParams}`), request('/api/assignees')
-        ]);
-        clients = remoteClients.map(toViewClient);
-        const page = Array.isArray(remoteProcesses) ? { items:remoteProcesses, pagination:{ limit:50, offset:0, total:remoteProcesses.length, hasMore:false } } : remoteProcesses;
-        const viewItems = page.items.map(item => ({ ...toViewProcess(item), updatedAt:item.updated_at || '' }));
-        data = append ? [...data, ...viewItems] : viewItems;
-        processPagination = page.pagination; availableAssignees = remoteAssignees;
+        const needsReferenceData = refreshReferenceData || Date.now() >= referenceDataCache.expiresAt;
+        const processRequest = request(`/api/processes?${searchParams}`);
+        if (needsReferenceData) {
+          const [remoteClients, remoteProcesses, remoteAssignees] = await Promise.all([
+            request('/api/clients'), processRequest, request('/api/assignees')
+          ]);
+          clients = remoteClients.map(toViewClient);
+          availableAssignees = remoteAssignees;
+          referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
+          const page = Array.isArray(remoteProcesses) ? { items:remoteProcesses, pagination:{ limit:50, offset:0, total:remoteProcesses.length, hasMore:false } } : remoteProcesses;
+          const viewItems = page.items.map(item => ({ ...toViewProcess(item), updatedAt:item.updated_at || '' }));
+          data = append ? [...data, ...viewItems] : viewItems;
+          processPagination = page.pagination;
+        } else {
+          const remoteProcesses = await processRequest;
+          const page = Array.isArray(remoteProcesses) ? { items:remoteProcesses, pagination:{ limit:50, offset:0, total:remoteProcesses.length, hasMore:false } } : remoteProcesses;
+          const viewItems = page.items.map(item => ({ ...toViewProcess(item), updatedAt:item.updated_at || '' }));
+          data = append ? [...data, ...viewItems] : viewItems;
+          processPagination = page.pagination;
+        }
         render(); renderClients(); updateLoadMoreButton();
       }
       // A pesquisa principal é realizada no servidor para não carregar toda a
@@ -358,7 +376,7 @@
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = currentUser.role !== 'admin';
         applyRoleTabs();
-        el('loginDialog').close(); await refreshData();
+        el('loginDialog').close(); await refreshData({ refreshReferenceData:true });
       }
       async function restoreSession() {
         try {
@@ -366,7 +384,7 @@
           el('currentUserName').textContent = currentUser.username;
           el('usersNav').hidden = currentUser.role !== 'admin';
           applyRoleTabs();
-          el('loginDialog').close(); await refreshData();
+          el('loginDialog').close(); await refreshData({ refreshReferenceData:true });
         } catch { currentUser = null; }
       }
       el('loginForm').onsubmit = async e => {
@@ -391,7 +409,7 @@
       el('clientList').onclick = e => { const button = e.target.closest('.edit-client'); if (!button) return; const client = clients.find(c => c.id === button.dataset.clientId); if (!client) return; const formClient = el('clientForm'); Object.entries(client).forEach(([key, value]) => { if (formClient.elements[key]) formClient.elements[key].value = value || ''; }); el('clientFormTitle').textContent = 'Editar exportador'; el('saveClientBtn').textContent = 'Salvar alterações'; formClient.scrollIntoView({ behavior:'smooth', block:'start' }); };
       el('clientForm').onsubmit = async e => {
         e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget)); const payload = { name:v.nome, taxId:v.cnpj, contact:v.contato, phone:v.telefone, email:v.email, country:v.pais, address:v.endereco };
-        try { await request(v.id ? `/api/clients/${v.id}` : '/api/clients', { method:v.id ? 'PATCH' : 'POST', body:JSON.stringify(payload) }); await refreshData(); resetClientForm(); }
+        try { await request(v.id ? `/api/clients/${v.id}` : '/api/clients', { method:v.id ? 'PATCH' : 'POST', body:JSON.stringify(payload) }); await refreshData({ refreshReferenceData:true }); resetClientForm(); }
         catch (error) { alert(error.message); }
       };
       let processAutoSaveTimer = null, processSaveBusy = false, processSavePending = false;
