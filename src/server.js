@@ -504,13 +504,10 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   if (body.updatedAt && previous.updated_at && new Date(body.updatedAt).getTime() !== new Date(previous.updated_at).getTime()) {
     return res.status(409).json({ error: 'Este processo foi alterado por outro usuário. Feche, abra novamente e confira os dados antes de salvar.' });
   }
-  // process_number é técnico e obrigatório no banco. A interface usa o booking
-  // como identificação principal; preserve o identificador atual quando uma
-  // atualização vier sem esse campo, evitando falha de NOT NULL na edição.
-  if (!String(body.processNumber || '').trim()) {
-    const current = (await query('SELECT process_number FROM processes WHERE id=$1', [req.params.id])).rows[0];
-    body.processNumber = current?.process_number || String(body.booking || '').trim() || `SEM-BOOKING-${Date.now()}`;
-  }
+  // process_number é um identificador técnico, único e não editável pela
+  // interface. Preservá-lo em toda edição evita colisões de unicidade quando
+  // o usuário altera booking ou outros campos do processo.
+  body.processNumber = previous.process_number;
   const p = toDbProcess(validatedProcess(body)); const values = processColumns.map(key => p[key] ?? null);
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
   const result = await query(`UPDATE processes SET ${set} WHERE id=$${values.length + 1} RETURNING *`, [...values, req.params.id]);

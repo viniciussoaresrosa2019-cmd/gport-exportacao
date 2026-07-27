@@ -109,6 +109,12 @@ test('listagem paginada e regra de leitura por função permanecem no servidor',
   assert.match(server, /processSearchFields/);
 });
 
+test('edição preserva o identificador técnico único do processo', async () => {
+  const server = await read('src/server.js');
+  assert.match(server, /body\.processNumber = previous\.process_number/);
+  assert.match(server, /identificador técnico, único e não editável/);
+});
+
 test('interface reutiliza dados de referência entre paginação e filtros', async () => {
   const html = await read('public/index.html');
   assert.match(html, /const referenceDataTtlMs = 5 \* 60 \* 1000/);
