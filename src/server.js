@@ -561,12 +561,25 @@ app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => 
 }));
 
 app.use((error, req, res, _next) => {
-  const status = Number.isInteger(error?.status) ? error.status : error?.type === 'entity.too.large' ? 413 : 500;
+  const status = Number.isInteger(error?.status)
+    ? error.status
+    : error?.type === 'entity.too.large'
+      ? 413
+      : error?.type === 'entity.parse.failed'
+        ? 400
+        : 500;
   // Nunca escreva corpo, senha, token, query string ou pilha de banco nos logs.
   const errorEntry = JSON.stringify({ time: new Date().toISOString(), method: req.method, path: req.path, status, code: error?.code || null }) + '\n';
   appendFile(path.resolve(here, '../server-errors.log'), errorEntry, 'utf8').catch(() => {});
   if (status >= 500) console.error(`[erro] ${req.method} ${req.path} ${error?.code || error?.name || 'internal'}`);
-  res.status(status).json({ error: status === 413 ? 'Solicitação muito grande.' : status < 500 ? error.message : 'Erro interno do servidor.' });
+  const message = status === 413
+    ? 'Solicitação muito grande.'
+    : error?.type === 'entity.parse.failed'
+      ? 'JSON inválido.'
+      : status < 500
+        ? error.message
+        : 'Erro interno do servidor.';
+  res.status(status).json({ error: message });
 });
 const ensureProcessFields = async () => {
   // Mantém o banco compatível com novos campos de capa, inclusive em projetos

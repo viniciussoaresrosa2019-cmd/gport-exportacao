@@ -9,8 +9,17 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Em produção ela precisa ser habilitada conscientemente no ambiente.
 const allowUnverifiedTls = process.env.ALLOW_UNVERIFIED_DATABASE_TLS === 'true';
 // Cole o certificado raiz do provedor em DB_SSL_CA (aceita quebras de linha
-// reais ou o texto literal \"\\n\" das variáveis de ambiente do Render).
-const databaseCa = process.env.DB_SSL_CA?.replace(/\\n/g, '\n');
+// reais ou o texto literal "\\n" das variáveis de ambiente do Render). Como
+// alternativa mais confiável para painéis que alteram quebras de linha, use
+// DB_SSL_CA_BASE64 com o arquivo do certificado codificado em Base64.
+const encodedDatabaseCa = process.env.DB_SSL_CA_BASE64;
+const databaseCaSource = encodedDatabaseCa
+  ? Buffer.from(encodedDatabaseCa, 'base64').toString('utf8')
+  : process.env.DB_SSL_CA;
+const databaseCa = databaseCaSource?.trim().replace(/\\n/g, '\n');
+if (encodedDatabaseCa && (!databaseCa || !databaseCa.includes('BEGIN CERTIFICATE'))) {
+  throw new Error('DB_SSL_CA_BASE64 não contém um certificado PEM válido.');
+}
 if (isProduction && !isLocal && process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false' && !allowUnverifiedTls) {
   throw new Error('DB_SSL_REJECT_UNAUTHORIZED=false não é permitido em produção. Corrija o certificado do banco.');
 }
