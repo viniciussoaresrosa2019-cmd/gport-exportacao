@@ -640,14 +640,18 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
 
 app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
-  const releaseStatus = String(req.body.releaseStatus || 'Não');
+  const requestedReleaseStatus = String(req.body.releaseStatus || 'Não');
   const releaseSchedule = cleanOptionalDate(req.body.releaseSchedule, 'Agendamento de liberação');
   const releaseDeadline = cleanOptionalDate(req.body.releaseDeadline, 'Deadline de liberação');
   const vessel = cleanText(req.body.vessel, 160, 'Navio');
   const releaseChannel = String(req.body.releaseChannel || '').trim() || null;
   const releaseDate = cleanOptionalDate(req.body.releaseDate, 'Data de liberação');
-  if (!['Não', 'Sim'].includes(releaseStatus)) return res.status(400).json({ error: 'Status de liberação inválido.' });
+  if (!['Não', 'Sim'].includes(requestedReleaseStatus)) return res.status(400).json({ error: 'Status de liberação inválido.' });
   if (releaseChannel && !['Verde', 'Laranja', 'Vermelho'].includes(releaseChannel)) return res.status(400).json({ error: 'Canal de liberação inválido.' });
+  // Canal Verde representa desembaraço concluído. A regra também fica no
+  // servidor para evitar que uma requisição manual mantenha o processo como
+  // pendente apesar de ter sido classificado no canal verde.
+  const releaseStatus = releaseChannel === 'Verde' ? 'Sim' : requestedReleaseStatus;
   const result = await query(`
     UPDATE processes
        SET release_status=$1::varchar(10),

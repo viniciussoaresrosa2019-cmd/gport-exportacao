@@ -670,8 +670,9 @@
         }
       };
       const saveReleaseRow = async id => {
-        const releaseStatus = el('releaseList').querySelector(`[data-release-status="${id}"]`)?.value;
+        let releaseStatus = el('releaseList').querySelector(`[data-release-status="${id}"]`)?.value;
         const releaseChannel = el('releaseList').querySelector(`[data-release-channel="${id}"]`)?.value;
+        if (releaseChannel === 'Verde') { releaseStatus = 'Sim'; const statusInput = el('releaseList').querySelector(`[data-release-status="${id}"]`); if (statusInput) statusInput.value = 'Sim'; }
         const vessel = el('releaseList').querySelector(`[data-release-vessel="${id}"]`)?.value;
         const scheduleValue = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
         const deadlineValue = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDateValue = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
