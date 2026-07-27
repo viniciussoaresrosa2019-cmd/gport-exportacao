@@ -83,8 +83,10 @@ test('rotas sensíveis exigem autenticação, CSRF e autorização no servidor',
 test('exclusão de exportador preserva processos vinculados', async () => {
   const server = await read('src/server.js');
   const html = await read('public/index.html');
-  assert.match(server, /NOT EXISTS \(SELECT 1 FROM processes p WHERE p\.client_id=c\.id\)/);
-  assert.match(server, /possui processos vinculados e não pode ser excluído/);
+  assert.match(server, /UPDATE clients SET active=false/);
+  assert.match(server, /client\.deactivated/);
+  assert.match(server, /ALTER TABLE clients ADD COLUMN IF NOT EXISTS active BOOLEAN/);
+  assert.match(html, /exportador excluído/);
   assert.match(html, /class="btn secondary delete-client"/);
   assert.match(html, /Excluir o exportador/);
 });

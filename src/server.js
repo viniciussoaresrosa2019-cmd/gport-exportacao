@@ -334,7 +334,7 @@ const cleanNonNegative = (value, max, field, { integer = false } = {}) => {
 };
 
 app.get('/api/clients', authenticate, asyncRoute(async (_req, res) => {
-  const result = await query('SELECT * FROM clients ORDER BY name');
+  const result = await query('SELECT * FROM clients ORDER BY active DESC, name');
   res.json(result.rows);
 }));
 const validatedClient = body => ({
@@ -358,18 +358,11 @@ app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async 
 }));
 app.delete('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
-  // O histórico de processos é preservado: um exportador usado em qualquer
-  // processo não pode ser removido pela interface.
-  const result = await query(`DELETE FROM clients c
-    WHERE c.id=$1
-      AND NOT EXISTS (SELECT 1 FROM processes p WHERE p.client_id=c.id)
-    RETURNING c.id`, [req.params.id]);
-  if (!result.rowCount) {
-    const exists = await query('SELECT 1 FROM clients WHERE id=$1', [req.params.id]);
-    if (exists.rowCount) return res.status(409).json({ error: 'Este exportador possui processos vinculados e não pode ser excluído.' });
-    return res.status(404).json({ error: 'Exportador não encontrado.' });
-  }
-  await audit(req.user.sub, 'client.deleted', 'client', req.params.id);
+  // Exclusão lógica: o exportador deixa de aparecer nos novos lançamentos,
+  // mas processos já registrados continuam íntegros e exibem seu histórico.
+  const result = await query('UPDATE clients SET active=false WHERE id=$1 AND active=true RETURNING id', [req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Exportador não encontrado ou já excluído.' });
+  await audit(req.user.sub, 'client.deactivated', 'client', req.params.id);
   res.status(204).end();
 }));
 
@@ -672,6 +665,7 @@ const ensureProcessFields = async () => {
   // lançamento são garantidos aqui. Assim uma atualização incompleta do banco
   // não bloqueia o cadastro de um novo processo.
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0');
+  await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE');
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS status VARCHAR(40) NOT NULL DEFAULT 'Em andamento'");
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS client_id UUID');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS importer VARCHAR(200)');
