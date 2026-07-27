@@ -356,6 +356,22 @@ app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async 
   await audit(req.user.sub, 'client.updated', 'client', req.params.id);
   res.json(result.rows[0]);
 }));
+app.delete('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
+  // O histórico de processos é preservado: um exportador usado em qualquer
+  // processo não pode ser removido pela interface.
+  const result = await query(`DELETE FROM clients c
+    WHERE c.id=$1
+      AND NOT EXISTS (SELECT 1 FROM processes p WHERE p.client_id=c.id)
+    RETURNING c.id`, [req.params.id]);
+  if (!result.rowCount) {
+    const exists = await query('SELECT 1 FROM clients WHERE id=$1', [req.params.id]);
+    if (exists.rowCount) return res.status(409).json({ error: 'Este exportador possui processos vinculados e não pode ser excluído.' });
+    return res.status(404).json({ error: 'Exportador não encontrado.' });
+  }
+  await audit(req.user.sub, 'client.deleted', 'client', req.params.id);
+  res.status(204).end();
+}));
 
 const processColumns = ['process_number','display_process_number','status','client_id','importer','invoice','booking','due_number','due_issue_date','ruc_number','origin_port','destination_port','vessel','agency','carrier','deadline','shipping_date','container_collection_date','collection_terminal','free_time_days','incoterm','shipment_type','bl_type','freight_type','mapa_inspection','container_quantity','container_type','container_details','cubic_meters','net_weight_kg','gross_weight_kg','packages_quantity','cargo_value','currency'];
 const validIncoterms = new Set(['CFR','CIF','CIP','CPT','DAP','DDP','DPU','EXW','FAS','FCA','FOB']);

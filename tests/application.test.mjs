@@ -70,13 +70,23 @@ test('rotas sensíveis exigem autenticação, CSRF e autorização no servidor',
     "app.delete('/api/processes/:id', authenticate",
     "app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly",
     "app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly",
-    "app.patch('/api/users/:id', authenticate, adminOnly"
+    "app.patch('/api/users/:id', authenticate, adminOnly",
+    "app.delete('/api/clients/:id', authenticate, processEditorOnly"
   ]) assert.ok(server.includes(route), `Rota sem proteção esperada: ${route}`);
   assert.match(server, /previous\.analyst_id !== req\.user\.sub/);
   assert.match(server, /app\.use\('\/api', csrfProtection\)/);
   assert.match(server, /Solicitação muito grande/);
   assert.match(server, /entity\.parse\.failed/);
   assert.match(server, /JSON inválido/);
+});
+
+test('exclusão de exportador preserva processos vinculados', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /NOT EXISTS \(SELECT 1 FROM processes p WHERE p\.client_id=c\.id\)/);
+  assert.match(server, /possui processos vinculados e não pode ser excluído/);
+  assert.match(html, /class="btn secondary delete-client"/);
+  assert.match(html, /Excluir o exportador/);
 });
 
 test('listagem paginada e regra de leitura por função permanecem no servidor', async () => {
