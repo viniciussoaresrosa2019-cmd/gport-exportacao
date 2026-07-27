@@ -30,7 +30,9 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'");
+  // A página HTML recebe uma CSP específica com nonce logo abaixo. APIs e
+  // arquivos estáticos usam esta versão mais restritiva, sem inline.
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'");
   if (isProduction) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   // Dados operacionais e sessões nunca devem ser reaproveitados pelo cache do navegador.
   if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
@@ -99,33 +101,74 @@ const clearSession = res => {
   res.clearCookie(csrfCookie, { ...options, httpOnly: false });
 };
 
-const loginAttempts = new Map();
+// Limitação distribuída opcional. Em produção com mais de uma instância,
+// configure um Redis compatível com a API REST do Upstash. Sem Redis o
+// fallback local continua seguro para uma instância, mas não compartilha
+// contadores entre réplicas.
+const localRateLimits = new Map();
+const redisRateUrl = process.env.RATE_LIMIT_REDIS_REST_URL;
+const redisRateToken = process.env.RATE_LIMIT_REDIS_REST_TOKEN;
+let redisRateEnabled = false;
+try {
+  const candidate = redisRateUrl && new URL(redisRateUrl);
+  redisRateEnabled = Boolean(candidate && candidate.protocol === 'https:' && redisRateToken);
+} catch { /* configuração inválida usa fallback local */ }
+const localRateIncrement = (key, windowMs) => {
+  const now = Date.now();
+  const entry = localRateLimits.get(key);
+  if (!entry || now >= entry.resetAt) {
+    localRateLimits.set(key, { count: 1, resetAt: now + windowMs });
+    return { count: 1, resetAt: now + windowMs };
+  }
+  entry.count += 1;
+  return entry;
+};
+const localRateRead = key => {
+  const entry = localRateLimits.get(key);
+  if (!entry || Date.now() >= entry.resetAt) { localRateLimits.delete(key); return 0; }
+  return entry.count;
+};
+const redisRateCommand = async command => {
+  if (!redisRateEnabled) return null;
+  try {
+    const response = await fetch(redisRateUrl, {
+      method: 'POST', headers: { Authorization: `Bearer ${redisRateToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(command), signal: AbortSignal.timeout(1200)
+    });
+    if (!response.ok) throw new Error('Redis indisponível');
+    return (await response.json()).result;
+  } catch {
+    // Uma falha do Redis não derruba o sistema; o limite local permanece ativo.
+    return null;
+  }
+};
+const distributedRateIncrement = async (key, windowMs) => {
+  const script = "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('PEXPIRE',KEYS[1],ARGV[1]) end; return n";
+  const count = await redisRateCommand(['EVAL', script, 1, key, String(windowMs)]);
+  return Number.isInteger(Number(count)) ? Number(count) : localRateIncrement(key, windowMs).count;
+};
+const distributedRateRead = async key => {
+  const count = await redisRateCommand(['GET', key]);
+  return count === null ? localRateRead(key) : Number(count || 0);
+};
+const distributedRateClear = async key => {
+  localRateLimits.delete(key);
+  await redisRateCommand(['DEL', key]);
+};
 const loginAttemptKey = req => `${req.ip}:${req.path}`;
-const loginLimit = (req, res, next) => {
+const loginLimit = asyncRoute(async (req, res, next) => {
   const key = loginAttemptKey(req);
-  const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (entry && now > entry.resetAt) loginAttempts.delete(key);
-  else if (entry?.count >= 10) return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' });
+  if (await distributedRateRead(`gport:login:${key}`) >= 10) return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' });
   next();
-};
-const registerLoginFailure = req => {
-  const key = loginAttemptKey(req), now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (!entry || now > entry.resetAt) loginAttempts.set(key, { count: 1, resetAt: now + 15 * 60_000 });
-  else entry.count += 1;
-};
-const clearLoginFailures = req => loginAttempts.delete(loginAttemptKey(req));
-const apiAttempts = new Map();
-const apiLimit = (req, res, next) => {
+});
+const registerLoginFailure = req => distributedRateIncrement(`gport:login:${loginAttemptKey(req)}`, 15 * 60_000);
+const clearLoginFailures = req => distributedRateClear(`gport:login:${loginAttemptKey(req)}`);
+const apiLimit = asyncRoute(async (req, res, next) => {
   if (!['POST', 'PATCH', 'DELETE'].includes(req.method) || req.path.startsWith('/api/auth/')) return next();
-  const key = req.ip;
-  const now = Date.now();
-  const current = apiAttempts.get(key);
-  if (!current || now > current.resetAt) apiAttempts.set(key, { count: 1, resetAt: now + 15 * 60_000 });
-  else if (++current.count > 180) return res.status(429).json({ error: 'Muitas solicitações. Aguarde alguns minutos e tente novamente.' });
+  const count = await distributedRateIncrement(`gport:mutation:${req.ip}`, 15 * 60_000);
+  if (count > 180) return res.status(429).json({ error: 'Muitas solicitações. Aguarde alguns minutos e tente novamente.' });
   next();
-};
+});
 app.use('/api', apiLimit);
 
 function authenticate(req, res, next) {
@@ -199,11 +242,11 @@ app.post('/api/users', authenticate, adminOnly, asyncRoute(async (req, res) => {
 app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
-  if (!username || !password || username.length > 80 || password.length > 200) { registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
+  if (!username || !password || username.length > 80 || password.length > 200) { await registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
   const user = (await query('SELECT * FROM users WHERE LOWER(username)=LOWER($1)', [username])).rows[0];
   const verified = await bcrypt.compare(password, user?.password_hash || dummyPasswordHash);
-  if (!user || !user.active || !verified) { registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
-  clearLoginFailures(req);
+  if (!user || !user.active || !verified) { await registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
+  await clearLoginFailures(req);
   setSession(res, user);
   res.json({ user: publicUser(user) });
 }));
@@ -371,13 +414,36 @@ const processChanges = (previous, next) => Object.fromEntries(
     .map(column => [column, { before: auditValue(previous[column]), after: auditValue(next[column]) }])
 );
 const processSelect = `SELECT p.*,c.name AS exporter,u.username AS analyst FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id`;
+const processReaderRoles = new Set(['admin', 'vgm', 'financeiro', 'liberacao']);
+const canReadAllProcesses = user => processReaderRoles.has(user.role);
+const processSearchFields = {
+  todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
+  booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
+  origem: 'p.origin_port', destino: 'p.destination_port', navio: 'p.vessel', analista: 'u.username',
+  prazo: "TO_CHAR(p.deadline,'DD/MM')", envio: "TO_CHAR(p.shipping_date,'DD/MM')", coleta: "TO_CHAR(p.container_collection_date,'DD/MM')",
+  agencia: 'p.agency', armador: 'p.carrier', tipoembarque: 'p.shipment_type', tipobl: 'p.bl_type', tipofrete: 'p.freight_type',
+  vistoriomapa: "CASE WHEN p.mapa_inspection THEN 'Sim' ELSE 'Não' END", incoterm: 'p.incoterm', containers: "p.container_details::text",
+  qtdcontainers: 'p.container_quantity::text', tipocontainer: 'p.container_type', terminal: 'p.collection_terminal', freetime: 'p.free_time_days::text',
+  metragem: 'p.cubic_meters::text', pesoliquido: 'p.net_weight_kg::text', pesobruto: 'p.gross_weight_kg::text', volumes: 'p.packages_quantity::text',
+  valor: 'p.cargo_value::text', moeda: 'p.currency', due: 'p.due_number', ruc: 'p.ruc_number'
+};
 
 app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const term = String(req.query.search || '').trim();
   const status = String(req.query.status || '').trim();
-  if (term.length > 100 || status.length > 40) return res.status(400).json({ error: 'Filtro inválido.' });
-  const result = await query(`${processSelect} WHERE ($1='' OR p.status=$1) AND ($2='' OR p.process_number ILIKE '%'||$2||'%' OR c.name ILIKE '%'||$2||'%' OR p.importer ILIKE '%'||$2||'%' OR p.booking ILIKE '%'||$2||'%') ORDER BY p.created_at DESC`, [status, term]);
-  res.json(result.rows);
+  const field = String(req.query.field || 'todos').trim().toLowerCase();
+  const limit = Number(req.query.limit || 50);
+  const offset = Number(req.query.offset || 0);
+  if (term.length > 100 || status.length > 40 || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
+  const scope = canReadAllProcesses(req.user) ? '' : ' AND p.analyst_id=$3';
+  const params = canReadAllProcesses(req.user) ? [status, term] : [status, term, req.user.sub];
+  const next = params.length + 1;
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%')${scope}`;
+  const [items, total] = await Promise.all([
+    query(`${processSelect} ${where} ORDER BY p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
+    query(`SELECT COUNT(*)::int AS total FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id ${where}`, params)
+  ]);
+  res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });
 }));
 app.post('/api/processes', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };
@@ -514,7 +580,8 @@ app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyn
   res.json(result.rows[0]);
 }));
 
-app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(async (_req, res) => {
+app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
+  const ownOnly = req.user.role === 'analyst';
   const result = await query(`
     SELECT a.id, a.action, a.details, a.created_at, u.username,
            p.id AS process_id, p.booking, c.name AS exporter
@@ -522,16 +589,17 @@ app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(a
       JOIN users u ON u.id=a.user_id
       JOIN processes p ON p.id=a.entity_id
       JOIN clients c ON c.id=p.client_id
-     WHERE a.entity='process'
+     WHERE a.entity='process'${ownOnly ? ' AND p.analyst_id=$1' : ''}
        AND a.action IN ('process.created','process.updated','process.vgm_updated','process.release_updated','process.followup_updated')
      ORDER BY a.created_at DESC
      LIMIT 500
-  `);
+  `, ownOnly ? [req.user.sub] : []);
   res.json(result.rows);
 }));
 
 app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
+  const ownOnly = req.user.role === 'analyst';
   const result = await query(`
     SELECT a.action, a.details, a.created_at, u.username,
            p.id AS process_id, p.booking, c.name AS exporter
@@ -539,10 +607,10 @@ app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly
       JOIN users u ON u.id=a.user_id
       JOIN processes p ON p.id=a.entity_id
       JOIN clients c ON c.id=p.client_id
-     WHERE a.entity='process' AND a.entity_id=$1
+     WHERE a.entity='process' AND a.entity_id=$1${ownOnly ? ' AND p.analyst_id=$2' : ''}
        AND a.action IN ('process.created','process.updated','process.vgm_updated','process.release_updated','process.followup_updated')
      ORDER BY a.created_at ASC
-  `, [req.params.id]);
+  `, ownOnly ? [req.params.id, req.user.sub] : [req.params.id]);
   res.json(result.rows);
 }));
 

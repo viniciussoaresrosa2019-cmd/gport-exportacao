@@ -6,7 +6,12 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "security:secrets": "node scripts/check-secrets.mjs",
+    "security:check": "npm run security:secrets && npm test && npm audit --omit=dev --audit-level=high"
+  },
+  "engines": {
+    "node": ">=24.18.0 <25"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
