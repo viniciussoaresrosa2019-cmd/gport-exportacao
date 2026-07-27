@@ -9,8 +9,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 24.18.0
-      - key: DB_SSL_REJECT_UNAUTHORIZED
-        value: "false"
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET

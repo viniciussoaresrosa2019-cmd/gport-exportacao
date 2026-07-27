@@ -1,13 +1,14 @@
 // Cliente da futura interface web. Nenhuma chave secreta deve ser adicionada aqui.
-const baseUrl = window.ATLAS_API_URL || 'http://localhost:3000/api';
+const baseUrl = window.ATLAS_API_URL || '/api';
+const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
 
 export async function api(path, options = {}) {
-  const token = sessionStorage.getItem('atlas_export_token');
   const response = await fetch(`${baseUrl}${path}`, {
     ...options,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(['POST', 'PATCH', 'DELETE'].includes(options.method || 'GET') ? { 'X-CSRF-Token': csrfToken() } : {}),
       ...(options.headers || {})
     }
   });

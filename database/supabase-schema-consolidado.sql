@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'analyst',
   active BOOLEAN NOT NULL DEFAULT TRUE,
+  token_version INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -99,6 +100,7 @@ CREATE TABLE IF NOT EXISTS process_counters (
 
 -- Complementa bancos que foram criados com versões anteriores do sistema.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS display_process_number VARCHAR(80);
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS due_issue_date DATE;

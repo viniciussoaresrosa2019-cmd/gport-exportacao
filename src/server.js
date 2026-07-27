@@ -1,10 +1,10 @@
 import express from 'express';
-import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import path from 'node:path';
-import { appendFile } from 'node:fs/promises';
+import { appendFile, readFile } from 'node:fs/promises';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { query } from './db.js';
 
@@ -12,24 +12,58 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) throw new Error('Defina um JWT_SECRET forte com pelo menos 32 caracteres.');
+const isProduction = process.env.NODE_ENV === 'production';
+const sessionCookie = 'gport_session';
+const csrfCookie = 'gport_csrf';
+const sessionMaxAge = 4 * 60 * 60 * 1000;
+const supportedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean);
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const usernamePattern = /^[A-Za-z0-9._-]{3,80}$/;
+// Hash utilizado apenas para manter tempo de resposta semelhante quando o
+// usuário não existe, reduzindo enumeração de contas por tempo de resposta.
+const dummyPasswordHash = '$2a$12$D1q0beGaVr2D.FubVPSbWO0SvptUQ3rJ9WXrZHm8YiWZlfQmOzPfe';
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-src 'self'; connect-src 'self'");
-  if (process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'");
+  if (isProduction) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   // Dados operacionais e sessões nunca devem ser reaproveitados pelo cache do navegador.
   if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   next();
 });
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || false }));
-app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (!origin) return next();
+  let sameOrigin = false;
+  try { sameOrigin = origin === `${req.protocol}://${req.get('host')}`; } catch { /* origem inválida será rejeitada */ }
+  if (!sameOrigin && !supportedOrigins.includes(origin)) return res.status(403).json({ error: 'Origem não permitida.' });
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRF-Token');
+  res.setHeader('Access-Control-Max-Age', '600');
+  res.setHeader('Vary', 'Origin');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+app.use(express.json({ limit: '256kb', strict: true, type: 'application/json' }));
+const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, '../public');
+let indexHtmlPromise;
+const renderIndex = asyncRoute(async (_req, res) => {
+  indexHtmlPromise ||= readFile(path.join(webRoot, 'index.html'), 'utf8');
+  const nonce = randomBytes(18).toString('base64');
+  res.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self'`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send((await indexHtmlPromise).replaceAll('<script>', `<script nonce="${nonce}">`));
+});
+app.get(['/', '/index.html'], renderIndex);
 app.use(express.static(webRoot, {
   etag: true,
   maxAge: '1d',
@@ -39,10 +73,31 @@ app.use(express.static(webRoot, {
   }
 }));
 
-const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-const tokenFor = user => jwt.sign({ sub: user.id, username: user.username, role: user.role }, jwtSecret, { expiresIn: '8h' });
+const parseCookies = request => Object.fromEntries((request.headers.cookie || '').split(';').map(value => {
+  const index = value.indexOf('=');
+  return index < 0 ? [] : [value.slice(0, index).trim(), decodeURIComponent(value.slice(index + 1))];
+}).filter(pair => pair.length));
+const cookieOptions = (httpOnly = true) => ({ httpOnly, secure: isProduction, sameSite: 'strict', path: '/', maxAge: sessionMaxAge });
+const secureEqual = (left, right) => {
+  if (!left || !right) return false;
+  const a = Buffer.from(left), b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
+const tokenFor = (user, csrfToken) => jwt.sign({ sub: user.id, username: user.username, role: user.role, ver: user.token_version || 0, csrf: csrfToken }, jwtSecret, { expiresIn: '4h', issuer: 'gport-export', audience: 'gport-web' });
 const publicUser = user => ({ id: user.id, username: user.username, role: user.role, active: user.active, createdAt: user.created_at });
 const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao'];
+const isStrongPassword = password => typeof password === 'string' && password.length >= 12 && password.length <= 200 && /[A-Za-z]/.test(password) && /\d/.test(password);
+const validId = value => typeof value === 'string' && uuidPattern.test(value);
+const setSession = (res, user) => {
+  const csrfToken = randomBytes(32).toString('base64url');
+  res.cookie(sessionCookie, tokenFor(user, csrfToken), cookieOptions(true));
+  res.cookie(csrfCookie, csrfToken, cookieOptions(false));
+};
+const clearSession = res => {
+  const options = { httpOnly: true, secure: isProduction, sameSite: 'strict', path: '/' };
+  res.clearCookie(sessionCookie, options);
+  res.clearCookie(csrfCookie, { ...options, httpOnly: false });
+};
 
 const loginAttempts = new Map();
 const loginAttemptKey = req => `${req.ip}:${req.path}`;
@@ -61,17 +116,28 @@ const registerLoginFailure = req => {
   else entry.count += 1;
 };
 const clearLoginFailures = req => loginAttempts.delete(loginAttemptKey(req));
+const apiAttempts = new Map();
+const apiLimit = (req, res, next) => {
+  if (!['POST', 'PATCH', 'DELETE'].includes(req.method) || req.path.startsWith('/api/auth/')) return next();
+  const key = req.ip;
+  const now = Date.now();
+  const current = apiAttempts.get(key);
+  if (!current || now > current.resetAt) apiAttempts.set(key, { count: 1, resetAt: now + 15 * 60_000 });
+  else if (++current.count > 180) return res.status(429).json({ error: 'Muitas solicitações. Aguarde alguns minutos e tente novamente.' });
+  next();
+};
+app.use('/api', apiLimit);
 
 function authenticate(req, res, next) {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const token = parseCookies(req)[sessionCookie];
   if (!token) return res.status(401).json({ error: 'Autenticação obrigatória.' });
   let claims;
-  try { claims = jwt.verify(token, jwtSecret); }
+  try { claims = jwt.verify(token, jwtSecret, { issuer: 'gport-export', audience: 'gport-web' }); }
   catch { return res.status(401).json({ error: 'Sessão inválida ou expirada.' }); }
-  query('SELECT id,username,role,active FROM users WHERE id=$1', [claims.sub])
+  query('SELECT id,username,role,active,token_version FROM users WHERE id=$1', [claims.sub])
     .then(result => {
       const user = result.rows[0];
-      if (!user?.active) return res.status(401).json({ error: 'Usuário inativo ou sessão expirada.' });
+      if (!user?.active || user.token_version !== claims.ver) return res.status(401).json({ error: 'Usuário inativo ou sessão expirada.' });
       // O cargo vem do banco, não apenas do token antigo. Assim exclusões e
       // mudanças de função passam a valer imediatamente.
       req.user = { sub: user.id, username: user.username, role: user.role };
@@ -79,7 +145,22 @@ function authenticate(req, res, next) {
     })
     .catch(next);
 }
+function csrfProtection(req, res, next) {
+  if (!['POST', 'PATCH', 'DELETE'].includes(req.method) || req.path === '/api/auth/login') return next();
+  const cookies = parseCookies(req);
+  const token = cookies[sessionCookie];
+  if (!token) return next(); // login público e bloqueio de criação de conta serão tratados pelas próprias rotas.
+  try {
+    const claims = jwt.verify(token, jwtSecret, { issuer: 'gport-export', audience: 'gport-web' });
+    if (!secureEqual(req.get('X-CSRF-Token'), cookies[csrfCookie]) || !secureEqual(cookies[csrfCookie], claims.csrf)) {
+      return res.status(403).json({ error: 'Solicitação inválida. Atualize a página e tente novamente.' });
+    }
+  } catch { return res.status(401).json({ error: 'Sessão inválida ou expirada.' }); }
+  next();
+}
+app.use('/api', csrfProtection);
 const adminOnly = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Acesso restrito a administradores.' });
+const processEditorOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem alterar processos.' });
 const vgmManagerOnly = (req, res, next) => ['admin', 'vgm'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas VGM ou Administrador podem atualizar este controle.' });
 const releaseManagerOnly = (req, res, next) => ['admin', 'liberacao'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Liberação ou Administrador podem atualizar este controle.' });
 const followupManagerOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem atualizar o follow up.' });
@@ -87,24 +168,28 @@ const audit = (userId, action, entity, entityId, details = {}) => query('INSERT 
 
 app.get('/api/health', asyncRoute(async (_req, res) => {
   await query('SELECT 1');
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({ status: 'ok' });
 }));
 
 app.post('/api/auth/register', loginLimit, asyncRoute(async (req, res) => {
+  // Cadastro público foi removido: contas são provisionadas somente por admins.
+  // A rota permanece por compatibilidade com a interface administrativa.
+  return res.status(403).json({ error: 'O cadastro é feito somente por administradores.' });
+}));
+
+app.post('/api/users', authenticate, adminOnly, asyncRoute(async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
-  const registrationCode = String(req.body.registrationCode || '');
-  if (process.env.REGISTRATION_CODE && registrationCode !== process.env.REGISTRATION_CODE) { registerLoginFailure(req); return res.status(403).json({ error: 'Código de cadastro inválido.' }); }
-  if (username.length < 3 || password.length < 8) return res.status(400).json({ error: 'Usuário deve ter 3+ caracteres e senha 8+ caracteres.' });
-  const count = await query('SELECT COUNT(*)::int AS total FROM users');
-  const role = count.rows[0].total === 0 ? 'admin' : 'analyst';
+  const role = String(req.body.role || 'analyst');
+  if (!usernamePattern.test(username)) return res.status(400).json({ error: 'Usuário deve ter 3 a 80 caracteres: letras, números, ponto, hífen ou sublinhado.' });
+  if (!isStrongPassword(password)) return res.status(400).json({ error: 'A senha deve ter ao menos 12 caracteres, com letras e números.' });
+  if (!validRoles.includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
   const passwordHash = await bcrypt.hash(password, 12);
   try {
     const result = await query('INSERT INTO users(username,password_hash,role) VALUES($1,$2,$3) RETURNING id,username,role,active,created_at', [username, passwordHash, role]);
     const user = result.rows[0];
-    await audit(user.id, 'user.created', 'user', user.id, { role });
-    clearLoginFailures(req);
-    res.status(201).json({ user: publicUser(user), token: tokenFor(user) });
+    await audit(req.user.sub, 'user.created', 'user', user.id, { role });
+    res.status(201).json({ user: publicUser(user) });
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
     throw error;
@@ -113,10 +198,21 @@ app.post('/api/auth/register', loginLimit, asyncRoute(async (req, res) => {
 
 app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
   const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  if (!username || !password || username.length > 80 || password.length > 200) { registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
   const user = (await query('SELECT * FROM users WHERE LOWER(username)=LOWER($1)', [username])).rows[0];
-  if (!user || !user.active || !(await bcrypt.compare(String(req.body.password || ''), user.password_hash))) { registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
+  const verified = await bcrypt.compare(password, user?.password_hash || dummyPasswordHash);
+  if (!user || !user.active || !verified) { registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
   clearLoginFailures(req);
-  res.json({ user: publicUser(user), token: tokenFor(user) });
+  setSession(res, user);
+  res.json({ user: publicUser(user) });
+}));
+
+app.post('/api/auth/logout', authenticate, asyncRoute(async (req, res) => {
+  // Invalida também uma cópia de cookie eventualmente roubada.
+  await query('UPDATE users SET token_version=token_version+1 WHERE id=$1', [req.user.sub]);
+  clearSession(res);
+  res.status(204).end();
 }));
 
 app.get('/api/me', authenticate, asyncRoute(async (req, res) => {
@@ -134,24 +230,26 @@ app.get('/api/analysts', authenticate, asyncRoute(async (_req, res) => {
   res.json(result.rows);
 }));
 app.get('/api/assignees', authenticate, asyncRoute(async (_req, res) => {
-  const result = await query('SELECT id,username,role FROM users WHERE active=true ORDER BY username');
+  const result = await query('SELECT id,username FROM users WHERE active=true ORDER BY username');
   res.json(result.rows);
 }));
 app.patch('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de usuário inválido.' });
   const { role, active, password } = req.body;
   if (role && !validRoles.includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
-  if (password && String(password).length < 8) return res.status(400).json({ error: 'A senha deve ter pelo menos 8 caracteres.' });
+  if (password && !isStrongPassword(String(password))) return res.status(400).json({ error: 'A senha deve ter ao menos 12 caracteres, com letras e números.' });
   if ((role && role !== 'admin') || active === false) {
     const target = (await query('SELECT role,active FROM users WHERE id=$1', [req.params.id])).rows[0];
     const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE role='admin' AND active=true")).rows[0].total;
     if (target?.role === 'admin' && target?.active && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
   }
-  const result = await query('UPDATE users SET role=COALESCE($1,role), active=COALESCE($2,active), password_hash=COALESCE($3,password_hash) WHERE id=$4 RETURNING id,username,role,active,created_at', [role || null, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, req.params.id]);
+  const result = await query('UPDATE users SET role=COALESCE($1,role), active=COALESCE($2,active), password_hash=COALESCE($3,password_hash), token_version=token_version + CASE WHEN $3 IS NULL THEN 0 ELSE 1 END WHERE id=$4 RETURNING id,username,role,active,created_at', [role || null, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Usuário não encontrado.' });
   await audit(req.user.sub, 'user.updated', 'user', req.params.id, { role, active, passwordReset: !!password });
   res.json({ user: publicUser(result.rows[0]) });
 }));
 app.delete('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de usuário inválido.' });
   const target = (await query('SELECT id,role,active FROM users WHERE id=$1', [req.params.id])).rows[0];
   if (!target) return res.status(404).json({ error: 'Usuário não encontrado.' });
   if (!target.active) return res.status(400).json({ error: 'Este funcionário já foi excluído.' });
@@ -162,30 +260,106 @@ app.delete('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res
   res.status(204).end();
 }));
 
+const cleanText = (value, max, field, { required = false } = {}) => {
+  if (value === null || value === undefined) {
+    if (required) throw Object.assign(new Error(`${field} é obrigatório.`), { status: 400 });
+    return null;
+  }
+  const result = String(value).trim().replace(/\s+/g, ' ');
+  if (required && !result) throw Object.assign(new Error(`${field} é obrigatório.`), { status: 400 });
+  if (!result) return null;
+  if (result.length > max) throw Object.assign(new Error(`${field} ultrapassa o limite permitido.`), { status: 400 });
+  return result;
+};
+const cleanOptionalDate = (value, field) => {
+  if (value === null || value === undefined || value === '') return null;
+  const text = String(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!match) throw Object.assign(new Error(`${field} inválida.`), { status: 400 });
+  const [year, month, day, hour = '0', minute = '0', second = '0'] = match.slice(1);
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day) || Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) {
+    throw Object.assign(new Error(`${field} inválida.`), { status: 400 });
+  }
+  return text;
+};
+const cleanNonNegative = (value, max, field, { integer = false } = {}) => {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > max || (integer && !Number.isInteger(number))) throw Object.assign(new Error(`${field} inválido.`), { status: 400 });
+  return number;
+};
+
 app.get('/api/clients', authenticate, asyncRoute(async (_req, res) => {
   const result = await query('SELECT * FROM clients ORDER BY name');
   res.json(result.rows);
 }));
-app.post('/api/clients', authenticate, asyncRoute(async (req, res) => {
-  const c = req.body;
-  if (!String(c.name || '').trim()) return res.status(400).json({ error: 'Nome do exportador é obrigatório.' });
-  const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name.trim(), c.taxId || null, c.contact || null, c.phone || null, c.email || null, c.country || null, c.address || null]);
+const validatedClient = body => ({
+  name: cleanText(body.name, 180, 'Nome do exportador', { required: true }), taxId: cleanText(body.taxId, 40, 'CNPJ'),
+  contact: cleanText(body.contact, 120, 'Contato'), phone: cleanText(body.phone, 50, 'Telefone'),
+  email: cleanText(body.email, 160, 'E-mail'), country: cleanText(body.country, 80, 'País'), address: cleanText(body.address, 500, 'Endereço')
+});
+app.post('/api/clients', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  const c = validatedClient(req.body);
+  const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
   res.status(201).json(result.rows[0]);
 }));
-app.patch('/api/clients/:id', authenticate, asyncRoute(async (req, res) => {
-  const c = req.body;
-  if (!String(c.name || '').trim()) return res.status(400).json({ error: 'Nome do exportador é obrigatório.' });
-  const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7 WHERE id=$8 RETURNING *', [c.name.trim(), c.taxId || null, c.contact || null, c.phone || null, c.email || null, c.country || null, c.address || null, req.params.id]);
+app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
+  const c = validatedClient(req.body);
+  const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7 WHERE id=$8 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Exportador não encontrado.' });
   await audit(req.user.sub, 'client.updated', 'client', req.params.id);
   res.json(result.rows[0]);
 }));
 
 const processColumns = ['process_number','display_process_number','status','client_id','importer','invoice','booking','due_number','due_issue_date','ruc_number','origin_port','destination_port','vessel','agency','carrier','deadline','shipping_date','container_collection_date','collection_terminal','free_time_days','incoterm','shipment_type','bl_type','freight_type','mapa_inspection','container_quantity','container_type','container_details','cubic_meters','net_weight_kg','gross_weight_kg','packages_quantity','cargo_value','currency'];
+const validIncoterms = new Set(['CFR','CIF','CIP','CPT','DAP','DDP','DPU','EXW','FAS','FCA','FOB']);
+const validCurrencies = new Set(['BRL','EUR','USD']);
+const validateContainerDetails = (value, quantity, mapaInspection) => {
+  if (!Array.isArray(value) || value.length > 100) throw Object.assign(new Error('Dados dos contêineres inválidos.'), { status: 400 });
+  if (quantity !== null && value.length > quantity) throw Object.assign(new Error('A quantidade de contêineres não confere.'), { status: 400 });
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw Object.assign(new Error(`Contêiner ${index + 1} inválido.`), { status: 400 });
+    return {
+      number: cleanText(item.number, 40, 'Número do contêiner'), tare: cleanNonNegative(item.tare, 999999, 'Tara'),
+      seal: cleanText(item.seal, 80, 'Lacre'), new_seal: mapaInspection ? cleanText(item.new_seal, 80, 'Novo lacre') : null
+    };
+  });
+};
 const toDbProcess = body => ({
   process_number: body.processNumber, display_process_number: body.displayProcessNumber, status: body.status || 'Em andamento', client_id: body.clientId, importer: body.importer, invoice: body.invoice, booking: body.booking, due_number: body.dueNumber, due_issue_date: body.dueIssueDate, ruc_number: body.rucNumber, origin_port: body.originPort, destination_port: body.destinationPort, vessel: body.vessel, agency: body.agency, carrier: body.carrier, deadline: body.deadline, shipping_date: body.shippingDate, container_collection_date: body.containerCollectionDate, collection_terminal: body.collectionTerminal, free_time_days: body.freeTimeDays, incoterm: body.incoterm, shipment_type: body.shipmentType, bl_type: body.blType, freight_type: body.freightType, mapa_inspection: body.mapaInspection === true, container_quantity: body.containerQuantity, container_type: body.containerType, container_details: JSON.stringify(body.containerDetails || []), cubic_meters: body.cubicMeters, net_weight_kg: body.netWeightKg, gross_weight_kg: body.grossWeightKg, packages_quantity: body.packagesQuantity, cargo_value: body.cargoValue, currency: body.currency || 'USD'
 });
+const validatedProcess = raw => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Object.assign(new Error('Dados do processo inválidos.'), { status: 400 });
+  const shipmentType = raw.shipmentType ? cleanText(raw.shipmentType, 3, 'Tipo de embarque') : null;
+  if (shipmentType && !['FCL', 'LCL'].includes(shipmentType)) throw Object.assign(new Error('Tipo de embarque inválido.'), { status: 400 });
+  const mapaInspection = raw.mapaInspection === true;
+  const containerQuantity = shipmentType === 'LCL' ? null : cleanNonNegative(raw.containerQuantity, 100, 'Quantidade de contêineres', { integer: true });
+  const incoterm = raw.incoterm ? cleanText(raw.incoterm, 10, 'Incoterm').toUpperCase() : null;
+  const currency = raw.currency ? cleanText(raw.currency, 3, 'Moeda').toUpperCase() : 'USD';
+  if (incoterm && !validIncoterms.has(incoterm)) throw Object.assign(new Error('Incoterm inválido.'), { status: 400 });
+  if (!validCurrencies.has(currency)) throw Object.assign(new Error('Moeda inválida.'), { status: 400 });
+  const result = {
+    processNumber: cleanText(raw.processNumber, 80, 'Número técnico do processo'), displayProcessNumber: cleanText(raw.displayProcessNumber, 80, 'Número do processo'),
+    status: cleanText(raw.status || 'Em andamento', 40, 'Status', { required: true }), clientId: cleanText(raw.clientId, 36, 'Exportador', { required: true }),
+    importer: cleanText(raw.importer, 200, 'Importador', { required: true }), invoice: cleanText(raw.invoice, 120, 'Fatura'), booking: cleanText(raw.booking, 120, 'Booking'),
+    dueNumber: cleanText(raw.dueNumber, 120, 'DUE'), dueIssueDate: cleanOptionalDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC'),
+    originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: true }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: true }),
+    vessel: cleanText(raw.vessel, 160, 'Navio'), agency: cleanText(raw.agency, 160, 'Agência'), carrier: cleanText(raw.carrier, 160, 'Armador'),
+    deadline: cleanOptionalDate(raw.deadline, 'Deadline de draft'), shippingDate: cleanOptionalDate(raw.shippingDate, 'Data de envio'), containerCollectionDate: cleanOptionalDate(raw.containerCollectionDate, 'Data de coleta'),
+    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal'), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true }), incoterm, shipmentType,
+    blType: cleanText(raw.blType, 80, 'Tipo de BL'), freightType: cleanText(raw.freightType, 80, 'Tipo de frete'), mapaInspection, containerQuantity,
+    containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType, 80, 'Tipo de contêiner'), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica'),
+    netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido'), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto'),
+    packagesQuantity: cleanNonNegative(raw.packagesQuantity, 99999999, 'Quantidade de pacotes', { integer: true }), cargoValue: cleanNonNegative(raw.cargoValue, 999999999999, 'Valor da carga'), currency
+  };
+  if (!validId(result.clientId)) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
+  if (!result.deadline) throw Object.assign(new Error('Deadline de draft é obrigatório.'), { status: 400 });
+  result.containerDetails = shipmentType === 'LCL' ? [] : validateContainerDetails(raw.containerDetails || [], containerQuantity, mapaInspection);
+  return result;
+};
 const auditValue = value => {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value.toISOString();
@@ -201,10 +375,11 @@ const processSelect = `SELECT p.*,c.name AS exporter,u.username AS analyst FROM 
 app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const term = String(req.query.search || '').trim();
   const status = String(req.query.status || '').trim();
+  if (term.length > 100 || status.length > 40) return res.status(400).json({ error: 'Filtro inválido.' });
   const result = await query(`${processSelect} WHERE ($1='' OR p.status=$1) AND ($2='' OR p.process_number ILIKE '%'||$2||'%' OR c.name ILIKE '%'||$2||'%' OR p.importer ILIKE '%'||$2||'%' OR p.booking ILIKE '%'||$2||'%') ORDER BY p.created_at DESC`, [status, term]);
   res.json(result.rows);
 }));
-app.post('/api/processes', authenticate, asyncRoute(async (req, res) => {
+app.post('/api/processes', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };
   // A criação não aceita um identificador existente. Essa proteção impede que
   // qualquer falha da interface transforme uma edição em processo duplicado.
@@ -218,8 +393,7 @@ app.post('/api/processes', authenticate, asyncRoute(async (req, res) => {
     const booking = String(body.booking || '').trim();
     body.processNumber = booking || `SEM-BOOKING-${Date.now()}`;
   }
-  const p = toDbProcess(body);
-  if (!p.client_id || !p.importer || !p.origin_port || !p.destination_port || !p.deadline) return res.status(400).json({ error: 'Preencha os campos obrigatórios do processo.' });
+  const p = toDbProcess(validatedProcess(body));
   const values = processColumns.map(key => p[key] ?? null);
   const placeholders = processColumns.map((_, i) => `$${i + 1}`).join(',');
   let result;
@@ -238,7 +412,8 @@ app.post('/api/processes', authenticate, asyncRoute(async (req, res) => {
   await audit(req.user.sub, 'process.created', 'process', result.rows[0].id);
   res.status(201).json(result.rows[0]);
 }));
-app.patch('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
+app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const previous = (await query('SELECT * FROM processes WHERE id=$1', [req.params.id])).rows[0];
   if (!previous) return res.status(404).json({ error: 'Processo não encontrado.' });
   if (req.user.role !== 'admin' && previous.analyst_id !== req.user.sub) return res.status(403).json({ error: 'Você só pode alterar seus próprios processos.' });
@@ -253,16 +428,14 @@ app.patch('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
     const current = (await query('SELECT process_number FROM processes WHERE id=$1', [req.params.id])).rows[0];
     body.processNumber = current?.process_number || String(body.booking || '').trim() || `SEM-BOOKING-${Date.now()}`;
   }
-  const p = toDbProcess(body); const values = processColumns.map(key => p[key] ?? null);
-  if (!p.client_id || !p.importer || !p.origin_port || !p.destination_port || !p.deadline) {
-    return res.status(400).json({ error: 'Preencha os campos obrigatórios do processo.' });
-  }
+  const p = toDbProcess(validatedProcess(body)); const values = processColumns.map(key => p[key] ?? null);
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
   const result = await query(`UPDATE processes SET ${set} WHERE id=$${values.length + 1} RETURNING *`, [...values, req.params.id]);
   await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes: processChanges(previous, p) });
   res.json(result.rows[0]);
 }));
 app.delete('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const previous = (await query('SELECT analyst_id FROM processes WHERE id=$1', [req.params.id])).rows[0];
   if (!previous) return res.status(404).json({ error: 'Processo não encontrado.' });
   if (req.user.role !== 'admin' && previous.analyst_id !== req.user.sub) return res.status(403).json({ error: 'Você só pode excluir seus próprios processos.' });
@@ -272,6 +445,7 @@ app.delete('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
 }));
 
 app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const statuses = ['Não', 'Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'];
   const vgmStatus = String(req.body.vgmStatus || 'Não');
   const physicalProcessAnalyst = String(req.body.physicalProcessAnalyst || '').trim() || null;
@@ -298,12 +472,13 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
 }));
 
 app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const releaseStatus = String(req.body.releaseStatus || 'Não');
-  const releaseSchedule = req.body.releaseSchedule || null;
-  const releaseDeadline = req.body.releaseDeadline || null;
-  const vessel = String(req.body.vessel || '').trim() || null;
+  const releaseSchedule = cleanOptionalDate(req.body.releaseSchedule, 'Agendamento de liberação');
+  const releaseDeadline = cleanOptionalDate(req.body.releaseDeadline, 'Deadline de liberação');
+  const vessel = cleanText(req.body.vessel, 160, 'Navio');
   const releaseChannel = String(req.body.releaseChannel || '').trim() || null;
-  const releaseDate = req.body.releaseDate || null;
+  const releaseDate = cleanOptionalDate(req.body.releaseDate, 'Data de liberação');
   if (!['Não', 'Sim'].includes(releaseStatus)) return res.status(400).json({ error: 'Status de liberação inválido.' });
   if (releaseChannel && !['Verde', 'Laranja', 'Vermelho'].includes(releaseChannel)) return res.status(400).json({ error: 'Canal de liberação inválido.' });
   const result = await query(`
@@ -328,6 +503,7 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
 }));
 
 app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const followupStatus = String(req.body.followupStatus || 'Pendente');
   const followupNote = String(req.body.followupNote || '').trim() || null;
   if (!['Pendente', 'Concluído'].includes(followupStatus)) return res.status(400).json({ error: 'Status de follow up inválido.' });
@@ -355,6 +531,7 @@ app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(a
 }));
 
 app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const result = await query(`
     SELECT a.action, a.details, a.created_at, u.username,
            p.id AS process_id, p.booking, c.name AS exporter
@@ -372,6 +549,7 @@ app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly
 app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => {
   const year = Number(req.query.year || new Date().getFullYear());
   const month = req.query.month ? Number(req.query.month) : null;
+  if (!Number.isInteger(year) || year < 2000 || year > 2100 || (month !== null && (!Number.isInteger(month) || month < 1 || month > 12))) return res.status(400).json({ error: 'Período de relatório inválido.' });
   const params = [year, month];
   const period = `p.shipping_date IS NOT NULL AND EXTRACT(YEAR FROM p.shipping_date)=$1 AND ($2::int IS NULL OR EXTRACT(MONTH FROM p.shipping_date)=$2)`;
   const [total, analysts, exporters] = await Promise.all([
@@ -383,16 +561,12 @@ app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => 
 }));
 
 app.use((error, req, res, _next) => {
-  console.error(error);
-  // Registro local para diagnosticar falhas de banco no lançamento sem expor
-  // informações técnicas ao usuário final. O arquivo não contém senhas.
-  const errorEntry = `[${new Date().toISOString()}] ${req.method} ${req.path}\n${error?.stack || error?.message || String(error)}\n\n`;
+  const status = Number.isInteger(error?.status) ? error.status : error?.type === 'entity.too.large' ? 413 : 500;
+  // Nunca escreva corpo, senha, token, query string ou pilha de banco nos logs.
+  const errorEntry = JSON.stringify({ time: new Date().toISOString(), method: req.method, path: req.path, status, code: error?.code || null }) + '\n';
   appendFile(path.resolve(here, '../server-errors.log'), errorEntry, 'utf8').catch(() => {});
-  const localRequest = req.hostname === 'localhost' || req.hostname === '127.0.0.1';
-  const message = localRequest && error?.message
-    ? `Erro interno do servidor: ${error.message}`
-    : 'Erro interno do servidor.';
-  res.status(500).json({ error: message });
+  if (status >= 500) console.error(`[erro] ${req.method} ${req.path} ${error?.code || error?.name || 'internal'}`);
+  res.status(status).json({ error: status === 413 ? 'Solicitação muito grande.' : status < 500 ? error.message : 'Erro interno do servidor.' });
 });
 const ensureProcessFields = async () => {
   // Mantém o banco compatível com novos campos de capa, inclusive em projetos
@@ -400,6 +574,7 @@ const ensureProcessFields = async () => {
   // A instalação foi evoluindo por etapas; por isso, todos os campos usados no
   // lançamento são garantidos aqui. Assim uma atualização incompleta do banco
   // não bloqueia o cadastro de um novo processo.
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0');
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS status VARCHAR(40) NOT NULL DEFAULT 'Em andamento'");
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS client_id UUID');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS importer VARCHAR(200)');
