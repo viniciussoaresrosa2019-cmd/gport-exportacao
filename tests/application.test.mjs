@@ -88,6 +88,14 @@ test('listagem paginada e regra de leitura por função permanecem no servidor',
   assert.match(server, /processSearchFields/);
 });
 
+test('interface reutiliza dados de referência entre paginação e filtros', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /const referenceDataTtlMs = 5 \* 60 \* 1000/);
+  assert.match(html, /refreshData\(\{ append=false, refreshReferenceData=false \} = \{\}\)/);
+  assert.match(html, /const needsReferenceData = refreshReferenceData \|\| Date\.now\(\) >= referenceDataCache\.expiresAt/);
+  assert.match(html, /refreshData\(\{ refreshReferenceData:true \}\)/);
+});
+
 test('rate limit distribuído tem fallback local e não exige segredo no cliente', async () => {
   const server = await read('src/server.js');
   const env = await read('.env.example');
