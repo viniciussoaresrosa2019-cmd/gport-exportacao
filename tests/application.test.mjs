@@ -27,7 +27,7 @@ test('sessão, CSRF, autorização e validação têm proteções regressivas', 
   const server = await read('src/server.js');
   for (const required of [
     "const sessionCookie = 'gport_session'", 'httpOnly', "sameSite: 'strict'",
-    'csrfProtection', "X-CSRF-Token", 'token_version', 'processEditorOnly',
+    'csrfProtection', "X-CSRF-Token", 'token_version', 'processEditorOnly', 'processCreatorOnly',
     'validatedProcess', "limit: '256kb'", 'frame-ancestors', 'isStrongPassword',
     'script-src \'self\' \'nonce-${nonce}\'', 'Access-Control-Allow-Origin'
   ]) assert.ok(server.includes(required), `Proteção ausente: ${required}`);
@@ -80,9 +80,11 @@ test('rotas sensíveis exigem autenticação, CSRF e autorização no servidor',
     "app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly",
     "app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly",
     "app.patch('/api/users/:id', authenticate, adminOnly",
-    "app.delete('/api/clients/:id', authenticate, processEditorOnly"
+    "app.delete('/api/clients/:id', authenticate, clientManagerOnly"
   ]) assert.ok(server.includes(route), `Rota sem proteção esperada: ${route}`);
-  assert.match(server, /previous\.analyst_id !== req\.user\.sub/);
+  assert.match(server, /const processEditorOnly = \(_req, _res, next\) => next\(\)/);
+  assert.match(server, /const processCreatorOnly = \(_req, _res, next\) => next\(\)/);
+  assert.match(server, /app\.post\('\/api\/processes', authenticate, processCreatorOnly/);
   assert.match(server, /app\.use\('\/api', csrfProtection\)/);
   assert.match(server, /Solicitação muito grande/);
   assert.match(server, /entity\.parse\.failed/);
@@ -100,10 +102,10 @@ test('exclusão de exportador preserva processos vinculados', async () => {
   assert.match(html, /Excluir o exportador/);
 });
 
-test('listagem paginada e regra de leitura por função permanecem no servidor', async () => {
+test('listagem paginada compartilha processos entre usuários autenticados', async () => {
   const server = await read('src/server.js');
-  assert.match(server, /const processReaderRoles = new Set\(\['admin', 'vgm', 'financeiro', 'liberacao'\]\)/);
-  assert.match(server, /p\.analyst_id=\$3/);
+  assert.match(server, /const canReadAllProcesses = \(\) => true/);
+  assert.match(server, /const scope = ''/);
   assert.ok(server.includes('LIMIT $${next} OFFSET $${next + 1}'));
   assert.match(server, /pagination: \{ limit, offset, total:/);
   assert.match(server, /processSearchFields/);
@@ -115,7 +117,7 @@ test('atualização em tempo real respeita a autorização de leitura', async ()
   assert.match(server, /app\.get\('\/api\/events', authenticate/);
   assert.match(server, /app\.get\('\/api\/processes\/:id', authenticate/);
   assert.match(server, /app\.get\('\/api\/realtime\/metrics', authenticate, adminOnly/);
-  assert.match(server, /canReadAllProcesses\(user\) \|\| user\.sub === process\.analyst_id/);
+  assert.match(server, /user => canReadAllProcesses\(user\)/);
   assert.match(server, /publishProcessChange\(result\.rows\[0\], 'vgm-updated'\)/);
   assert.match(server, /publishReferenceChange\('clients', 'updated'\)/);
   assert.match(html, /new EventSource\('\/api\/events'\)/);
@@ -128,6 +130,13 @@ test('atualização em tempo real respeita a autorização de leitura', async ()
   assert.match(html, /if \(isNewProcess\) processPagination\.total \+= 1/);
   assert.match(html, /data = before; render\(\); renderVgm\(\); throw error;/);
   assert.match(html, /data = before; render\(\); renderRelease\(\); throw error;/);
+});
+
+test('VGM em draft ou enviado pelo cliente conta como enviado em todas as telas', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /IN \('Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'\)/);
+  assert.match(html, /\['Sim','Enviado pelo Cliente','Enviando no DRAFT'\]\.includes\(p\.vgmStatus\)/);
 });
 
 test('edição preserva o identificador técnico único do processo', async () => {

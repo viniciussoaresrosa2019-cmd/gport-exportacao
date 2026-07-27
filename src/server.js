@@ -203,7 +203,12 @@ function csrfProtection(req, res, next) {
 }
 app.use('/api', csrfProtection);
 const adminOnly = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Acesso restrito a administradores.' });
-const processEditorOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem alterar processos.' });
+// Regra operacional confirmada: qualquer usuário autenticado pode consultar,
+// criar, editar e excluir processos. Controles especializados de VGM e
+// liberação continuam restritos aos respectivos perfis.
+const processEditorOnly = (_req, _res, next) => next();
+const processCreatorOnly = (_req, _res, next) => next();
+const clientManagerOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem administrar exportadores.' });
 const vgmManagerOnly = (req, res, next) => ['admin', 'vgm'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas VGM ou Administrador podem atualizar este controle.' });
 const releaseManagerOnly = (req, res, next) => ['admin', 'liberacao'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Liberação ou Administrador podem atualizar este controle.' });
 const followupManagerOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem atualizar o follow up.' });
@@ -353,14 +358,14 @@ const validatedClient = body => ({
   contact: cleanText(body.contact, 120, 'Contato'), phone: cleanText(body.phone, 50, 'Telefone'),
   email: cleanText(body.email, 160, 'E-mail'), country: cleanText(body.country, 80, 'País'), address: cleanText(body.address, 500, 'Endereço')
 });
-app.post('/api/clients', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+app.post('/api/clients', authenticate, clientManagerOnly, asyncRoute(async (req, res) => {
   const c = validatedClient(req.body);
   const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
   publishReferenceChange('clients', 'created');
   res.status(201).json(result.rows[0]);
 }));
-app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+app.patch('/api/clients/:id', authenticate, clientManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
   const c = validatedClient(req.body);
   const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7 WHERE id=$8 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, req.params.id]);
@@ -369,7 +374,7 @@ app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async 
   publishReferenceChange('clients', 'updated');
   res.json(result.rows[0]);
 }));
-app.delete('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+app.delete('/api/clients/:id', authenticate, clientManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
   // Exclusão lógica: o exportador deixa de aparecer nos novos lançamentos,
   // mas processos já registrados continuam íntegros e exibem seu histórico.
@@ -437,8 +442,7 @@ const processChanges = (previous, next) => Object.fromEntries(
     .map(column => [column, { before: auditValue(previous[column]), after: auditValue(next[column]) }])
 );
 const processSelect = `SELECT p.*,c.name AS exporter,u.username AS analyst FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id`;
-const processReaderRoles = new Set(['admin', 'vgm', 'financeiro', 'liberacao']);
-const canReadAllProcesses = user => processReaderRoles.has(user.role);
+const canReadAllProcesses = () => true;
 // Atualização em tempo quase real para a instância atual do serviço. Os
 // eventos carregam somente o tipo da mudança e o id do processo; os dados
 // continuam sendo buscados pela API com as regras normais de autorização.
@@ -455,7 +459,7 @@ const publishRealtimeEvent = (event, payload, canReceive = () => true) => {
 };
 const publishProcessChange = (process, change) => {
   if (!process?.id || !process?.analyst_id) return;
-  publishRealtimeEvent('process-changed', { id: process.id, change, occurredAt: new Date().toISOString() }, user => canReadAllProcesses(user) || user.sub === process.analyst_id);
+  publishRealtimeEvent('process-changed', { id: process.id, change, occurredAt: new Date().toISOString() }, user => canReadAllProcesses(user));
 };
 // Clientes e lista de responsáveis já são disponíveis aos usuários autenticados
 // pela API. O evento não leva dados pessoais, apenas avisa para renovar o cache.
@@ -497,8 +501,8 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const limit = Number(req.query.limit || 50);
   const offset = Number(req.query.offset || 0);
   if (term.length > 100 || status.length > 40 || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
-  const scope = canReadAllProcesses(req.user) ? '' : ' AND p.analyst_id=$3';
-  const params = canReadAllProcesses(req.user) ? [status, term] : [status, term, req.user.sub];
+  const scope = '';
+  const params = [status, term];
   const next = params.length + 1;
   const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%')${scope}`;
   const [items, total] = await Promise.all([
@@ -509,15 +513,15 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
 }));
 app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
-  const scope = canReadAllProcesses(req.user) ? '' : ' AND p.analyst_id=$2';
-  const params = canReadAllProcesses(req.user) ? [req.params.id] : [req.params.id, req.user.sub];
+  const scope = '';
+  const params = [req.params.id];
   const result = await query(`${processSelect} WHERE p.id=$1${scope}`, params);
   // Não diferenciar recurso inexistente de recurso sem permissão evita revelar
   // identificadores válidos para usuários sem acesso.
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   res.json(result.rows[0]);
 }));
-app.post('/api/processes', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };
   // A criação não aceita um identificador existente. Essa proteção impede que
   // qualquer falha da interface transforme uma edição em processo duplicado.
@@ -555,7 +559,6 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const previous = (await query('SELECT * FROM processes WHERE id=$1', [req.params.id])).rows[0];
   if (!previous) return res.status(404).json({ error: 'Processo não encontrado.' });
-  if (req.user.role !== 'admin' && previous.analyst_id !== req.user.sub) return res.status(403).json({ error: 'Você só pode alterar seus próprios processos.' });
   const body = { ...req.body };
   if (body.updatedAt && previous.updated_at && new Date(body.updatedAt).getTime() !== new Date(previous.updated_at).getTime()) {
     return res.status(409).json({ error: 'Este processo foi alterado por outro usuário. Feche, abra novamente e confira os dados antes de salvar.' });
@@ -575,7 +578,6 @@ app.delete('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const previous = (await query('SELECT analyst_id FROM processes WHERE id=$1', [req.params.id])).rows[0];
   if (!previous) return res.status(404).json({ error: 'Processo não encontrado.' });
-  if (req.user.role !== 'admin' && previous.analyst_id !== req.user.sub) return res.status(403).json({ error: 'Você só pode excluir seus próprios processos.' });
   await query('DELETE FROM processes WHERE id=$1', [req.params.id]);
   await audit(req.user.sub, 'process.deleted', 'process', req.params.id);
   publishProcessChange({ id: req.params.id, analyst_id: previous.analyst_id }, 'deleted');
@@ -596,8 +598,8 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
             physical_process_analyst=$2,
             vgm_sent_to=$3,
             vgm_sent_date=CASE
-              WHEN $1::varchar(30) IN ('Sim', 'Enviado pelo Cliente') AND vgm_sent_date IS NULL THEN NOW()
-              WHEN $1::varchar(30) NOT IN ('Sim', 'Enviado pelo Cliente') THEN NULL
+              WHEN $1::varchar(30) IN ('Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT') AND vgm_sent_date IS NULL THEN NOW()
+              WHEN $1::varchar(30) NOT IN ('Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT') THEN NULL
               ELSE vgm_sent_date
             END
       WHERE id=$4
