@@ -232,6 +232,7 @@ app.post('/api/users', authenticate, adminOnly, asyncRoute(async (req, res) => {
     const result = await query('INSERT INTO users(username,password_hash,role) VALUES($1,$2,$3) RETURNING id,username,role,active,created_at', [username, passwordHash, role]);
     const user = result.rows[0];
     await audit(req.user.sub, 'user.created', 'user', user.id, { role });
+    publishReferenceChange('users', 'created');
     res.status(201).json({ user: publicUser(user) });
   } catch (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
@@ -289,6 +290,7 @@ app.patch('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res)
   const result = await query('UPDATE users SET role=COALESCE($1,role), active=COALESCE($2,active), password_hash=COALESCE($3,password_hash), token_version=token_version + CASE WHEN $3 IS NULL THEN 0 ELSE 1 END WHERE id=$4 RETURNING id,username,role,active,created_at', [role || null, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Usuário não encontrado.' });
   await audit(req.user.sub, 'user.updated', 'user', req.params.id, { role, active, passwordReset: !!password });
+  publishReferenceChange('users', 'updated');
   res.json({ user: publicUser(result.rows[0]) });
 }));
 app.delete('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res) => {
@@ -300,6 +302,7 @@ app.delete('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res
   if (target.role === 'admin' && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
   await query('UPDATE users SET active=false WHERE id=$1', [target.id]);
   await audit(req.user.sub, 'user.deactivated', 'user', target.id);
+  publishReferenceChange('users', 'deactivated');
   res.status(204).end();
 }));
 
@@ -354,6 +357,7 @@ app.post('/api/clients', authenticate, processEditorOnly, asyncRoute(async (req,
   const c = validatedClient(req.body);
   const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
+  publishReferenceChange('clients', 'created');
   res.status(201).json(result.rows[0]);
 }));
 app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
@@ -362,6 +366,7 @@ app.patch('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async 
   const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7 WHERE id=$8 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Exportador não encontrado.' });
   await audit(req.user.sub, 'client.updated', 'client', req.params.id);
+  publishReferenceChange('clients', 'updated');
   res.json(result.rows[0]);
 }));
 app.delete('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
@@ -371,6 +376,7 @@ app.delete('/api/clients/:id', authenticate, processEditorOnly, asyncRoute(async
   const result = await query('UPDATE clients SET active=false WHERE id=$1 AND active=true RETURNING id', [req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Exportador não encontrado ou já excluído.' });
   await audit(req.user.sub, 'client.deactivated', 'client', req.params.id);
+  publishReferenceChange('clients', 'deactivated');
   res.status(204).end();
 }));
 
@@ -437,15 +443,23 @@ const canReadAllProcesses = user => processReaderRoles.has(user.role);
 // eventos carregam somente o tipo da mudança e o id do processo; os dados
 // continuam sendo buscados pela API com as regras normais de autorização.
 const realtimeSubscribers = new Map();
+const realtimeMetrics = { startedAt: new Date().toISOString(), connections: 0, eventsPublished: 0, eventsDelivered: 0, lastEventAt: null };
 const writeRealtimeEvent = (res, event, payload) => res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
-const publishProcessChange = (process, change) => {
-  if (!process?.id || !process?.analyst_id) return;
+const publishRealtimeEvent = (event, payload, canReceive = () => true) => {
+  realtimeMetrics.eventsPublished += 1;
+  realtimeMetrics.lastEventAt = payload.occurredAt || new Date().toISOString();
   for (const { user, res } of realtimeSubscribers.values()) {
-    if (canReadAllProcesses(user) || user.sub === process.analyst_id) {
-      try { writeRealtimeEvent(res, 'process-changed', { id: process.id, change }); } catch { /* conexão encerrada */ }
-    }
+    if (!canReceive(user)) continue;
+    try { writeRealtimeEvent(res, event, payload); realtimeMetrics.eventsDelivered += 1; } catch { /* conexão encerrada */ }
   }
 };
+const publishProcessChange = (process, change) => {
+  if (!process?.id || !process?.analyst_id) return;
+  publishRealtimeEvent('process-changed', { id: process.id, change, occurredAt: new Date().toISOString() }, user => canReadAllProcesses(user) || user.sub === process.analyst_id);
+};
+// Clientes e lista de responsáveis já são disponíveis aos usuários autenticados
+// pela API. O evento não leva dados pessoais, apenas avisa para renovar o cache.
+const publishReferenceChange = (entity, change) => publishRealtimeEvent('reference-changed', { entity, change, occurredAt: new Date().toISOString() });
 app.get('/api/events', authenticate, (req, res) => {
   const subscriberId = randomBytes(12).toString('hex');
   res.status(200);
@@ -457,8 +471,12 @@ app.get('/api/events', authenticate, (req, res) => {
   writeRealtimeEvent(res, 'connected', { ok: true });
   const heartbeat = setInterval(() => { try { res.write(': heartbeat\n\n'); } catch { /* conexão encerrada */ } }, 25_000);
   realtimeSubscribers.set(subscriberId, { user: req.user, res });
+  realtimeMetrics.connections += 1;
   const cleanup = () => { clearInterval(heartbeat); realtimeSubscribers.delete(subscriberId); };
   req.on('close', cleanup);
+});
+app.get('/api/realtime/metrics', authenticate, adminOnly, (_req, res) => {
+  res.json({ ...realtimeMetrics, activeConnections: realtimeSubscribers.size });
 });
 const processSearchFields = {
   todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
@@ -488,6 +506,16 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
     query(`SELECT COUNT(*)::int AS total FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id ${where}`, params)
   ]);
   res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });
+}));
+app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
+  const scope = canReadAllProcesses(req.user) ? '' : ' AND p.analyst_id=$2';
+  const params = canReadAllProcesses(req.user) ? [req.params.id] : [req.params.id, req.user.sub];
+  const result = await query(`${processSelect} WHERE p.id=$1${scope}`, params);
+  // Não diferenciar recurso inexistente de recurso sem permissão evita revelar
+  // identificadores válidos para usuários sem acesso.
+  if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
+  res.json(result.rows[0]);
 }));
 app.post('/api/processes', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };

@@ -10,7 +10,7 @@
   <div class="shell"><aside class="side"><div class="brand"><img src="logo-gport.png" alt="GPORT Comércio Exterior"></div><nav><a id="processNav" class="active" href="#processos">▦ &nbsp; Processos</a><a href="#">◷ &nbsp; Prazos</a><a id="vgmNav" href="#vgm" hidden>▤ &nbsp; VGM</a><a id="vgmReportNav" hidden></a><a id="releaseNav" href="#liberacao" hidden>✓ &nbsp; Liberação</a><a id="followupNav" href="#followup" hidden>↻ &nbsp; Follow up</a><a id="financialNav" href="#financeiro" hidden>◈ &nbsp; Financeiro</a><a id="reportsNav" href="#relatorios">▱ &nbsp; Relatórios</a><a id="usersNav" href="#usuarios" hidden>◉ &nbsp; Usuários</a><a id="settingsNav" href="#configuracoes">⚙ &nbsp; Configurações</a></nav><div class="hint">Gestão interna de processos de exportação.</div></aside>
   <main><section id="processesPage"><div class="top"><div><p class="eyebrow">Operação de exportação · <span id="currentUserName">Aguardando login</span></p><h1>Planilha de processos</h1></div><div style="display:flex;gap:10px"><button class="btn secondary" id="clientsBtn">Clientes</button><button class="btn" id="newBtn">+ Novo processo</button></div></div>
     <section class="stats" style="grid-template-columns:repeat(2,1fr)"><div class="stat"><span>Processos cadastrados</span><strong id="totalProcesses">0</strong></div><div class="stat"><span>Deadline de draft nos próximos 7 dias</span><strong id="dueSoon">0</strong></div></section>
-    <div class="toolbar"><select id="searchField" class="select" aria-label="Campo para filtrar"><option value="" selected disabled>Selecione o dado</option><option value="booking">Booking</option><option value="exportador">Exportador</option><option value="importador">Importador</option><option value="fatura">Fatura</option><option value="analista">Analista</option><option value="prazo">Deadline de draft</option><option value="envio">Data de envio</option><option value="coleta">Data da coleta</option><option value="origem">Porto de origem</option><option value="destino">Porto de destino</option><option value="navio">Navio</option><option value="agencia">Agência</option><option value="armador">Armador</option><option value="tipoEmbarque">Tipo de embarque</option><option value="tipoBL">Tipo de BL</option><option value="tipoFrete">Tipo de frete</option><option value="vistoriaMapa">Vistoria MAPA</option><option value="incoterm">Incoterm</option><option value="containers">Contêiner</option><option value="qtdContainers">Quantidade de contêineres</option><option value="tipoContainer">Tipo de contêiner</option><option value="terminal">Terminal de coleta</option><option value="freetime">Free time</option><option value="metragem">Metragem cúbica</option><option value="pesoLiquido">Peso líquido</option><option value="pesoBruto">Peso bruto</option><option value="volumes">Pacotes / caixas / feixes</option><option value="valor">Valor da carga</option><option value="moeda">Moeda</option><option value="due">DU-E</option><option value="ruc">RUC</option></select><input id="search" class="search" placeholder="Informe o valor a pesquisar"><button class="btn" id="filterBtn" type="button">Filtrar</button><button class="btn secondary" id="clearFilterBtn" type="button">Limpar</button></div><p id="filterSummary" class="eyebrow" style="margin:-5px 0 14px" hidden></p>
+    <div class="toolbar"><select id="searchField" class="select" aria-label="Campo para filtrar"><option value="" selected disabled>Selecione o dado</option><option value="booking">Booking</option><option value="exportador">Exportador</option><option value="importador">Importador</option><option value="fatura">Fatura</option><option value="analista">Analista</option><option value="prazo">Deadline de draft</option><option value="envio">Data de envio</option><option value="coleta">Data da coleta</option><option value="origem">Porto de origem</option><option value="destino">Porto de destino</option><option value="navio">Navio</option><option value="agencia">Agência</option><option value="armador">Armador</option><option value="tipoEmbarque">Tipo de embarque</option><option value="tipoBL">Tipo de BL</option><option value="tipoFrete">Tipo de frete</option><option value="vistoriaMapa">Vistoria MAPA</option><option value="incoterm">Incoterm</option><option value="containers">Contêiner</option><option value="qtdContainers">Quantidade de contêineres</option><option value="tipoContainer">Tipo de contêiner</option><option value="terminal">Terminal de coleta</option><option value="freetime">Free time</option><option value="metragem">Metragem cúbica</option><option value="pesoLiquido">Peso líquido</option><option value="pesoBruto">Peso bruto</option><option value="volumes">Pacotes / caixas / feixes</option><option value="valor">Valor da carga</option><option value="moeda">Moeda</option><option value="due">DU-E</option><option value="ruc">RUC</option></select><input id="search" class="search" placeholder="Informe o valor a pesquisar"><button class="btn" id="filterBtn" type="button">Filtrar</button><button class="btn secondary" id="clearFilterBtn" type="button">Limpar</button></div><p id="filterSummary" class="eyebrow" style="margin:-5px 0 14px" hidden></p><p id="realtimeNotice" class="eyebrow" aria-live="polite" hidden></p>
     <div class="panel"><div class="table-wrap"><table><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>ROTA</th><th>FATURA</th><th>DEADLINE DE DRAFT</th><th style="text-align:center">VGM</th><th style="text-align:center">LIBERAÇÃO</th><th>ANALISTA</th><th>PDF</th></tr></thead><tbody id="rows"></tbody></table></div><div id="empty" class="empty" hidden>Nenhum processo encontrado.</div></div></section>
   <section id="vgmPage" hidden><div class="top"><div><p class="eyebrow">Operação de exportação</p><h1>Controle de VGM</h1></div><div style="display:flex;gap:10px"><button class="btn secondary" id="openVgmReportBtn" type="button" hidden>Relatório VGM</button><button class="btn secondary" id="closeVgmBtn">← Processos</button></div></div><p class="intro">Acompanhe todos os processos, atualize o envio de VGM e indique onde está o processo físico.</p><div class="field" style="max-width:250px;margin:0 0 16px"><label for="vgmFilterSelect">Filtrar processos</label><select id="vgmFilterSelect"><option value="all">Todos os processos</option><option value="sent">VGM enviados</option><option value="pending">VGM não enviados</option></select></div><div id="vgmList" class="panel" style="overflow:auto"></div></section><section id="vgmReportPage" class="report-page" hidden><div class="top"><div><p class="eyebrow">Indicadores de VGM</p><h1>Relatório de VGM</h1></div><button class="btn secondary" id="closeVgmReportBtn" type="button">← VGM</button></div><p class="intro">Acompanhe a quantidade de VGMs enviados em cada dia.</p><section class="report-summary" style="grid-template-columns:1fr 1fr"><article class="report-kpi primary"><span>VGMs enviados</span><strong id="vgmReportTotal">0</strong><small>Total de processos com VGM enviado.</small></article><article class="report-kpi"><span>Dias com envio</span><strong id="vgmReportDays">0</strong><small>Quantidade de dias registrados.</small></article></section><article class="report-panel"><div class="report-panel-head"><h2>Envios por dia</h2><p>Processos organizados pela data em que o VGM foi enviado.</p></div><div id="vgmDailyChart" class="bar-chart"></div><div id="vgmDailyReport"></div></article></section><section id="releasePage" hidden><div class="top"><div><p class="eyebrow">Operação de exportação</p><h1>Controle de liberação</h1></div><button class="btn secondary" id="closeReleaseBtn">← Processos</button></div><p class="intro">Acompanhe todos os processos e registre quando cada um estiver liberado.</p><div class="field" style="max-width:250px;margin:0 0 16px"><label for="releaseFilterSelect">Filtrar processos</label><select id="releaseFilterSelect"><option value="all">Todos os processos</option><option value="released">Processos liberados</option><option value="pending">Processos não liberados</option></select></div><div id="releaseList" class="panel" style="overflow:auto"></div></section><section id="followupPage" hidden><div class="top"><div><p class="eyebrow">Operação de exportação</p><h1>Follow up de processos</h1></div><button class="btn secondary" id="closeFollowupBtn">← Processos</button></div><p class="intro">Gere um PDF individual com o histórico de alterações de cada processo.</p><div id="followupList" hidden></div><div id="followupPdfList" class="panel" style="overflow:auto"></div></section><section id="reportsPage" class="report-page" hidden><div class="top"><div><p class="eyebrow">Indicadores da operação</p><h1 id="reportTitle">Visão mensal</h1></div><button class="btn secondary" id="closeReportsBtn" type="button">← Processos</button></div><div class="report-controls"><div class="field"><label>Visão do relatório</label><select id="reportView"><option value="monthly">Mensal</option><option value="yearly">Anual</option><option value="all">Todos os períodos</option></select></div><div id="reportMonthField" class="field"><label>Mês de referência</label><input id="reportMonth" type="month"></div><div id="reportYearField" class="field" hidden><label>Ano de referência</label><input id="reportYear" type="number" min="2000" max="2100"></div></div><section class="report-summary"><article class="report-kpi primary"><span id="reportTotalLabel">Processos enviados no mês</span><strong id="reportTotal">0</strong><small>Processos com data de envio no período selecionado</small></article><article class="report-kpi"><span>Período selecionado</span><strong id="reportPeriod" class="period">—</strong><small>Atualize a visão acima para comparar os resultados.</small></article><article class="report-kpi"><span>Participação</span><strong><span id="reportAnalystCount" style="display:inline;color:inherit;font-size:34px;letter-spacing:0">0</span> <small style="display:inline;color:inherit;font-size:15px;text-transform:none;letter-spacing:0">analistas</small></strong><small><span id="reportExporterCount">0</span> exportadores com processos no período.</small></article></section><div class="report-grid"><article class="report-panel"><div class="report-panel-head"><h2>Processos por analista</h2><p>Quantidade de processos enviados por responsável.</p></div><div id="analystChart" class="bar-chart"></div><div id="analystReport"></div></article><article class="report-panel"><div class="report-panel-head"><h2>Processos por exportador</h2><p>Quantidade de processos enviados por cliente exportador.</p></div><div id="exporterChart" class="bar-chart"></div><div id="exporterReport"></div></article></div></section></main></div>
   <dialog id="dialog"><div class="modal-head"><h2 id="formTitle">Novo processo de exportação</h2><button class="close" id="closeBtn" aria-label="Fechar">×</button></div><form id="form">
@@ -360,26 +360,119 @@
         }
         render(); renderClients(); updateLoadMoreButton();
       }
-      const refreshRealtimeViews = async () => {
-        if (!currentUser || processSaveBusy) return;
+      let realtimeFallbackTimer = null;
+      let realtimeFailureTimer = null;
+      let realtimeNoticeTimer = null;
+      let realtimeEventsReceived = 0;
+      const realtimeFallbackIntervalMs = 60_000;
+      const setRealtimeNotice = (message, duration = 5_000) => {
+        const notice = el('realtimeNotice'); if (!notice) return;
+        notice.textContent = message; notice.hidden = false;
+        clearTimeout(realtimeNoticeTimer);
+        if (duration) realtimeNoticeTimer = setTimeout(() => { notice.hidden = true; }, duration);
+      };
+      const renderAffectedViews = () => {
+        render(); updateLoadMoreButton();
+        if (!el('vgmPage').hidden) renderVgm();
+        if (!el('releasePage').hidden) renderRelease();
+        if (!el('followupPage').hidden) renderFollowup();
+      };
+      const stopRealtimeFallback = () => {
+        clearTimeout(realtimeFailureTimer); realtimeFailureTimer = null;
+        if (realtimeFallbackTimer) clearInterval(realtimeFallbackTimer);
+        realtimeFallbackTimer = null;
+      };
+      const refreshByFallback = async () => {
+        if (!currentUser || document.hidden || processSaveBusy) return;
+        try { await refreshData(); } catch { /* tenta novamente no próximo ciclo */ }
+      };
+      const startRealtimeFallback = () => {
+        if (realtimeFallbackTimer) return;
+        setRealtimeNotice('Atualização em tempo real indisponível. Sincronização a cada minuto.', 8_000);
+        realtimeFallbackTimer = setInterval(refreshByFallback, realtimeFallbackIntervalMs);
+      };
+      const refreshReferencesFromEvent = async () => {
         try {
-          await refreshData();
-          if (!el('vgmPage').hidden) renderVgm();
-          if (!el('releasePage').hidden) renderRelease();
-          if (!el('followupPage').hidden) renderFollowup();
-        } catch { /* uma falha pontual será corrigida na próxima reconexão/evento */ }
+          const requests = [request('/api/clients'), request('/api/assignees')];
+          if (currentUser?.role === 'admin') requests.push(request('/api/users'));
+          const [remoteClients, remoteAssignees, remoteUsers] = await Promise.all(requests);
+          clients = remoteClients.map(toViewClient); availableAssignees = remoteAssignees;
+          if (remoteUsers) users = remoteUsers;
+          referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
+          renderClients(); if (currentUser?.role === 'admin') renderUsers();
+        } catch { /* o cache atual permanece utilizável até a próxima tentativa */ }
+      };
+      const applyProcessRealtimeChange = async event => {
+        if (!currentUser || processSaveBusy || !event?.id) return;
+        const position = data.findIndex(item => item.id === event.id);
+        if (event.change === 'deleted') {
+          if (position >= 0) data = data.filter(item => item.id !== event.id);
+          processPagination.total = Math.max(0, processPagination.total - 1);
+          renderAffectedViews();
+          if (position >= 0) setRealtimeNotice('Um processo visível foi removido.');
+          return;
+        }
+        // Um filtro ativo pode ganhar ou perder itens depois de uma alteração.
+        // Uma única busca da página corrente preserva o resultado exato.
+        if (serverProcessFilter) {
+          try { await refreshData(); } catch { /* evento futuro ou fallback fará nova tentativa */ }
+          return;
+        }
+        // Para uma criação na primeira página, inserimos o novo processo sem
+        // recarregar toda a listagem. Em páginas posteriores mostramos aviso
+        // para não alterar a ordenação/paginação que o usuário está consultando.
+        if (position < 0) {
+          if (event.change !== 'created') return;
+          try {
+            const remote = await request(`/api/processes/${event.id}`);
+            const view = { ...toViewProcess(remote), updatedAt:remote.updated_at || '' };
+            if (processPagination.offset === 0) {
+              const visibleCount = Math.max(data.length, processPagination.limit);
+              data = [view, ...data].slice(0, visibleCount);
+              processPagination.total += 1;
+              renderAffectedViews(); setRealtimeNotice('Novo processo adicionado à lista.');
+            } else setRealtimeNotice('Há um novo processo disponível. Volte à primeira página para visualizá-lo.');
+          } catch { /* autorização ou rede serão tratadas pelo próximo evento/fallback */ }
+          return;
+        }
+        try {
+          const remote = await request(`/api/processes/${event.id}`);
+          const previous = data[position];
+          const view = { ...toViewProcess(remote), updatedAt:remote.updated_at || '' };
+          data = data.map(item => item.id === event.id ? { ...previous, ...view } : item);
+          renderAffectedViews();
+          if (event.change !== 'updated') setRealtimeNotice('Processo atualizado automaticamente.');
+        } catch (error) {
+          if (error.status === 404) return;
+          // A lista visível não é recarregada em cada evento. Só em caso de
+          // falha pontual fazemos uma tentativa segura de recuperação.
+          try { await refreshData(); } catch { /* fallback/reconexão tratarão */ }
+        }
       };
       const connectRealtime = () => {
         if (!window.EventSource || realtimeSource) return;
         realtimeSource = new EventSource('/api/events');
-        realtimeSource.addEventListener('process-changed', () => {
+        realtimeSource.onopen = () => {
+          const wasUsingFallback = !!realtimeFallbackTimer;
+          stopRealtimeFallback();
+          if (wasUsingFallback) setRealtimeNotice('Atualização em tempo real restabelecida.');
+        };
+        realtimeSource.addEventListener('process-changed', rawEvent => {
+          realtimeEventsReceived += 1;
+          let event; try { event = JSON.parse(rawEvent.data); } catch { return; }
           clearTimeout(realtimeRefreshTimer);
-          realtimeRefreshTimer = setTimeout(refreshRealtimeViews, 180);
+          realtimeRefreshTimer = setTimeout(() => applyProcessRealtimeChange(event), 120);
         });
-        // EventSource reconecta automaticamente; não exibimos alertas para
-        // oscilações transitórias de rede ou quando o Render reinicia.
-        realtimeSource.onerror = () => {};
+        realtimeSource.addEventListener('reference-changed', () => { refreshReferencesFromEvent(); });
+        // EventSource reconecta automaticamente. O polling só começa após 10
+        // segundos desconectado, evitando chamadas extras em oscilações breves.
+        realtimeSource.onerror = () => {
+          if (!realtimeFailureTimer) realtimeFailureTimer = setTimeout(startRealtimeFallback, 10_000);
+        };
       };
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && realtimeFallbackTimer) refreshByFallback();
+      });
       // A pesquisa principal é realizada no servidor para não carregar toda a
       // base no navegador. O renderizador legado continua recebendo somente a
       // página já filtrada.
@@ -485,7 +578,8 @@
           const client = clients.find(item => item.id === payload.clientId);
           const previous = data.find(item => item.id === processId) || {};
           const view = { ...toViewProcess({ ...saved, exporter:client?.nome || previous.exportador || '', analyst:previous.analista || currentUser?.username || '' }), updatedAt:saved.updated_at || '' };
-          data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data];
+          data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data].slice(0, Math.max(data.length, processPagination.limit));
+          if (isNewProcess) processPagination.total += 1;
           // Mantém o mesmo identificador após o primeiro lançamento. A partir
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;

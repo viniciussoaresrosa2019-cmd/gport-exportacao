@@ -109,6 +109,27 @@ test('listagem paginada e regra de leitura por função permanecem no servidor',
   assert.match(server, /processSearchFields/);
 });
 
+test('atualização em tempo real respeita a autorização de leitura', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /app\.get\('\/api\/events', authenticate/);
+  assert.match(server, /app\.get\('\/api\/processes\/:id', authenticate/);
+  assert.match(server, /app\.get\('\/api\/realtime\/metrics', authenticate, adminOnly/);
+  assert.match(server, /canReadAllProcesses\(user\) \|\| user\.sub === process\.analyst_id/);
+  assert.match(server, /publishProcessChange\(result\.rows\[0\], 'vgm-updated'\)/);
+  assert.match(server, /publishReferenceChange\('clients', 'updated'\)/);
+  assert.match(html, /new EventSource\('\/api\/events'\)/);
+  assert.match(html, /addEventListener\('process-changed'/);
+  assert.match(html, /addEventListener\('reference-changed'/);
+  assert.match(html, /realtimeRefreshTimer = setTimeout\(\(\) => applyProcessRealtimeChange\(event\), 120\)/);
+  assert.match(html, /const realtimeFallbackIntervalMs = 60_000/);
+  assert.match(html, /setTimeout\(startRealtimeFallback, 10_000\)/);
+  assert.match(html, /request\(`\/api\/processes\/\$\{event\.id\}`\)/);
+  assert.match(html, /if \(isNewProcess\) processPagination\.total \+= 1/);
+  assert.match(html, /data = before; render\(\); renderVgm\(\); throw error;/);
+  assert.match(html, /data = before; render\(\); renderRelease\(\); throw error;/);
+});
+
 test('edição preserva o identificador técnico único do processo', async () => {
   const server = await read('src/server.js');
   assert.match(server, /body\.processNumber = previous\.process_number/);
