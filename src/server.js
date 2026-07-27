@@ -17,6 +17,11 @@ const sessionCookie = 'gport_session';
 const csrfCookie = 'gport_csrf';
 const sessionMaxAge = 4 * 60 * 60 * 1000;
 const supportedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean);
+const turnstileSiteKey = String(process.env.TURNSTILE_SITE_KEY || '').trim();
+const turnstileSecretKey = String(process.env.TURNSTILE_SECRET_KEY || '').trim();
+const turnstileEnabled = Boolean(turnstileSiteKey && turnstileSecretKey);
+const turnstileAllowedHostnames = new Set((process.env.TURNSTILE_ALLOWED_HOSTNAMES || 'gport-exportacao.onrender.com,localhost').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
+if ((turnstileSiteKey || turnstileSecretKey) && !turnstileEnabled) throw new Error('TURNSTILE_SITE_KEY e TURNSTILE_SECRET_KEY devem ser configuradas juntas.');
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const usernamePattern = /^[A-Za-z0-9._-]{3,80}$/;
 // Hash utilizado apenas para manter tempo de resposta semelhante quando o
@@ -61,9 +66,13 @@ let indexHtmlPromise;
 const renderIndex = asyncRoute(async (_req, res) => {
   indexHtmlPromise ||= readFile(path.join(webRoot, 'index.html'), 'utf8');
   const nonce = randomBytes(18).toString('base64');
-  res.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self'`);
+  res.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com`);
   res.setHeader('Cache-Control', 'no-store');
-  res.type('html').send((await indexHtmlPromise).replaceAll('<script>', `<script nonce="${nonce}">`));
+  const turnstileScript = turnstileEnabled ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=initializeTurnstile&render=explicit" async defer></script>' : '';
+  res.type('html').send((await indexHtmlPromise)
+    .replaceAll('__TURNSTILE_SITE_KEY__', turnstileEnabled ? turnstileSiteKey : '')
+    .replace('__TURNSTILE_SCRIPT__', turnstileScript)
+    .replaceAll('<script>', `<script nonce="${nonce}">`));
 });
 app.get(['/', '/index.html'], renderIndex);
 app.use(express.static(webRoot, {
@@ -163,6 +172,22 @@ const loginLimit = asyncRoute(async (req, res, next) => {
 });
 const registerLoginFailure = req => distributedRateIncrement(`gport:login:${loginAttemptKey(req)}`, 15 * 60_000);
 const clearLoginFailures = req => distributedRateClear(`gport:login:${loginAttemptKey(req)}`);
+const verifyTurnstile = async (token, remoteIp) => {
+  if (!turnstileEnabled) return true;
+  if (typeof token !== 'string' || !token || token.length > 4096) return false;
+  try {
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret: turnstileSecretKey, response: token, remoteip: String(remoteIp || '') }),
+      signal: AbortSignal.timeout(4_000)
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    const hostname = String(result.hostname || '').toLowerCase();
+    return result.success === true && turnstileAllowedHostnames.has(hostname);
+  } catch { return false; }
+};
 const apiLimit = asyncRoute(async (req, res, next) => {
   if (!['POST', 'PATCH', 'DELETE'].includes(req.method) || req.path.startsWith('/api/auth/')) return next();
   const count = await distributedRateIncrement(`gport:mutation:${req.ip}`, 15 * 60_000);
@@ -249,6 +274,7 @@ app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
   if (!username || !password || username.length > 80 || password.length > 200) { await registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
+  if (!(await verifyTurnstile(req.body.turnstileToken, req.ip))) { await registerLoginFailure(req); return res.status(403).json({ error: 'Verificação de segurança inválida. Tente novamente.' }); }
   const user = (await query('SELECT * FROM users WHERE LOWER(username)=LOWER($1)', [username])).rows[0];
   const verified = await bcrypt.compare(password, user?.password_hash || dummyPasswordHash);
   if (!user || !user.active || !verified) { await registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
