@@ -91,6 +91,8 @@
     (() => {
       const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
       let availableAssignees = [];
+      let realtimeSource = null;
+      let realtimeRefreshTimer = null;
       // Clientes e responsáveis quase não mudam durante uma sessão. Mantê-los
       // em memória evita duas requisições extras a cada busca, paginação ou
       // atualização da planilha. O cache não persiste no navegador e expira
@@ -358,6 +360,26 @@
         }
         render(); renderClients(); updateLoadMoreButton();
       }
+      const refreshRealtimeViews = async () => {
+        if (!currentUser || processSaveBusy) return;
+        try {
+          await refreshData();
+          if (!el('vgmPage').hidden) renderVgm();
+          if (!el('releasePage').hidden) renderRelease();
+          if (!el('followupPage').hidden) renderFollowup();
+        } catch { /* uma falha pontual será corrigida na próxima reconexão/evento */ }
+      };
+      const connectRealtime = () => {
+        if (!window.EventSource || realtimeSource) return;
+        realtimeSource = new EventSource('/api/events');
+        realtimeSource.addEventListener('process-changed', () => {
+          clearTimeout(realtimeRefreshTimer);
+          realtimeRefreshTimer = setTimeout(refreshRealtimeViews, 180);
+        });
+        // EventSource reconecta automaticamente; não exibimos alertas para
+        // oscilações transitórias de rede ou quando o Render reinicia.
+        realtimeSource.onerror = () => {};
+      };
       // A pesquisa principal é realizada no servidor para não carregar toda a
       // base no navegador. O renderizador legado continua recebendo somente a
       // página já filtrada.
@@ -379,7 +401,7 @@
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = currentUser.role !== 'admin';
         applyRoleTabs();
-        el('loginDialog').close(); await refreshData({ refreshReferenceData:true });
+        el('loginDialog').close(); await refreshData({ refreshReferenceData:true }); connectRealtime();
       }
       async function restoreSession() {
         try {
@@ -387,7 +409,7 @@
           el('currentUserName').textContent = currentUser.username;
           el('usersNav').hidden = currentUser.role !== 'admin';
           applyRoleTabs();
-          el('loginDialog').close(); await refreshData({ refreshReferenceData:true });
+          el('loginDialog').close(); await refreshData({ refreshReferenceData:true }); connectRealtime();
         } catch { currentUser = null; }
       }
       el('loginForm').onsubmit = async e => {
@@ -529,9 +551,18 @@
         const status = el('vgmList').querySelector(`[data-vgm-status="${id}"]`)?.value;
         const vgmSentTo = el('vgmList').querySelector(`[data-vgm-sent-to="${id}"]`)?.value;
         const physicalProcessAnalyst = el('vgmList').querySelector(`[data-vgm-analyst="${id}"]`)?.value;
-        const updated = await request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst }) });
-        const current = data.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
-        data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderVgm();
+        const before = data;
+        // A tela responde imediatamente. Se o servidor recusar a alteração,
+        // restauramos a lista exatamente como estava antes do envio.
+        data = data.map(item => item.id === id ? { ...item, vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '' } : item);
+        render(); renderVgm();
+        try {
+          const updated = await request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst }) });
+          const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
+          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderVgm();
+        } catch (error) {
+          data = before; render(); renderVgm(); throw error;
+        }
       };
       const saveReleaseRow = async id => {
         const releaseStatus = el('releaseList').querySelector(`[data-release-status="${id}"]`)?.value;
@@ -543,9 +574,16 @@
         const releaseDeadline = dateForDatabase(deadlineValue, true); const releaseDate = dateForDatabase(releaseDateValue);
         if (scheduleValue && !releaseSchedule) throw new Error('Informe o agendamento no formato dd/mm hh:mm.');
         if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.'); if (releaseDateValue && !releaseDate) throw new Error('Informe a data de liberação no formato dd/mm.');
-        const updated = await request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) });
-        const current = data.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
-        data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderRelease();
+        const before = data;
+        data = data.map(item => item.id === id ? { ...item, liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseDateValue || item.dataLiberacao } : item);
+        render(); renderRelease();
+        try {
+          const updated = await request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) });
+          const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
+          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderRelease();
+        } catch (error) {
+          data = before; render(); renderRelease(); throw error;
+        }
       };
       el('followupPdfList').onclick = async e => {
         const button = e.target.closest('[data-followup-pdf]'); if (!button) return;

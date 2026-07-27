@@ -433,6 +433,33 @@ const processChanges = (previous, next) => Object.fromEntries(
 const processSelect = `SELECT p.*,c.name AS exporter,u.username AS analyst FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id`;
 const processReaderRoles = new Set(['admin', 'vgm', 'financeiro', 'liberacao']);
 const canReadAllProcesses = user => processReaderRoles.has(user.role);
+// Atualização em tempo quase real para a instância atual do serviço. Os
+// eventos carregam somente o tipo da mudança e o id do processo; os dados
+// continuam sendo buscados pela API com as regras normais de autorização.
+const realtimeSubscribers = new Map();
+const writeRealtimeEvent = (res, event, payload) => res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+const publishProcessChange = (process, change) => {
+  if (!process?.id || !process?.analyst_id) return;
+  for (const { user, res } of realtimeSubscribers.values()) {
+    if (canReadAllProcesses(user) || user.sub === process.analyst_id) {
+      try { writeRealtimeEvent(res, 'process-changed', { id: process.id, change }); } catch { /* conexão encerrada */ }
+    }
+  }
+};
+app.get('/api/events', authenticate, (req, res) => {
+  const subscriberId = randomBytes(12).toString('hex');
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  writeRealtimeEvent(res, 'connected', { ok: true });
+  const heartbeat = setInterval(() => { try { res.write(': heartbeat\n\n'); } catch { /* conexão encerrada */ } }, 25_000);
+  realtimeSubscribers.set(subscriberId, { user: req.user, res });
+  const cleanup = () => { clearInterval(heartbeat); realtimeSubscribers.delete(subscriberId); };
+  req.on('close', cleanup);
+});
 const processSearchFields = {
   todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
   booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
@@ -493,6 +520,7 @@ app.post('/api/processes', authenticate, processEditorOnly, asyncRoute(async (re
     result = await query(`INSERT INTO processes(${processColumns.join(',')},analyst_id) VALUES(${placeholders},$${retryValues.length + 1}) RETURNING *`, [...retryValues, req.user.sub]);
   }
   await audit(req.user.sub, 'process.created', 'process', result.rows[0].id);
+  publishProcessChange(result.rows[0], 'created');
   res.status(201).json(result.rows[0]);
 }));
 app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
@@ -512,6 +540,7 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
   const result = await query(`UPDATE processes SET ${set} WHERE id=$${values.length + 1} RETURNING *`, [...values, req.params.id]);
   await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes: processChanges(previous, p) });
+  publishProcessChange(result.rows[0], 'updated');
   res.json(result.rows[0]);
 }));
 app.delete('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
@@ -521,6 +550,7 @@ app.delete('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   if (req.user.role !== 'admin' && previous.analyst_id !== req.user.sub) return res.status(403).json({ error: 'Você só pode excluir seus próprios processos.' });
   await query('DELETE FROM processes WHERE id=$1', [req.params.id]);
   await audit(req.user.sub, 'process.deleted', 'process', req.params.id);
+  publishProcessChange({ id: req.params.id, analyst_id: previous.analyst_id }, 'deleted');
   res.status(204).end();
 }));
 
@@ -548,6 +578,7 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   await audit(req.user.sub, 'process.vgm_updated', 'process', req.params.id, { vgmStatus, physicalProcessAnalyst, vgmSentTo, vgmSentDate: result.rows[0].vgm_sent_date });
+  publishProcessChange(result.rows[0], 'vgm-updated');
   res.json(result.rows[0]);
 }));
 
@@ -579,6 +610,7 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
   `, [releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   await audit(req.user.sub, 'process.release_updated', 'process', req.params.id, { releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate: result.rows[0].release_date });
+  publishProcessChange(result.rows[0], 'release-updated');
   res.json(result.rows[0]);
 }));
 
@@ -591,6 +623,7 @@ app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyn
   const result = await query('UPDATE processes SET followup_status=$1, followup_note=$2 WHERE id=$3 RETURNING *', [followupStatus, followupNote, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   await audit(req.user.sub, 'process.followup_updated', 'process', req.params.id, { followupStatus, followupNote });
+  publishProcessChange(result.rows[0], 'followup-updated');
   res.json(result.rows[0]);
 }));
 
