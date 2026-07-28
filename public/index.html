@@ -342,12 +342,15 @@
         const needsReferenceData = refreshReferenceData || Date.now() >= referenceDataCache.expiresAt;
         const processRequest = request(`/api/processes?${searchParams}`);
         if (needsReferenceData) {
-          const [remoteClients, remoteProcesses, remoteAssignees] = await Promise.all([
-            request('/api/clients'), processRequest, request('/api/assignees')
+          // A lista de processos é a informação principal. Uma falha pontual
+          // em clientes/responsáveis não pode ocultar processos já existentes.
+          const remoteProcesses = await processRequest;
+          const [clientResult, assigneeResult] = await Promise.allSettled([
+            request('/api/clients'), request('/api/assignees')
           ]);
-          clients = remoteClients.map(toViewClient);
-          availableAssignees = remoteAssignees;
-          referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
+          if (clientResult.status === 'fulfilled') clients = clientResult.value.map(toViewClient);
+          if (assigneeResult.status === 'fulfilled') availableAssignees = assigneeResult.value;
+          if (clientResult.status === 'fulfilled' && assigneeResult.status === 'fulfilled') referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
           const page = Array.isArray(remoteProcesses) ? { items:remoteProcesses, pagination:{ limit:50, offset:0, total:remoteProcesses.length, hasMore:false } } : remoteProcesses;
           const viewItems = page.items.map(item => ({ ...toViewProcess(item), createdAt:item.created_at || '', updatedAt:item.updated_at || '', releaseDeadlineOrder:item.release_deadline || '' }));
           data = append ? [...data, ...viewItems] : viewItems;

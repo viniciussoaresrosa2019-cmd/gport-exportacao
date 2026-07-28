@@ -233,6 +233,9 @@ const adminOnly = (req, res, next) => req.user.role === 'admin' ? next() : res.s
 // liberação continuam restritos aos respectivos perfis.
 const processEditorOnly = (_req, _res, next) => next();
 const processCreatorOnly = (_req, _res, next) => next();
+// Qualquer colaborador autenticado pode cadastrar um exportador necessário
+// para lançar um processo. Alterações e exclusões continuam restritas.
+const clientCreatorOnly = (_req, _res, next) => next();
 const clientManagerOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem administrar exportadores.' });
 const vgmManagerOnly = (req, res, next) => ['admin', 'vgm'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas VGM ou Administrador podem atualizar este controle.' });
 const releaseManagerOnly = (req, res, next) => ['admin', 'liberacao'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Liberação ou Administrador podem atualizar este controle.' });
@@ -384,7 +387,7 @@ const validatedClient = body => ({
   contact: cleanText(body.contact, 120, 'Contato'), phone: cleanText(body.phone, 50, 'Telefone'),
   email: cleanText(body.email, 160, 'E-mail'), country: cleanText(body.country, 80, 'País'), address: cleanText(body.address, 500, 'Endereço')
 });
-app.post('/api/clients', authenticate, clientManagerOnly, asyncRoute(async (req, res) => {
+app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req, res) => {
   const c = validatedClient(req.body);
   const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
@@ -467,7 +470,9 @@ const processChanges = (previous, next) => Object.fromEntries(
   processColumns.filter(column => auditValue(previous[column]) !== auditValue(next[column]))
     .map(column => [column, { before: auditValue(previous[column]), after: auditValue(next[column]) }])
 );
-const processSelect = `SELECT p.*,c.name AS exporter,u.username AS analyst FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id`;
+// LEFT JOIN preserva a visualização de processos históricos mesmo se um
+// exportador ou usuário associado tiver sido desativado/removido no passado.
+const processSelect = `SELECT p.*,COALESCE(c.name, 'Exportador não cadastrado') AS exporter,COALESCE(u.username, 'Usuário removido') AS analyst FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id`;
 const canReadAllProcesses = () => true;
 // Atualização em tempo quase real para a instância atual do serviço. Os
 // eventos carregam somente o tipo da mudança e o id do processo; os dados
@@ -534,7 +539,7 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=$3)${scope}`;
   const [items, total] = await Promise.all([
     query(`${processSelect} ${where} ORDER BY c.name ASC,p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
-    query(`SELECT COUNT(*)::int AS total FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id ${where}`, params)
+    query(`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`, params)
   ]);
   res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });
 }));
