@@ -78,6 +78,10 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
   assert.match(html, /toast\.warning\('Selecione qual dado deseja pesquisar\.'/);
   assert.match(css, /\.toast-region\{position:fixed/);
+  assert.match(html, /toast__title/);
+  assert.match(html, /toast__progress/);
+  assert.match(css, /body\.theme-dark \.toast/);
+  assert.match(css, /toast-progress/);
   assert.match(css, /prefers-reduced-motion:reduce/);
 });
 

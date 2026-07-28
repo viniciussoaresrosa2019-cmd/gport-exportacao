@@ -99,15 +99,16 @@
       const createToast = (type, message, { duration } = {}) => {
         if (!toastRegion) return;
         const settings = {
-          success: { icon:'✓', duration:4000, label:'Sucesso' },
-          error: { icon:'!', duration:10000, label:'Erro' },
-          warning: { icon:'!', duration:5000, label:'Aviso' },
+          success: { icon:'✓', duration:4000, label:'Concluído' },
+          error: { icon:'!', duration:10000, label:'Não foi possível concluir a ação' },
+          warning: { icon:'!', duration:5000, label:'Atenção' },
           info: { icon:'i', duration:4000, label:'Informação' }
         }[type] || { icon:'i', duration:4000, label:'Informação' };
         const item = document.createElement('div');
         item.className = `toast toast--${type}`;
         item.setAttribute('role', type === 'error' ? 'alert' : 'status');
-        item.innerHTML = `<span class="toast__icon" aria-hidden="true">${settings.icon}</span><span class="toast__message"></span><button class="toast__close" type="button" aria-label="Fechar notificação">×</button>`;
+        item.innerHTML = `<span class="toast__icon" aria-hidden="true">${settings.icon}</span><span class="toast__content"><strong class="toast__title"></strong><span class="toast__message"></span></span><button class="toast__close" type="button" aria-label="Fechar notificação">×</button><span class="toast__progress" aria-hidden="true"></span>`;
+        item.querySelector('.toast__title').textContent = settings.label;
         item.querySelector('.toast__message').textContent = safeToastMessage(message);
         const dismiss = () => {
           if (!item.isConnected) return;
@@ -117,7 +118,8 @@
         item.querySelector('.toast__close').onclick = dismiss;
         toastRegion.append(item);
         const timeout = duration === undefined ? settings.duration : duration;
-        if (timeout > 0) window.setTimeout(dismiss, timeout);
+        if (timeout > 0) { item.style.setProperty('--toast-duration', `${timeout}ms`); window.setTimeout(dismiss, timeout); }
+        else item.querySelector('.toast__progress').hidden = true;
       };
       const toast = Object.freeze({
         success: message => createToast('success', message),
