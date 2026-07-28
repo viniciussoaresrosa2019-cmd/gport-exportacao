@@ -524,15 +524,16 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const term = String(req.query.search || '').trim();
   const status = String(req.query.status || '').trim();
   const field = String(req.query.field || 'todos').trim().toLowerCase();
+  const clientId = String(req.query.client || '').trim();
   const limit = Number(req.query.limit || 50);
   const offset = Number(req.query.offset || 0);
-  if (term.length > 100 || status.length > 40 || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
+  if (term.length > 100 || status.length > 40 || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
   const scope = '';
-  const params = [status, term];
+  const params = [status, term, clientId];
   const next = params.length + 1;
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%')${scope}`;
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=$3)${scope}`;
   const [items, total] = await Promise.all([
-    query(`${processSelect} ${where} ORDER BY p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
+    query(`${processSelect} ${where} ORDER BY c.name ASC,p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
     query(`SELECT COUNT(*)::int AS total FROM processes p JOIN clients c ON c.id=p.client_id JOIN users u ON u.id=p.analyst_id ${where}`, params)
   ]);
   res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });

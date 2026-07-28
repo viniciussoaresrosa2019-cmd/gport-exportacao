@@ -33,6 +33,8 @@ test('sessão, CSRF, autorização e validação têm proteções regressivas', 
   ]) assert.ok(server.includes(required), `Proteção ausente: ${required}`);
   assert.match(server, /app\.post\('\/api\/users', authenticate, adminOnly/);
   assert.match(server, /O cadastro é feito somente por administradores/);
+  assert.match(server, /verifyTurnstile/);
+  assert.match(server, /turnstileAllowedHostnames/);
 });
 
 test('configuração do banco não aceita TLS inseguro remotamente', async () => {
@@ -45,6 +47,17 @@ test('configuração do banco não aceita TLS inseguro remotamente', async () =>
   const migration = await read('database/migrations/2026-07-26-session-security.sql');
   assert.match(migration, /token_version/);
   assert.match(migration, /REVOKE ALL/);
+});
+
+test('CAPTCHA Turnstile é validado no servidor e não expõe a chave secreta', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  const env = await read('.env.example');
+  assert.match(server, /turnstile\/v0\/siteverify/);
+  assert.match(server, /TURNSTILE_SITE_KEY e TURNSTILE_SECRET_KEY devem ser configuradas juntas/);
+  assert.match(html, /__TURNSTILE_SITE_KEY__/);
+  assert.match(html, /initializeTurnstile/);
+  assert.match(env, /TURNSTILE_SECRET_KEY=/);
 });
 
 test('interface mantém a sintaxe JavaScript válida', async () => {
@@ -139,6 +152,34 @@ test('VGM em draft ou enviado pelo cliente conta como enviado em todas as telas'
   assert.match(html, /\['Sim','Enviado pelo Cliente','Enviando no DRAFT'\]\.includes\(p\.vgmStatus\)/);
 });
 
+test('liberação permite filtrar por porto e ordena pelo deadline crescente', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /releasePortFilter='all'/);
+  assert.match(html, /releasePortFilters/);
+  assert.match(html, /data-release-port/);
+  assert.match(html, /deadlineOrder\(a\) - deadlineOrder\(b\)/);
+  assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
+});
+
+test('processos podem ser filtrados por cliente e ordenados por cliente e lançamento', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /const clientId = String\(req\.query\.client \|\| ''\)\.trim\(\)/);
+  assert.match(server, /ORDER BY c\.name ASC,p\.created_at DESC,p\.id DESC/);
+  assert.match(html, /processClientFilter='all'/);
+  assert.match(html, /processClientFilters/);
+  assert.match(html, /data-process-client/);
+  assert.match(html, /searchParams\.set\('client', processClientFilter\)/);
+  assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
+});
+
+test('canal verde libera o processo automaticamente no servidor e na interface', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : requestedReleaseStatus/);
+  assert.match(html, /if \(releaseChannel === 'Verde'\) \{ releaseStatus = 'Sim'/);
+});
+
 test('edição preserva o identificador técnico único do processo', async () => {
   const server = await read('src/server.js');
   assert.match(server, /body\.processNumber = previous\.process_number/);
@@ -167,4 +208,14 @@ test('documentação operacional de backup, Entra e menor privilégio existe', a
   assert.match(await read('docs/BACKUP_AND_RESTORE.md'), /Restauração de teste trimestral/);
   assert.match(await read('docs/ENTRA_ID_SETUP.md'), /Authorization Code Flow \+ PKCE/);
   assert.match(await read('database/plans/least-privilege-api-role.sql'), /NÃO EXECUTE DIRETAMENTE EM PRODUÇÃO/);
+});
+
+test('capa do processo segue o modelo operacional com checklist e grade de contêineres', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /function printCoverFromDocumentModel\(p\)/);
+  assert.match(html, /DEADLINES \/ PRAZOS/);
+  assert.match(html, /CHECK LIST/);
+  assert.match(html, /MERCADORIAS A SEREM EMBARCADAS/);
+  assert.match(html, /<th>NF<\/th>/);
+  assert.match(html, /NOVO LACRE/);
 });
