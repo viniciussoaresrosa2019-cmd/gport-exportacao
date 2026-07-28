@@ -70,7 +70,9 @@ test('interface mantém a sintaxe JavaScript válida', async () => {
 test('interface possui notificações toast acessíveis para ações principais', async () => {
   const html = await read('public/index.html');
   const css = await read('public/assets/gport.css');
+  const toastCss = await read('public/assets/toasts.css');
   assert.match(html, /id="toastRegion"/);
+  assert.match(html, /assets\/toasts\.css/);
   assert.match(html, /const toast = Object\.freeze\(/);
   for (const type of ['success', 'error', 'warning', 'info']) assert.match(html, new RegExp(`${type}: message => createToast`));
   assert.match(html, /toast\.success\('Login realizado com sucesso\.'/);
@@ -80,9 +82,11 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(css, /\.toast-region\{position:fixed/);
   assert.match(html, /toast__title/);
   assert.match(html, /toast__progress/);
-  assert.match(css, /body\.theme-dark \.toast/);
-  assert.match(css, /toast-progress/);
+  assert.match(toastCss, /body\.theme-dark #toastRegion \.toast/);
+  assert.match(toastCss, /gport-toast-progress/);
+  assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(css, /prefers-reduced-motion:reduce/);
+  assert.match(toastCss, /prefers-reduced-motion:reduce/);
 });
 
 test('migração de estabilidade está disponível', async () => {
