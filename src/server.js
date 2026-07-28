@@ -547,7 +547,10 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const scope = '';
   const params = [status, term, clientId];
   const next = params.length + 1;
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=$3)${scope}`;
+  // client_id é UUID no PostgreSQL. O parâmetro vem da URL como texto e,
+  // mesmo vazio, não pode ser comparado diretamente com UUID (erro 42883).
+  // NULLIF mantém o filtro opcional sem fazer coerção insegura de tipos.
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid)${scope}`;
   const [items, total] = await Promise.all([
     query(`${processSelect} ${where} ORDER BY c.name ASC,p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
     query(`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`, params)
