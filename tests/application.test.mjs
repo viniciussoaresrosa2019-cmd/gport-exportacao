@@ -173,6 +173,22 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
 });
 
+test('processos históricos não somem quando referências falham e qualquer usuário autenticado pode cadastrar exportador', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /app\.post\('\/api\/clients', authenticate, clientCreatorOnly/);
+  assert.match(server, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
+  assert.match(html, /const remoteProcesses = await processRequest/);
+  assert.match(html, /Promise\.allSettled\(\[\s*request\('\/api\/clients'\), request\('\/api\/assignees'\)/);
+});
+
+test('cadastro de exportador reativa registro excluído e trata duplicidade sem erro interno', async () => {
+  const server = await read('src/server.js');
+  assert.match(server, /SELECT id,active FROM clients WHERE LOWER\(name\)=LOWER\(\$1\) LIMIT 1/);
+  assert.match(server, /client\.reactivated/);
+  assert.match(server, /error\?\.code === '23505'/);
+});
+
 test('canal verde libera o processo automaticamente no servidor e na interface', async () => {
   const server = await read('src/server.js');
   const html = await read('public/index.html');

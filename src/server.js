@@ -389,6 +389,17 @@ const validatedClient = body => ({
 });
 app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req, res) => {
   const c = validatedClient(req.body);
+  // A exclusão de exportador é lógica para preservar o histórico. Se o mesmo
+  // nome for cadastrado novamente, reativamos o registro existente em vez de
+  // devolver uma violação de chave única como erro interno.
+  const existing = (await query('SELECT id,active FROM clients WHERE LOWER(name)=LOWER($1) LIMIT 1', [c.name])).rows[0];
+  if (existing) {
+    if (existing.active) return res.status(409).json({ error: 'Este exportador já está cadastrado.' });
+    const restored = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,active=true WHERE id=$8 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, existing.id]);
+    await audit(req.user.sub, 'client.reactivated', 'client', existing.id);
+    publishReferenceChange('clients', 'reactivated');
+    return res.status(200).json(restored.rows[0]);
+  }
   const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
   publishReferenceChange('clients', 'created');
@@ -744,6 +755,8 @@ app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => 
 app.use((error, req, res, _next) => {
   const status = Number.isInteger(error?.status)
     ? error.status
+    : error?.code === '23505'
+      ? 409
     : error?.type === 'entity.too.large'
       ? 413
       : error?.type === 'entity.parse.failed'
@@ -758,7 +771,7 @@ app.use((error, req, res, _next) => {
     : error?.type === 'entity.parse.failed'
       ? 'JSON inválido.'
       : status < 500
-        ? error.message
+        ? error?.code === '23505' ? 'Registro já cadastrado.' : error.message
         : 'Erro interno do servidor.';
   res.status(status).json({ error: message });
 });
