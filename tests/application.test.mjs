@@ -67,6 +67,20 @@ test('interface mantém a sintaxe JavaScript válida', async () => {
   assert.equal(result.status, 0, result.stderr || 'Falha de sintaxe na interface.');
 });
 
+test('interface possui notificações toast acessíveis para ações principais', async () => {
+  const html = await read('public/index.html');
+  const css = await read('public/assets/gport.css');
+  assert.match(html, /id="toastRegion"/);
+  assert.match(html, /const toast = Object\.freeze\(/);
+  for (const type of ['success', 'error', 'warning', 'info']) assert.match(html, new RegExp(`${type}: message => createToast`));
+  assert.match(html, /toast\.success\('Login realizado com sucesso\.'/);
+  assert.match(html, /toast\.success\('Status de VGM atualizado\.'/);
+  assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
+  assert.match(html, /toast\.warning\('Selecione qual dado deseja pesquisar\.'/);
+  assert.match(css, /\.toast-region\{position:fixed/);
+  assert.match(css, /prefers-reduced-motion:reduce/);
+});
+
 test('migração de estabilidade está disponível', async () => {
   const migration = await read('database/migrations/2026-07-25-stability-security.sql');
   assert.match(migration, /processes_updated_at/);

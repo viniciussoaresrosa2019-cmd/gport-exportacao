@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="assets/gport.css">
 </head>
 <body>
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-relevant="additions" aria-label="Notificações do sistema"></div>
   <div class="shell"><aside class="side"><div class="brand"><img src="logo-gport.png" alt="GPORT Comércio Exterior"></div><nav><a id="processNav" class="active" href="#processos">▦ &nbsp; Processos</a><a href="#">◷ &nbsp; Prazos</a><a id="vgmNav" href="#vgm" hidden>▤ &nbsp; VGM</a><a id="vgmReportNav" hidden></a><a id="releaseNav" href="#liberacao" hidden>✓ &nbsp; Liberação</a><a id="followupNav" href="#followup" hidden>↻ &nbsp; Follow up</a><a id="financialNav" href="#financeiro" hidden>◈ &nbsp; Financeiro</a><a id="reportsNav" href="#relatorios">▱ &nbsp; Relatórios</a><a id="usersNav" href="#usuarios" hidden>◉ &nbsp; Usuários</a><a id="settingsNav" href="#configuracoes">⚙ &nbsp; Configurações</a></nav><div class="hint">Gestão interna de processos de exportação.</div></aside>
   <main><section id="processesPage"><div class="top"><div><p class="eyebrow">Operação de exportação · <span id="currentUserName">Aguardando login</span></p><h1>Planilha de processos</h1></div><div style="display:flex;gap:10px"><button class="btn secondary" id="clientsBtn">Clientes</button><button class="btn" id="newBtn">+ Novo processo</button></div></div>
     <section class="stats" style="grid-template-columns:repeat(2,1fr)"><div class="stat"><span>Processos cadastrados</span><strong id="totalProcesses">0</strong></div><div class="stat"><span>Deadline de draft nos próximos 7 dias</span><strong id="dueSoon">0</strong></div></section>
@@ -89,6 +90,43 @@
   <script>
     /* Integração com a API: dados e credenciais não ficam mais no localStorage. */
     (() => {
+      const toastRegion = document.getElementById('toastRegion');
+      const safeToastMessage = (message, fallback = 'Não foi possível concluir a operação. Tente novamente.') => {
+        const text = String(message || '').trim();
+        if (!text || /(sql|postgres|database|stack|trace|token|password|senha|\bat\s+\w+\s*\()/i.test(text)) return fallback;
+        return text.slice(0, 240);
+      };
+      const createToast = (type, message, { duration } = {}) => {
+        if (!toastRegion) return;
+        const settings = {
+          success: { icon:'✓', duration:4000, label:'Sucesso' },
+          error: { icon:'!', duration:10000, label:'Erro' },
+          warning: { icon:'!', duration:5000, label:'Aviso' },
+          info: { icon:'i', duration:4000, label:'Informação' }
+        }[type] || { icon:'i', duration:4000, label:'Informação' };
+        const item = document.createElement('div');
+        item.className = `toast toast--${type}`;
+        item.setAttribute('role', type === 'error' ? 'alert' : 'status');
+        item.innerHTML = `<span class="toast__icon" aria-hidden="true">${settings.icon}</span><span class="toast__message"></span><button class="toast__close" type="button" aria-label="Fechar notificação">×</button>`;
+        item.querySelector('.toast__message').textContent = safeToastMessage(message);
+        const dismiss = () => {
+          if (!item.isConnected) return;
+          item.classList.add('is-leaving');
+          window.setTimeout(() => item.remove(), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
+        };
+        item.querySelector('.toast__close').onclick = dismiss;
+        toastRegion.append(item);
+        const timeout = duration === undefined ? settings.duration : duration;
+        if (timeout > 0) window.setTimeout(dismiss, timeout);
+      };
+      const toast = Object.freeze({
+        success: message => createToast('success', message),
+        error: message => createToast('error', safeToastMessage(message)),
+        warning: message => createToast('warning', message),
+        info: message => createToast('info', message)
+      });
+      const pendingToast = sessionStorage.getItem('gport_toast_notice');
+      if (pendingToast) { sessionStorage.removeItem('gport_toast_notice'); window.setTimeout(() => toast.info(pendingToast), 50); }
       const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
       let availableAssignees = [];
       let realtimeSource = null;
@@ -102,7 +140,7 @@
       const autoSaveTimers = new Map();
       const scheduleAutoSave = (key, task) => {
         clearTimeout(autoSaveTimers.get(key));
-        autoSaveTimers.set(key, setTimeout(async () => { try { await task(); } catch (error) { alert(error.message); } }, 350));
+        autoSaveTimers.set(key, setTimeout(async () => { try { await task(); } catch (error) { toast.error(error.message); } }, 350));
       };
       const showProcessesPage = () => {
         el('processesPage').hidden = false; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = true;
@@ -157,7 +195,7 @@
         };
         el('vgmList').innerHTML = vgmProcesses.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>ROTA</th><th>VGM ENVIADO?</th><th>DATA DO ENVIO</th><th>ENVIADO PARA</th><th>PROCESSO FÍSICO COM</th></tr></thead><tbody>${vgmProcesses.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(route(p))}</td><td><select data-vgm-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td>${esc(p.dataEnvioVgm || '—')}</td><td><input data-vgm-sent-to="${p.id}" value="${esc(p.vgmEnviadoPara || '')}" ${canEdit ? '' : 'readonly'}></td><td><select data-vgm-analyst="${p.id}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo cadastrado.</div>';
         if (canEdit) {
-          el('vgmList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { alert(error.message); renderVgm(); } }));
+          el('vgmList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
           el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => input.addEventListener('input', () => scheduleAutoSave(`vgm-${input.dataset.vgmSentTo}`, () => saveVgmRow(input.dataset.vgmSentTo))));
         }
       };
@@ -179,7 +217,7 @@
         if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
         if (canEdit) el('releaseList').querySelectorAll('[data-release-deadline]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); })); if (canEdit) el('releaseList').querySelectorAll('[data-release-date]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value); }));
         if (canEdit) {
-          el('releaseList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { alert(error.message); renderRelease(); } }));
+          el('releaseList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { toast.error(error.message); renderRelease(); } }));
           el('releaseList').querySelectorAll('input').forEach(input => input.addEventListener('input', () => {
             const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseDate;
             const schedule = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
@@ -482,15 +520,15 @@
       // página já filtrada.
       el('filterBtn').onclick = async () => {
         const field = el('searchField').value, value = el('search').value.trim();
-        if (!field) return alert('Selecione qual dado deseja pesquisar.');
-        if (!value) return alert('Informe o valor a pesquisar.');
+        if (!field) return toast.warning('Selecione qual dado deseja pesquisar.');
+        if (!value) return toast.warning('Informe o valor a pesquisar.');
         serverProcessFilter = { field, value }; processFilter = null;
         try { await refreshData(); const summary = el('filterSummary'); summary.hidden = false; summary.textContent = `${processPagination.total} processo(s) encontrado(s).`; }
-        catch (error) { alert(error.message); }
+        catch (error) { toast.error(error.message); }
       };
       el('clearFilterBtn').onclick = async () => {
         serverProcessFilter = null; processFilter = null; el('search').value = ''; el('searchField').selectedIndex = 0;
-        try { await refreshData(); } catch (error) { alert(error.message); }
+        try { await refreshData(); } catch (error) { toast.error(error.message); }
       };
       const turnstileWidget = el('turnstileWidget');
       const turnstileSiteKey = turnstileWidget?.dataset.sitekey || '';
@@ -509,7 +547,7 @@
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = currentUser.role !== 'admin';
         applyRoleTabs();
-        el('loginDialog').close(); await refreshData({ refreshReferenceData:true }); connectRealtime();
+        el('loginDialog').close(); await refreshData({ refreshReferenceData:true }); connectRealtime(); toast.success('Login realizado com sucesso.');
       }
       async function restoreSession() {
         try {
@@ -523,7 +561,7 @@
       el('loginForm').onsubmit = async e => {
         e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget));
         try { await signIn(v, !!v.remember); el('loginError').hidden = true; }
-        catch (error) { resetTurnstile(); el('loginError').textContent = error.message; el('loginError').hidden = false; }
+        catch (error) { resetTurnstile(); el('loginError').textContent = safeToastMessage(error.message, 'Não foi possível entrar. Verifique seus dados e tente novamente.'); el('loginError').hidden = false; toast.error('Não foi possível entrar. Verifique seus dados e tente novamente.'); }
       };
       const registrationCodeField = document.createElement('div');
       registrationCodeField.className = 'field';
@@ -531,9 +569,9 @@
       el('signupForm').querySelector('.grid').appendChild(registrationCodeField);
       el('signupForm').onsubmit = async e => {
         e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget));
-        if (v.password !== v.confirmPassword) return alert('A confirmação de senha não confere.');
-        try { await request('/api/auth/register', { method:'POST', body:JSON.stringify(v) }); el('signupDialog').close(); el('loginDialog').showModal(); el('loginForm').elements.username.value = v.username; e.currentTarget.reset(); alert('Conta criada. Agora faça login.'); }
-        catch (error) { alert(error.message); }
+        if (v.password !== v.confirmPassword) return toast.warning('A confirmação de senha não confere.');
+        try { await request('/api/auth/register', { method:'POST', body:JSON.stringify(v) }); el('signupDialog').close(); el('loginDialog').showModal(); el('loginForm').elements.username.value = v.username; e.currentTarget.reset(); toast.success('Conta criada. Agora faça login.'); }
+        catch (error) { toast.error(error.message); }
       };
       if (el('showSignupBtn')) el('showSignupBtn').onclick = () => { el('loginDialog').close(); el('signupDialog').showModal(); };
       el('closeSignupBtn').onclick = el('backToLoginBtn').onclick = () => { el('signupDialog').close(); el('loginDialog').showModal(); };
@@ -552,7 +590,8 @@
             await request(`/api/clients/${client.id}`, { method:'DELETE' });
             await refreshData({ refreshReferenceData:true });
             resetClientForm();
-          } catch (error) { alert(error.message); }
+            toast.success('Exportador excluído com sucesso.');
+          } catch (error) { toast.error(error.message); }
           return;
         }
         const formClient = el('clientForm');
@@ -562,8 +601,8 @@
       };
       el('clientForm').onsubmit = async e => {
         e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget)); const payload = { name:v.nome, taxId:v.cnpj, contact:v.contato, phone:v.telefone, email:v.email, country:v.pais, address:v.endereco };
-        try { await request(v.id ? `/api/clients/${v.id}` : '/api/clients', { method:v.id ? 'PATCH' : 'POST', body:JSON.stringify(payload) }); await refreshData({ refreshReferenceData:true }); resetClientForm(); }
-        catch (error) { alert(error.message); }
+        try { const editing = !!v.id; await request(v.id ? `/api/clients/${v.id}` : '/api/clients', { method:v.id ? 'PATCH' : 'POST', body:JSON.stringify(payload) }); await refreshData({ refreshReferenceData:true }); resetClientForm(); toast.success(editing ? 'Exportador atualizado com sucesso.' : 'Exportador cadastrado com sucesso.'); }
+        catch (error) { toast.error(error.message); }
       };
       let processAutoSaveTimer = null, processSaveBusy = false, processSavePending = false;
       // A validação é tratada pela própria rotina de salvamento, que apresenta
@@ -607,13 +646,13 @@
           }
           if (closeAfter) {
             dialog.close(); render(); editingProcessId = null;
-            if (isNewProcess) alert('Processo criado com sucesso.');
+            toast.success(isNewProcess ? 'Processo criado com sucesso.' : 'Processo atualizado com sucesso.');
           }
           else { showProcessSaveState('Salvo automaticamente'); window.setTimeout(() => { if (!processSaveBusy) showProcessSaveState('Salvar processo'); }, 1000); }
           return true;
         } catch (error) {
           showProcessSaveState(originalLabel);
-          if (!quiet) alert(error.message || 'Não foi possível salvar o processo.');
+          if (!quiet) toast.error(error.message || 'Não foi possível salvar o processo.');
           return false;
         } finally {
           processSaveBusy = false;
@@ -631,8 +670,8 @@
       form.onsubmit = async e => { e.preventDefault(); await persistProcessForm({ closeAfter:true }); };
       el('deleteProcessBtn').onclick = async () => {
         if (!editingProcessId || !confirm('Excluir este processo?')) return;
-        try { await request(`/api/processes/${editingProcessId}`, { method:'DELETE' }); dialog.close(); editingProcessId = null; await refreshData(); }
-        catch (error) { alert(error.message); }
+        try { await request(`/api/processes/${editingProcessId}`, { method:'DELETE' }); dialog.close(); editingProcessId = null; await refreshData(); toast.success('Processo excluído com sucesso.'); }
+        catch (error) { toast.error(error.message); }
       };
       el('usersNav').onclick = async e => {
         e.preventDefault();
@@ -668,7 +707,7 @@
         try {
           const updated = await request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst }) });
           const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
-          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderVgm();
+          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderVgm(); toast.success('Status de VGM atualizado.');
         } catch (error) {
           data = before; render(); renderVgm(); throw error;
         }
@@ -690,7 +729,7 @@
         try {
           const updated = await request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) });
           const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
-          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderRelease();
+          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderRelease(); toast.success('Status de liberação atualizado.');
         } catch (error) {
           data = before; render(); renderRelease(); throw error;
         }
@@ -699,7 +738,7 @@
         const button = e.target.closest('[data-followup-pdf]'); if (!button) return;
         const process = data.find(item => item.id === button.dataset.followupPdf); if (!process) return;
         try { button.disabled = true; await printFollowupPdf(process); }
-        catch (error) { alert(error.message); }
+        catch (error) { toast.error(error.message); }
         finally { button.disabled = false; }
       };
       el('financialNav').onclick = e => {
@@ -742,7 +781,7 @@
         } catch (error) { alert(error.message); }
       };
       document.querySelector('#settingsDialog form').insertAdjacentHTML('beforeend', '<div class="actions"><button type="button" class="btn secondary" id="apiLogout">Desconectar</button></div>');
-      document.getElementById('apiLogout').onclick = async () => { try { await request('/api/auth/logout', { method:'POST' }); } finally { location.reload(); } };
+      document.getElementById('apiLogout').onclick = async () => { try { await request('/api/auth/logout', { method:'POST' }); sessionStorage.setItem('gport_toast_notice', 'Você saiu do sistema com segurança.'); } finally { location.reload(); } };
       const coverCell = (label, value = '') => `<div class="cc"><b>${label}</b><span>${esc(value || '')}</span></div>`;
       const choice = (label, active) => `${label} <i>${active ? 'X' : ''}</i>`;
       function printOperationalCover(p) {
