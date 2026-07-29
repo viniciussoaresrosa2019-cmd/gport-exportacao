@@ -346,7 +346,8 @@ const cleanText = (value, max, field, { required = false } = {}) => {
     return null;
   }
   const result = String(value).trim().replace(/\s+/g, ' ');
-  if (required && !result) throw Object.assign(new Error(`${field} é obrigatório.`), { status: 400 });
+  // Impede que marcadores visuais ("." ou "*") passem pela validação como dados.
+  if (required && (!result || /^[.*]+$/.test(result))) throw Object.assign(new Error(`${field} é obrigatório.`), { status: 400 });
   if (!result) return null;
   if (result.length > max) throw Object.assign(new Error(`${field} ultrapassa o limite permitido.`), { status: 400 });
   return result;
@@ -371,11 +372,26 @@ const normalizeBrazilianNumber = value => {
   // Ex.: 1.000,125. O PostgreSQL recebe o número normalizado com ponto.
   return Number(text.includes(',') ? text.replaceAll('.', '').replace(',', '.') : text.replaceAll('.', ''));
 };
-const cleanNonNegative = (value, max, field, { integer = false } = {}) => {
-  if (value === null || value === undefined || value === '') return null;
+const cleanNonNegative = (value, max, field, { integer = false, required = false } = {}) => {
+  if (value === null || value === undefined || value === '') {
+    if (required) throw Object.assign(new Error(`${field} é obrigatório.`), { status: 400 });
+    return null;
+  }
   const number = normalizeBrazilianNumber(value);
   if (!Number.isFinite(number) || number < 0 || number > max || (integer && !Number.isInteger(number))) throw Object.assign(new Error(`${field} inválido.`), { status: 400 });
   return number;
+};
+const cleanRequiredDate = (value, field) => {
+  const date = cleanOptionalDate(value, field);
+  if (!date) throw Object.assign(new Error(`${field} é obrigatória.`), { status: 400 });
+  return date;
+};
+const cleanCnpj = value => {
+  const raw = cleanText(value, 40, 'CNPJ');
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length !== 14) throw Object.assign(new Error('CNPJ inválido.'), { status: 400 });
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 };
 
 app.get('/api/clients', authenticate, asyncRoute(async (_req, res) => {
@@ -383,7 +399,7 @@ app.get('/api/clients', authenticate, asyncRoute(async (_req, res) => {
   res.json(result.rows);
 }));
 const validatedClient = body => ({
-  name: cleanText(body.name, 180, 'Nome do exportador', { required: true }), taxId: cleanText(body.taxId, 40, 'CNPJ'),
+  name: cleanText(body.name, 180, 'Nome do exportador', { required: true }), taxId: cleanCnpj(body.taxId),
   contact: cleanText(body.contact, 120, 'Contato'), phone: cleanText(body.phone, 50, 'Telefone'),
   email: cleanText(body.email, 160, 'E-mail'), country: cleanText(body.country, 80, 'País'), address: cleanText(body.address, 500, 'Endereço')
 });
@@ -425,49 +441,56 @@ app.delete('/api/clients/:id', authenticate, clientManagerOnly, asyncRoute(async
   res.status(204).end();
 }));
 
-const processColumns = ['process_number','display_process_number','status','client_id','importer','invoice','booking','due_number','due_issue_date','ruc_number','origin_port','destination_port','vessel','agency','carrier','deadline','shipping_date','container_collection_date','collection_terminal','free_time_days','incoterm','shipment_type','bl_type','freight_type','mapa_inspection','container_quantity','container_type','container_details','cubic_meters','net_weight_kg','gross_weight_kg','packages_quantity','cargo_value','currency'];
+const processColumns = ['process_number','display_process_number','status','client_id','importer','invoice','booking','due_number','due_issue_date','ruc_number','origin_port','destination_port','vessel','agency','carrier','deadline','shipping_date','container_collection_date','collection_terminal','free_time_days','incoterm','shipment_type','bl_type','freight_type','mapa_inspection','isf_lacey','container_quantity','container_type','container_details','cubic_meters','net_weight_kg','gross_weight_kg','packages_quantity','cargo_value','currency'];
 const validIncoterms = new Set(['CFR','CIF','CIP','CPT','DAP','DDP','DPU','EXW','FAS','FCA','FOB']);
 const validCurrencies = new Set(['BRL','EUR','USD']);
 const validateContainerDetails = (value, quantity, mapaInspection) => {
   if (!Array.isArray(value) || value.length > 100) throw Object.assign(new Error('Dados dos contêineres inválidos.'), { status: 400 });
-  if (quantity !== null && value.length > quantity) throw Object.assign(new Error('A quantidade de contêineres não confere.'), { status: 400 });
+  if (quantity !== null && value.length !== quantity) throw Object.assign(new Error('Informe os dados de todos os contêineres.'), { status: 400 });
   return value.map((item, index) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw Object.assign(new Error(`Contêiner ${index + 1} inválido.`), { status: 400 });
+    const number = cleanText(item.number, 11, 'Número do contêiner', { required: true })?.toUpperCase();
+    if (!/^[A-Z]{4}\d{7}$/.test(number)) throw Object.assign(new Error(`Contêiner ${index + 1} deve ter 4 letras e 7 dígitos.`), { status: 400 });
     return {
-      number: cleanText(item.number, 40, 'Número do contêiner'), tare: cleanNonNegative(item.tare, 999999, 'Tara', { integer: true }),
-      seal: cleanText(item.seal, 80, 'Lacre'), new_seal: mapaInspection ? cleanText(item.new_seal, 80, 'Novo lacre') : null
+      number,
+      tare: cleanNonNegative(item.tare, 999999, 'Tara', { integer: true, required: true }),
+      seal: cleanText(item.seal, 80, 'Lacre', { required: true }),
+      invoice_number: cleanText(item.invoiceNumber ?? item.invoice_number, 120, 'Nota fiscal'),
+      new_seal: mapaInspection ? cleanText(item.new_seal, 80, 'Novo lacre', { required: true }) : null
     };
   });
 };
 const toDbProcess = body => ({
-  process_number: body.processNumber, display_process_number: body.displayProcessNumber, status: body.status || 'Em andamento', client_id: body.clientId, importer: body.importer, invoice: body.invoice, booking: body.booking, due_number: body.dueNumber, due_issue_date: body.dueIssueDate, ruc_number: body.rucNumber, origin_port: body.originPort, destination_port: body.destinationPort, vessel: body.vessel, agency: body.agency, carrier: body.carrier, deadline: body.deadline, shipping_date: body.shippingDate, container_collection_date: body.containerCollectionDate, collection_terminal: body.collectionTerminal, free_time_days: body.freeTimeDays, incoterm: body.incoterm, shipment_type: body.shipmentType, bl_type: body.blType, freight_type: body.freightType, mapa_inspection: body.mapaInspection === true, container_quantity: body.containerQuantity, container_type: body.containerType, container_details: JSON.stringify(body.containerDetails || []), cubic_meters: body.cubicMeters, net_weight_kg: body.netWeightKg, gross_weight_kg: body.grossWeightKg, packages_quantity: body.packagesQuantity, cargo_value: body.cargoValue, currency: body.currency || 'USD'
+  process_number: body.processNumber, display_process_number: body.displayProcessNumber, status: body.status || 'Em andamento', client_id: body.clientId, importer: body.importer, invoice: body.invoice, booking: body.booking, due_number: body.dueNumber, due_issue_date: body.dueIssueDate, ruc_number: body.rucNumber, origin_port: body.originPort, destination_port: body.destinationPort, vessel: body.vessel, agency: body.agency, carrier: body.carrier, deadline: body.deadline, shipping_date: body.shippingDate, container_collection_date: body.containerCollectionDate, collection_terminal: body.collectionTerminal, free_time_days: body.freeTimeDays, incoterm: body.incoterm, shipment_type: body.shipmentType, bl_type: body.blType, freight_type: body.freightType, mapa_inspection: body.mapaInspection === true, isf_lacey: body.isfLacey === true, container_quantity: body.containerQuantity, container_type: body.containerType, container_details: JSON.stringify(body.containerDetails || []), cubic_meters: body.cubicMeters, net_weight_kg: body.netWeightKg, gross_weight_kg: body.grossWeightKg, packages_quantity: body.packagesQuantity, cargo_value: body.cargoValue, currency: body.currency || 'USD'
 });
 const validatedProcess = raw => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Object.assign(new Error('Dados do processo inválidos.'), { status: 400 });
-  const shipmentType = raw.shipmentType ? cleanText(raw.shipmentType, 3, 'Tipo de embarque') : null;
-  if (shipmentType && !['FCL', 'LCL'].includes(shipmentType)) throw Object.assign(new Error('Tipo de embarque inválido.'), { status: 400 });
-  const mapaInspection = raw.mapaInspection === true;
-  const containerQuantity = shipmentType === 'LCL' ? null : cleanNonNegative(raw.containerQuantity, 100, 'Quantidade de contêineres', { integer: true });
-  const incoterm = raw.incoterm ? cleanText(raw.incoterm, 10, 'Incoterm').toUpperCase() : null;
-  const currency = raw.currency ? cleanText(raw.currency, 3, 'Moeda').toUpperCase() : 'USD';
-  if (incoterm && !validIncoterms.has(incoterm)) throw Object.assign(new Error('Incoterm inválido.'), { status: 400 });
+  const shipmentType = cleanText(raw.shipmentType, 3, 'Tipo de embarque', { required: true });
+  if (!['FCL', 'LCL'].includes(shipmentType)) throw Object.assign(new Error('Tipo de embarque inválido.'), { status: 400 });
+  if (typeof raw.mapaInspection !== 'boolean') throw Object.assign(new Error('MAPA é obrigatório.'), { status: 400 });
+  if (typeof raw.isfLacey !== 'boolean') throw Object.assign(new Error('ISF/LACEY é obrigatório.'), { status: 400 });
+  const mapaInspection = raw.mapaInspection;
+  const isfLacey = raw.isfLacey;
+  const containerQuantity = shipmentType === 'LCL' ? null : cleanNonNegative(raw.containerQuantity, 100, 'Quantidade de contêineres', { integer: true, required: true });
+  const incoterm = cleanText(raw.incoterm, 10, 'Incoterm', { required: true }).toUpperCase();
+  const currency = cleanText(raw.currency, 3, 'Moeda', { required: true }).toUpperCase();
+  if (!validIncoterms.has(incoterm)) throw Object.assign(new Error('Incoterm inválido.'), { status: 400 });
   if (!validCurrencies.has(currency)) throw Object.assign(new Error('Moeda inválida.'), { status: 400 });
   const result = {
     processNumber: cleanText(raw.processNumber, 80, 'Número técnico do processo'), displayProcessNumber: cleanText(raw.displayProcessNumber, 80, 'Número do processo'),
     status: cleanText(raw.status || 'Em andamento', 40, 'Status', { required: true }), clientId: cleanText(raw.clientId, 36, 'Exportador', { required: true }),
-    importer: cleanText(raw.importer, 200, 'Importador', { required: true }), invoice: cleanText(raw.invoice, 120, 'Fatura'), booking: cleanText(raw.booking, 120, 'Booking'),
-    dueNumber: cleanText(raw.dueNumber, 120, 'DUE'), dueIssueDate: cleanOptionalDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC'),
+    importer: cleanText(raw.importer, 200, 'Importador', { required: true }), invoice: cleanText(raw.invoice, 120, 'Fatura', { required: true }), booking: cleanText(raw.booking, 120, 'Booking', { required: true }),
+    dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: true }), dueIssueDate: cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: true }),
     originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: true }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: true }),
-    vessel: cleanText(raw.vessel, 160, 'Navio'), agency: cleanText(raw.agency, 160, 'Agência'), carrier: cleanText(raw.carrier, 160, 'Armador'),
-    deadline: cleanOptionalDate(raw.deadline, 'Deadline de draft'), shippingDate: cleanOptionalDate(raw.shippingDate, 'Data de envio'), containerCollectionDate: cleanOptionalDate(raw.containerCollectionDate, 'Data de coleta'),
-    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal'), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true }), incoterm, shipmentType,
-    blType: cleanText(raw.blType, 80, 'Tipo de BL'), freightType: cleanText(raw.freightType, 80, 'Tipo de frete'), mapaInspection, containerQuantity,
-    containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType, 80, 'Tipo de contêiner'), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica'),
-    netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido'), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto'),
-    packagesQuantity: cleanNonNegative(raw.packagesQuantity, 99999999, 'Quantidade de pacotes', { integer: true }), cargoValue: cleanNonNegative(raw.cargoValue, 999999999999, 'Valor da carga'), currency
+    vessel: cleanText(raw.vessel, 160, 'Navio', { required: true }), agency: cleanText(raw.agency, 160, 'Agência', { required: true }), carrier: cleanText(raw.carrier, 160, 'Armador', { required: true }),
+    deadline: cleanRequiredDate(raw.deadline, 'Deadline de draft'), shippingDate: cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: cleanRequiredDate(raw.containerCollectionDate, 'Data da coleta'),
+    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal da coleta', { required: true }), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true, required: true }), incoterm, shipmentType,
+    blType: cleanText(raw.blType, 80, 'Tipo de BL', { required: true }), freightType: cleanText(raw.freightType, 80, 'Tipo de frete', { required: true }), mapaInspection, isfLacey, containerQuantity,
+    containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType, 80, 'Tipo de contêiner', { required: true }), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica', { required: true }),
+    netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido', { required: true }), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto', { required: true }),
+    packagesQuantity: cleanNonNegative(raw.packagesQuantity, 99999999, 'Quantidade de pacotes', { integer: true, required: true }), cargoValue: cleanNonNegative(raw.cargoValue, 999999999999, 'Valor da carga', { required: true }), currency
   };
   if (!validId(result.clientId)) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
-  if (!result.deadline) throw Object.assign(new Error('Deadline de draft é obrigatório.'), { status: 400 });
   result.containerDetails = shipmentType === 'LCL' ? [] : validateContainerDetails(raw.containerDetails || [], containerQuantity, mapaInspection);
   return result;
 };
@@ -808,6 +831,7 @@ const ensureProcessFields = async () => {
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS bl_type VARCHAR(80)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS freight_type VARCHAR(80)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS mapa_inspection BOOLEAN NOT NULL DEFAULT FALSE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS isf_lacey BOOLEAN NOT NULL DEFAULT FALSE');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS container_quantity INTEGER');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS container_type VARCHAR(80)');
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS container_details JSONB NOT NULL DEFAULT '[]'::jsonb");

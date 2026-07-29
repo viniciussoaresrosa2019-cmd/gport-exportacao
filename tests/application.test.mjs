@@ -18,9 +18,20 @@ test('API normaliza valores numéricos no formato brasileiro para contêineres',
   const server = await read('src/server.js');
   assert.match(server, /const normalizeBrazilianNumber = value =>/);
   assert.match(server, /text\.replaceAll\('\.', ''\)\.replace\(',', '\.'\)/);
-  assert.match(server, /tare: cleanNonNegative\(item\.tare, 999999, 'Tara', \{ integer: true \}\)/);
+  assert.match(server, /tare: cleanNonNegative\(item\.tare, 999999, 'Tara', \{ integer: true, required: true \}\)/);
   assert.match(await read('public/index.html'), /data-currency-value/);
   assert.match(await read('public/index.html'), /formatCurrencyValue/);
+});
+
+test('lançamento exige campos operacionais e dados individuais completos do contêiner', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  for (const required of ['isf_lacey', 'cleanRequiredDate', 'invoice_number', '4 letras e 7 dígitos', 'Informe os dados de todos os contêineres', 'cleanCnpj', '/^[.*]+$/']) {
+    assert.ok(server.includes(required), `Validação obrigatória ausente: ${required}`);
+  }
+  for (const required of ['name="isfLacey"', 'name="exportadorCnpj"', 'name="notasFiscais"', 'data-nf', 'pattern="[A-Za-z]{4}[0-9]{7}"', 'Tipo de contêiner *', 'formatCnpj', 'form.checkValidity()']) {
+    assert.ok(html.includes(required), `Campo obrigatório ausente: ${required}`);
+  }
 });
 
 test('sessão, CSRF, autorização e validação têm proteções regressivas', async () => {
