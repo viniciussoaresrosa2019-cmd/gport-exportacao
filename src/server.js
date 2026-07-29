@@ -564,16 +564,19 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const status = String(req.query.status || '').trim();
   const field = String(req.query.field || 'todos').trim().toLowerCase();
   const clientId = String(req.query.client || '').trim();
+  const clientName = String(req.query.clientName || '').trim();
   const limit = Number(req.query.limit || 50);
   const offset = Number(req.query.offset || 0);
-  if (term.length > 100 || status.length > 40 || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
+  if (term.length > 100 || status.length > 40 || clientName.length > 200 || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
   const scope = '';
-  const params = [status, term, clientId];
+  const params = [status, term, clientId, clientName];
   const next = params.length + 1;
   // client_id é UUID no PostgreSQL. O parâmetro vem da URL como texto e,
   // mesmo vazio, não pode ser comparado diretamente com UUID (erro 42883).
   // NULLIF mantém o filtro opcional sem fazer coerção insegura de tipos.
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid)${scope}`;
+  // O nome é um fallback exclusivo para processos históricos cujo client_id
+  // ficou nulo, mas que ainda exibem o exportador pelo LEFT JOIN.
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4))${scope}`;
   const [items, total] = await Promise.all([
     query(`${processSelect} ${where} ORDER BY c.name ASC,p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
     query(`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`, params)

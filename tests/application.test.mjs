@@ -198,11 +198,16 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   const server = await read('src/server.js');
   const html = await read('public/index.html');
   assert.match(server, /const clientId = String\(req\.query\.client \|\| ''\)\.trim\(\)/);
+  assert.match(server, /const clientName = String\(req\.query\.clientName \|\| ''\)\.trim\(\)/);
+  assert.match(server, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
   assert.match(server, /ORDER BY c\.name ASC,p\.created_at DESC,p\.id DESC/);
   assert.match(html, /processClientFilter='all'/);
   assert.match(html, /processClientFilters/);
   assert.match(html, /data-process-client/);
   assert.match(html, /searchParams\.set\('client', processClientFilter\)/);
+  assert.match(html, /searchParams\.set\('clientName', selectedClient\.nome\)/);
+  assert.match(html, /function matchesClientFilter\(process\)/);
+  assert.match(html, /class="client-group"/);
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
 });
 
