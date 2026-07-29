@@ -265,6 +265,8 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont√
   assert.match(html, /DEADLINES \/ PRAZOS/);
   assert.match(html, /CHECK LIST/);
   assert.match(html, /MERCADORIAS A SEREM EMBARCADAS/);
-  assert.match(html, /<th>NF<\/th>/);
+  assert.match(html, /EMISS√ÉO DUE:/);
+  assert.match(html, /VENCIMENTO:/);
+  assert.match(html, /<th>NOTA FISCAL<\/th>/);
   assert.match(html, /NOVO LACRE/);
 });
