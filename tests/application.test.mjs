@@ -268,5 +268,7 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont√
   assert.match(html, /EMISS√ÉO DUE:/);
   assert.match(html, /VENCIMENTO:/);
   assert.match(html, /<th>NOTA FISCAL<\/th>/);
+  assert.match(html, /const exporterName = client\.nome \|\| p\.exportador \|\| ''/);
+  assert.match(html, /cell\('EXPORTADOR:',exporterName,'exporter'\)/);
   assert.match(html, /NOVO LACRE/);
 });
