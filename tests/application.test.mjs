@@ -34,6 +34,14 @@ test('lançamento exige campos operacionais e dados individuais completos do con
   }
 });
 
+test('dados operacionais são padronizados em maiúsculas sem alterar e-mail', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /const upperText = value => typeof value === 'string' \? value\.toLocaleUpperCase\('pt-BR'\) : value/);
+  assert.match(server, /email: cleanText\(body\.email, 160, 'E-mail'\)/);
+  assert.match(html, /const normalizeUppercaseInput = input => \{ input\.value = input\.value\.toLocaleUpperCase\('pt-BR'\); \}/);
+});
+
 test('sessão, CSRF, autorização e validação têm proteções regressivas', async () => {
   const server = await read('src/server.js');
   for (const required of [

@@ -609,6 +609,19 @@
         formClient.scrollIntoView({ behavior:'smooth', block:'start' });
       };
       el('clientForm').elements.cnpj.addEventListener('input', e => { e.target.value = formatCnpj(e.target.value); });
+      const normalizeUppercaseInput = input => { input.value = input.value.toLocaleUpperCase('pt-BR'); };
+      // Campos operacionais são padronizados enquanto o usuário digita.
+      // E-mail, credenciais e valores monetários não passam por esta regra.
+      form.querySelectorAll('input[type="text"]').forEach(input => {
+        if (!['valor', 'exportadorCnpj'].includes(input.name)) input.addEventListener('input', () => normalizeUppercaseInput(input));
+      });
+      el('containerDetails').addEventListener('input', event => {
+        if (event.target.matches('[data-lacre], [data-nf], [data-new-seal]')) normalizeUppercaseInput(event.target);
+      });
+      ['nome', 'contato', 'pais', 'endereco'].forEach(name => {
+        const input = el('clientForm').elements[name];
+        if (input) input.addEventListener('input', () => normalizeUppercaseInput(input));
+      });
       el('clientForm').onsubmit = async e => {
         e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget)); const payload = { name:v.nome, taxId:v.cnpj, contact:v.contato, phone:v.telefone, email:v.email, country:v.pais, address:v.endereco };
         try { const editing = !!v.id; await request(v.id ? `/api/clients/${v.id}` : '/api/clients', { method:v.id ? 'PATCH' : 'POST', body:JSON.stringify(payload) }); await refreshData({ refreshReferenceData:true }); resetClientForm(); toast.success(editing ? 'Exportador atualizado com sucesso.' : 'Exportador cadastrado com sucesso.'); }

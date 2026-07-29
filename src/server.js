@@ -398,10 +398,13 @@ app.get('/api/clients', authenticate, asyncRoute(async (_req, res) => {
   const result = await query('SELECT * FROM clients ORDER BY active DESC, name');
   res.json(result.rows);
 }));
+const upperText = value => typeof value === 'string' ? value.toLocaleUpperCase('pt-BR') : value;
 const validatedClient = body => ({
-  name: cleanText(body.name, 180, 'Nome do exportador', { required: true }), taxId: cleanCnpj(body.taxId),
-  contact: cleanText(body.contact, 120, 'Contato'), phone: cleanText(body.phone, 50, 'Telefone'),
-  email: cleanText(body.email, 160, 'E-mail'), country: cleanText(body.country, 80, 'País'), address: cleanText(body.address, 500, 'Endereço')
+  name: upperText(cleanText(body.name, 180, 'Nome do exportador', { required: true })), taxId: cleanCnpj(body.taxId),
+  contact: upperText(cleanText(body.contact, 120, 'Contato')), phone: cleanText(body.phone, 50, 'Telefone'),
+  // E-mail não é convertido: embora normalmente não diferencie maiúsculas,
+  // preservamos o formato informado para compatibilidade com provedores.
+  email: cleanText(body.email, 160, 'E-mail'), country: upperText(cleanText(body.country, 80, 'País')), address: upperText(cleanText(body.address, 500, 'Endereço'))
 });
 app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req, res) => {
   const c = validatedClient(req.body);
@@ -454,9 +457,9 @@ const validateContainerDetails = (value, quantity, mapaInspection) => {
     return {
       number,
       tare: cleanNonNegative(item.tare, 999999, 'Tara', { integer: true, required: true }),
-      seal: cleanText(item.seal, 80, 'Lacre', { required: true }),
-      invoice_number: cleanText(item.invoiceNumber ?? item.invoice_number, 120, 'Nota fiscal'),
-      new_seal: mapaInspection ? cleanText(item.new_seal, 80, 'Novo lacre', { required: true }) : null
+      seal: upperText(cleanText(item.seal, 80, 'Lacre', { required: true })),
+      invoice_number: upperText(cleanText(item.invoiceNumber ?? item.invoice_number, 120, 'Nota fiscal')),
+      new_seal: mapaInspection ? upperText(cleanText(item.new_seal, 80, 'Novo lacre', { required: true })) : null
     };
   });
 };
@@ -490,6 +493,9 @@ const validatedProcess = raw => {
     netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido', { required: true }), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto', { required: true }),
     packagesQuantity: cleanNonNegative(raw.packagesQuantity, 99999999, 'Quantidade de pacotes', { integer: true, required: true }), cargoValue: cleanNonNegative(raw.cargoValue, 999999999999, 'Valor da carga', { required: true }), currency
   };
+  ['processNumber','displayProcessNumber','importer','invoice','booking','dueNumber','rucNumber','originPort','destinationPort','vessel','agency','carrier','collectionTerminal'].forEach(key => {
+    result[key] = upperText(result[key]);
+  });
   if (!validId(result.clientId)) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
   result.containerDetails = shipmentType === 'LCL' ? [] : validateContainerDetails(raw.containerDetails || [], containerQuantity, mapaInspection);
   return result;
