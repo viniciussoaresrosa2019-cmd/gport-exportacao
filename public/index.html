@@ -846,7 +846,7 @@
         el('pdfFrame').srcdoc = arrangedHtml.replace('NAVIO ATUAL:', 'NAVIO:').replace('</head>', `${coverCleanStyles}</head>`);
         el('previewDialog').showModal();
       }
-      function printCoverFromDocumentModel(p) {
+      function printCoverFromDocumentModelBase(p) {
         // Pelo botão do formulário, "exportador" é o ID do cadastro; pela
         // lista, ele já é o nome. Aceitar os dois evita exibir o UUID na capa.
         const client = clients.find(c => c.id === p.clientId || c.id === p.exportador || c.nome === p.exportador) || {};
@@ -872,6 +872,40 @@
         el('previewTitle').textContent = 'Prévia da capa do processo';
         el('pdfFrame').srcdoc = html;
         el('previewDialog').showModal();
+      }
+      function printCoverFromDocumentModel(p) {
+        const frame = el('pdfFrame');
+        frame.addEventListener('load', () => {
+          const doc = frame.contentDocument;
+          if (!doc) return;
+          const style = doc.createElement('style');
+          style.textContent = `
+            .title,.bar,.containers th,.options .option-row>div:first-child>strong,.certificate-title,.process-data-title{background:#e8e8e8!important;color:#000!important}
+            .title,.bar,.process-data-title{font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
+            .options .mark{justify-content:flex-start!important}.freight-row .inline-checks{grid-template-columns:1fr!important}
+            .workflow{position:relative}.workflow .title[data-stamp-title]{color:transparent!important;background:#fff!important}
+            .stamps-unified{position:absolute;z-index:3;left:0;top:56mm;width:65%;height:7mm;padding:1.6mm;background:#e8e8e8;border-top:1px solid #000;border-bottom:1px solid #000;text-align:center;font:bold 10px "Times New Roman",Times,serif;letter-spacing:.25px}
+            .process-data-title{height:6mm;padding:1.55mm 2mm;border-bottom:1px solid #000;font:bold 10px "Times New Roman",Times,serif}
+          `;
+          doc.head.append(style);
+          const workflow = doc.querySelector('.workflow');
+          const stampTitles = [...doc.querySelectorAll('.workflow .title')].filter(node => node.textContent.trim() === 'CARIMBOS');
+          stampTitles.forEach(node => node.dataset.stampTitle = 'true');
+          if (workflow && stampTitles.length === 2) {
+            const stampTitle = doc.createElement('div');
+            stampTitle.className = 'stamps-unified';
+            stampTitle.textContent = 'CARIMBOS';
+            workflow.append(stampTitle);
+          }
+          const info = doc.querySelector('.info');
+          if (info && !doc.querySelector('.process-data-title')) {
+            const title = doc.createElement('div');
+            title.className = 'process-data-title';
+            title.textContent = 'DADOS DO PROCESSO';
+            info.before(title);
+          }
+        }, { once:true });
+        printCoverFromDocumentModelBase(p);
       }
       el('printBtn').onclick = () => printCoverFromDocumentModel(Object.fromEntries(new FormData(form)));
       el('rows').onclick = e => { const pdf = e.target.closest('[data-pdf]'); if (pdf) { e.stopPropagation(); printCoverFromDocumentModel(data.find(p => p.id === pdf.dataset.pdf)); return; } const row = e.target.closest('tr'); if (row) open(data.find(p => p.id === row.dataset.id)); };
