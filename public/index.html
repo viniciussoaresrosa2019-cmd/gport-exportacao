@@ -881,11 +881,12 @@
           const style = doc.createElement('style');
           style.textContent = `
             .title,.bar,.containers th,.options .option-row>div:first-child>strong,.certificate-title,.process-data-title{background:#e8e8e8!important;color:#000!important}
-            body{font-size:10px!important}.title,.bar,.process-data-title{font-size:11px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
+            *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:10px!important}.title,.bar,.process-data-title{font-size:11px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
             .line,.stamp-line{font-size:10px!important}.options{font-size:9.6px!important}.inline-checks{font-size:9px!important}
             .field{padding:1.6mm 2mm!important}.field b{font-size:9px!important}.field span{font-size:10.5px!important;line-height:1.2!important}
             .info{grid-template-rows:9mm repeat(5,10mm)!important}.cargo .field{height:12mm!important}
             .containers th{height:6mm!important;font-size:9.5px!important}.containers td{font-size:9.2px!important}
+            .workflow{height:91mm!important}.workflow .stamp-line{height:14mm!important;padding:2mm!important;font-size:10.5px!important}
             .options .mark{justify-content:flex-start!important}.freight-row .inline-checks{grid-template-columns:1fr!important}
             .workflow{position:relative}.workflow .title[data-stamp-title]{color:transparent!important;background:#fff!important}
             .stamps-unified{position:absolute;z-index:3;left:0;top:56mm;width:65%;height:7mm;padding:1.45mm;background:#e8e8e8;border-top:1px solid #000;border-bottom:1px solid #000;text-align:center;font:bold 11px "Times New Roman",Times,serif;letter-spacing:.25px}
