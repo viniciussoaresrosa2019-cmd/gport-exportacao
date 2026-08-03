@@ -291,6 +291,37 @@ test('interface progressiva mantém confirmações internas, skeleton e cartões
   assert.match(experience, /mobile-nav/);
 });
 
+test('lançamento progressivo possui seis etapas, modo rápido e rascunho local sem enviar dados', async () => {
+  const html = await read('public/index.html');
+  const experience = await read('public/assets/experience.js');
+  const css = await read('public/assets/experience.css');
+  for (const title of ['Processo', 'Exportador', 'Rota', 'Documentos', 'Carga', 'Revisão']) assert.match(experience, new RegExp(`\\['${title}'`));
+  assert.match(experience, /Modo rápido/);
+  assert.match(experience, /gport:process-draft:v2/);
+  assert.match(experience, /gport:process-open/);
+  assert.match(experience, /gport:process-saved/);
+  assert.match(html, /gport:process-saved/);
+  assert.match(css, /\.draft-notice/);
+  assert.match(css, /\.form-review__summary/);
+});
+
+test('filtro de processos é persistido somente durante a sessão do navegador', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /const processFilterSessionKey = 'gport:process-filter:v1'/);
+  assert.match(html, /sessionStorage\.setItem\(processFilterSessionKey/);
+  assert.match(html, /sessionStorage\.removeItem\(processFilterSessionKey\)/);
+});
+
+test('roteiro de homologação cobre painel e notificações sem usar produção', async () => {
+  const script = await read('scripts/qa-process-launch-hml.ps1');
+  assert.match(script, /gport-exportacao-hml\.onrender\.com/);
+  assert.match(script, /gport-exportacao\\\.onrender\\\.com/);
+  assert.match(script, /dashboard_\$\(\$account\.Name\)/);
+  assert.match(script, /notificacoes_\$\(\$account\.Name\)/);
+  assert.match(script, /notificacao_marcada_como_lida/);
+  assert.match(script, /limpeza_processo_teste/);
+});
+
 test('VGM em draft ou enviado pelo cliente conta como enviado em todas as telas', async () => {
   const server = await read('src/server.js');
   const html = await read('public/index.html');

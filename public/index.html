@@ -260,7 +260,7 @@
       };
       const renderFollowup = () => {
         renderSectionSearch('followupSearchControls', document.querySelector('#followupPage .intro'), followupSearchFilter, filter => { followupSearchFilter = filter; renderFollowup(); }); const followupProcesses = data.filter(process => matchesSectionSearch(process, followupSearchFilter));
-        el('followupPdfList').innerHTML = followupProcesses.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>NAVIO</th><th>ANALISTA</th><th>HISTÓRICO</th></tr></thead><tbody>${followupProcesses.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(p.navio || '—')}</td><td>${esc(p.analista || '—')}</td><td><button class="btn secondary followup-pdf" data-followup-pdf="${p.id}">Gerar PDF</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo encontrado.</div>';
+        el('followupPdfList').innerHTML = followupProcesses.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>NAVIO</th><th>ANALISTA</th><th>HISTÓRICO</th></tr></thead><tbody>${followupProcesses.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(p.navio || '—')}</td><td>${esc(p.analista || '—')}</td><td><button class="btn secondary followup-history" data-followup-history="${p.id}">Ver histórico</button> <button class="btn secondary followup-pdf" data-followup-pdf="${p.id}">Gerar PDF</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo encontrado.</div>';
       };
       const historyLabel = item => {
         const details = typeof item.details === 'string' ? JSON.parse(item.details || '{}') : (item.details || {});
@@ -283,6 +283,19 @@
         if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
         if (item.action === 'process.followup_updated') return [details.followupStatus && `Status: ${details.followupStatus}`, details.followupNote && `Observação: ${details.followupNote}`].filter(Boolean).join(' · ') || 'Follow up atualizado.';
         return 'Alteração registrada no processo.';
+      };
+      const showFollowupHistory = async process => {
+        const events = await request(`/api/processes/${process.id}/followup-history`);
+        let modal = el('processHistoryDialog');
+        if (!modal) {
+          modal = document.createElement('dialog'); modal.id='processHistoryDialog'; modal.className='process-history-dialog';
+          modal.innerHTML='<div class="modal-head"><div><p class="eyebrow">Acompanhamento</p><h2>Histórico do processo</h2></div><button class="close" type="button" aria-label="Fechar histórico">×</button></div><p class="intro" id="processHistoryIntro"></p><ol id="processHistoryTimeline" class="history-timeline"></ol>';
+          document.body.appendChild(modal); modal.querySelector('.close').onclick=()=>modal.close();
+        }
+        el('processHistoryIntro').textContent=`BOOKING ${process.booking || '—'} · ${process.exportador || 'Exportador não informado'}`;
+        const timeline=el('processHistoryTimeline'); timeline.replaceChildren(...events.map(item => { const row=document.createElement('li'); const head=document.createElement('strong'); const meta=document.createElement('span'); const details=document.createElement('p'); head.textContent=historyLabel(item); meta.textContent=`${historyDateTime(item.created_at)} · ${item.username || 'Usuário não identificado'}`; details.textContent=historyDetails(item); row.append(head,meta,details); return row; }));
+        if (!events.length) timeline.innerHTML='<li><strong>Nenhuma alteração registrada.</strong></li>';
+        modal.showModal();
       };
       const printFollowupPdf = async process => {
         const events = await request(`/api/processes/${process.id}/followup-history`);
@@ -480,7 +493,7 @@
           restoreOriginPort(p.origem);
         }
         syncDueOnlyLaunchFields();
-        if (!p) return;
+        if (!p) { window.dispatchEvent(new CustomEvent('gport:process-open', { detail:{ editing:false, id:null } })); return; }
         form.elements.id.value = p.id;
         form.elements.exportador.value = p.clientId || clients.find(client => client.nome === p.exportador)?.id || '';
         renderClientOptions();
@@ -489,6 +502,7 @@
         form.elements.envio.value = dateForField(p.envio);
         form.elements.coleta.value = dateForField(p.coleta);
         syncDueOnlyLaunchFields();
+        window.dispatchEvent(new CustomEvent('gport:process-open', { detail:{ editing:true, id:p.id } }));
       };
       // Garante que o botão sempre use a abertura reforçada acima, mesmo se
       // outro script tiver registrado um manipulador anterior.
@@ -506,7 +520,12 @@
         button.hidden = !processPagination.hasMore;
         button.textContent = `Carregar mais processos (${data.length} de ${processPagination.total})`;
       };
+      const processFilterSessionKey = 'gport:process-filter:v1';
       let serverProcessFilter = null;
+      try {
+        const savedFilter = JSON.parse(sessionStorage.getItem(processFilterSessionKey) || 'null');
+        if (savedFilter?.field && savedFilter?.value) { serverProcessFilter = savedFilter; el('searchField').value = savedFilter.field; el('search').value = savedFilter.value; }
+      } catch { sessionStorage.removeItem(processFilterSessionKey); }
       const renderProcessPage = () => {
         render();
         renderClients();
@@ -690,12 +709,12 @@
         const field = el('searchField').value, value = el('search').value.trim();
         if (!field) return toast.warning('Selecione qual dado deseja pesquisar.');
         if (!value) return toast.warning('Informe o valor a pesquisar.');
-        serverProcessFilter = { field, value }; processFilter = null;
+        serverProcessFilter = { field, value }; processFilter = null; sessionStorage.setItem(processFilterSessionKey, JSON.stringify(serverProcessFilter));
         try { await refreshData(); const summary = el('filterSummary'); summary.hidden = false; summary.textContent = `${processPagination.total} processo(s) encontrado(s).`; }
         catch (error) { toast.error(error.message); }
       };
       el('clearFilterBtn').onclick = async () => {
-        serverProcessFilter = null; processFilter = null; el('search').value = ''; el('searchField').selectedIndex = 0;
+        serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey); el('search').value = ''; el('searchField').selectedIndex = 0;
         try { await refreshData(); } catch (error) { toast.error(error.message); }
       };
       const turnstileWidget = el('turnstileWidget');
@@ -715,7 +734,11 @@
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = currentUser.role !== 'admin';
         applyRoleTabs();
-        el('loginDialog').close(); await refreshData({ refreshReferenceData:true }); connectRealtime(); toast.success('Login realizado com sucesso.');
+        // A sessão já está válida neste ponto. Fechamos o login e exibimos
+        // feedback imediato; processos e referências continuam em paralelo.
+        el('loginDialog').close(); showProcessLoading(); connectRealtime();
+        void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('A sessão foi iniciada, mas os processos ainda estão carregando.'));
+        toast.success('Login realizado com sucesso.');
       }
       async function restoreSession() {
         try {
@@ -723,7 +746,8 @@
           el('currentUserName').textContent = currentUser.username;
           el('usersNav').hidden = currentUser.role !== 'admin';
           applyRoleTabs();
-          el('loginDialog').close(); await refreshData({ refreshReferenceData:true }); connectRealtime();
+          el('loginDialog').close(); showProcessLoading(); connectRealtime();
+          void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('Não foi possível atualizar os processos agora. Tente novamente em instantes.'));
         } catch { currentUser = null; }
       }
       el('loginForm').onsubmit = async e => {
@@ -844,6 +868,7 @@
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;
           editingProcessId = view.id;
+          window.dispatchEvent(new CustomEvent('gport:process-saved', { detail:{ id:view.id, isNew:isNewProcess } }));
           if (isNewProcess) newProcessIdempotencyKey = null;
           if (isNewProcess) {
             // Um filtro anterior não deve esconder um processo recém-lançado.
@@ -942,9 +967,10 @@
         }
       };
       el('followupPdfList').onclick = async e => {
-        const button = e.target.closest('[data-followup-pdf]'); if (!button) return;
-        const process = data.find(item => item.id === button.dataset.followupPdf); if (!process) return;
-        try { button.disabled = true; await printFollowupPdf(process); }
+        const button = e.target.closest('[data-followup-pdf], [data-followup-history]'); if (!button) return;
+        const id = button.dataset.followupPdf || button.dataset.followupHistory;
+        const process = data.find(item => item.id === id); if (!process) return;
+        try { button.disabled = true; if (button.dataset.followupHistory) await showFollowupHistory(process); else await printFollowupPdf(process); }
         catch (error) { toast.error(error.message); }
         finally { button.disabled = false; }
       };

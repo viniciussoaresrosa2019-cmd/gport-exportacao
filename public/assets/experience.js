@@ -16,32 +16,115 @@
     const form = byId('form');
     if (!form || form.dataset.experienceReady) return;
     form.dataset.experienceReady = 'true';
-    const titles = [...form.querySelectorAll(':scope > .section-title')];
-    if (!titles.length) return;
+    // O formulário antigo foi mantido para preservar todos os nomes de campo e
+    // validações. Esta camada só reorganiza seus elementos em seis etapas reais.
+    const flow = [
+      ['Processo', ['booking', 'fatura', 'analista', 'due', 'dueEmissao', 'ruc']],
+      ['Exportador', ['exportador', 'exportadorCnpj', 'importador']],
+      ['Rota', ['origem', 'destino', 'tipoEmbarque', 'navio', 'armador', 'agencia', 'prazo', 'envio', 'coleta', 'terminal', 'freetime', 'incoterm']],
+      ['Documentos', ['tipoBL', 'tipoFrete', 'vistoriaMapa', 'isfLacey']],
+      ['Carga', ['qtdContainers', 'tipoContainer', 'containers', 'metragem', 'pesoLiquido', 'pesoBruto', 'volumes', 'valor', 'moeda']],
+      ['Revisão', []]
+    ];
+    const actions = form.querySelector(':scope > .actions');
+    const anchor = form.querySelector(':scope > .section-title') || actions;
+    if (!anchor) return;
     const progress = document.createElement('div');
     progress.className = 'form-progress';
-    progress.innerHTML = `<span>Preenchimento do processo</span><span class="form-progress__bar" aria-hidden="true">${titles.map((_, index) => `<i class="form-progress__step ${index === 0 ? 'is-active' : ''}"></i>`).join('')}</span><span>${titles.length} seções</span>`;
-    form.insertBefore(progress, titles[0]);
-    titles.forEach((title, index) => {
+    progress.innerHTML = `<div><strong>Lançamento de processo</strong><small id="processFlowStatus">Etapa 1 de ${flow.length}</small></div><div class="form-progress__bar" aria-hidden="true">${flow.map((_, index) => `<i class="form-progress__step ${index === 0 ? 'is-active' : ''}"></i>`).join('')}</div><button class="form-flow-mode" type="button" aria-pressed="false">Modo rápido</button>`;
+    form.insertBefore(progress, anchor);
+    const steps = flow.map(([title], index) => {
       const section = document.createElement('section');
-      section.className = 'form-flow-section';
-      section.setAttribute('aria-label', title.textContent.trim());
-      title.dataset.step = String(index + 1);
-      title.parentNode.insertBefore(section, title);
-      let node = title;
-      const stop = titles[index + 1] || form.querySelector('.actions');
-      while (node && node !== stop) { const next = node.nextSibling; section.appendChild(node); node = next; }
+      section.className = 'form-flow-section'; section.dataset.flowStep = String(index);
+      section.setAttribute('aria-label', title);
+      section.innerHTML = `<div class="form-flow-section__head"><div class="section-title" data-step="${index + 1}">${title}</div><button type="button" class="form-flow-toggle" aria-expanded="${index === 0 ? 'true' : 'false'}">${index === 0 ? 'Ocultar' : 'Mostrar'}</button></div><div class="grid form-flow-section__content"></div>`;
+      form.insertBefore(section, actions);
+      return section;
     });
+    const findField = name => {
+      const input = form.elements[name];
+      if (!input) return null;
+      if (name === 'containers') return byId('containerFields');
+      return input.closest('.field');
+    };
+    flow.forEach(([, names], index) => names.forEach(name => {
+      const field = findField(name);
+      if (field && !field.closest('[data-flow-step]')) steps[index].querySelector('.form-flow-section__content').appendChild(field);
+    }));
+    // Remove apenas os contêineres de seção esvaziados pela reorganização.
+    form.querySelectorAll(':scope > .section-title, :scope > .grid').forEach(node => { if (!node.querySelector('.field, #containerFields, input:not([type="hidden"])')) node.remove(); });
+    const review = steps.at(-1).querySelector('.form-flow-section__content');
+    review.classList.add('form-review');
+    review.innerHTML = '<p class="intro">Revise os campos obrigatórios e salve o processo. Nenhum dado é enviado antes de selecionar <strong>Salvar processo</strong>.</p><dl class="form-review__summary" id="processReviewSummary"></dl>';
+    let activeStep = 0; let quickMode = false;
+    const sectionInputs = section => [...section.querySelectorAll('input,select,textarea')].filter(input => !input.disabled && input.type !== 'hidden');
+    const updateReview = () => {
+      const pairs = [['BOOKING','booking'],['EXPORTADOR','exportador'],['ORIGEM','origem'],['NAVIO','navio'],['DEADLINE','prazo'],['FATURA','fatura']];
+      const summary = byId('processReviewSummary'); if (!summary) return;
+      summary.replaceChildren(...pairs.map(([label, name]) => { const group=document.createElement('div'); const term=document.createElement('dt'); const value=document.createElement('dd'); term.textContent=label; value.textContent=String(form.elements[name]?.value || 'Não informado'); group.append(term,value); return group; }));
+    };
+    const updateFlow = () => {
+      let invalid = 0;
+      steps.forEach((section, index) => {
+        const isActive = quickMode || index === activeStep;
+        section.hidden = !isActive;
+        sectionInputs(section).forEach(input => { if (input.required && !input.checkValidity()) invalid += 1; });
+      });
+      progress.querySelectorAll('.form-progress__step').forEach((item, index) => item.classList.toggle('is-active', quickMode || index <= activeStep));
+      const status = byId('processFlowStatus'); if (status) status.textContent = quickMode ? `${flow.length} seções visíveis · ${invalid} pendência(s)` : `Etapa ${activeStep + 1} de ${flow.length} · ${invalid} pendência(s)`;
+      updateReview();
+    };
+    const validateStep = index => {
+      const invalid = sectionInputs(steps[index]).find(input => input.required && !input.checkValidity());
+      if (!invalid) return true;
+      invalid.focus({ preventScroll:true }); invalid.scrollIntoView({ behavior:'smooth', block:'center' }); invalid.reportValidity();
+      return false;
+    };
+    steps.forEach((section, index) => {
+      const toggle = section.querySelector('.form-flow-toggle');
+      toggle.onclick = () => { if (quickMode) return; activeStep = index; updateFlow(); };
+      const controls = document.createElement('div'); controls.className='form-flow-controls';
+      if (index > 0) { const previous=document.createElement('button'); previous.type='button'; previous.className='btn secondary'; previous.textContent='← Anterior'; previous.onclick=()=>{activeStep=index-1;updateFlow();}; controls.append(previous); }
+      if (index < steps.length-1) { const next=document.createElement('button'); next.type='button'; next.className='btn secondary'; next.textContent='Próxima →'; next.onclick=()=>{if(validateStep(index)){activeStep=index+1;updateFlow();}}; controls.append(next); }
+      section.append(controls);
+    });
+    progress.querySelector('.form-flow-mode').onclick = event => { quickMode=!quickMode; event.currentTarget.setAttribute('aria-pressed',String(quickMode)); event.currentTarget.textContent=quickMode?'Usar etapas':'Modo rápido'; updateFlow(); };
     const status = document.createElement('p');
     status.className = 'save-state'; status.dataset.state = 'saved'; status.textContent = 'Pronto para salvar';
     form.querySelector('.actions')?.before(status);
-    form.addEventListener('input', () => { status.dataset.state = 'changed'; status.textContent = 'Alterações não salvas'; }, true);
+    form.addEventListener('input', () => { status.dataset.state = 'changed'; status.textContent = 'Alterações não salvas'; updateFlow(); }, true);
     const saveButton = form.querySelector('button[type="submit"]');
     if (saveButton) new MutationObserver(() => {
       const saving = saveButton.disabled || /salvando/i.test(saveButton.textContent);
       status.dataset.state = saving ? 'saving' : 'saved';
       status.textContent = saving ? 'Salvando…' : 'Salvo';
     }).observe(saveButton, { attributes:true, childList:true, subtree:true, characterData:true });
+    updateFlow();
+    installProcessDraft(form);
+  };
+
+  const draftStorageKey = 'gport:process-draft:v2';
+  const installProcessDraft = form => {
+    if (form.dataset.draftReady) return;
+    form.dataset.draftReady = 'true';
+    const dialog = byId('dialog'); let timer = null;
+    const notice = document.createElement('aside'); notice.className='draft-notice'; notice.hidden=true;
+    notice.innerHTML='<strong>Rascunho local encontrado</strong><span>Os dados não enviados foram preservados neste navegador.</span><div><button type="button" class="btn secondary" data-draft-discard>Descartar</button><button type="button" class="btn" data-draft-restore>Restaurar</button></div>';
+    form.querySelector('.form-progress')?.after(notice);
+    const read = () => { try { return JSON.parse(localStorage.getItem(draftStorageKey) || 'null'); } catch { return null; } };
+    const discard = () => { localStorage.removeItem(draftStorageKey); notice.hidden=true; };
+    const save = () => {
+      if (!dialog?.open || form.elements.id?.value) return;
+      const values=Object.fromEntries(new FormData(form));
+      if (!Object.values(values).some(value => String(value || '').trim())) return;
+      localStorage.setItem(draftStorageKey, JSON.stringify({ savedAt:Date.now(), values }));
+    };
+    form.addEventListener('input', () => { clearTimeout(timer); timer=setTimeout(save,450); }, true);
+    form.addEventListener('change', () => { clearTimeout(timer); timer=setTimeout(save,450); }, true);
+    notice.querySelector('[data-draft-discard]').onclick=discard;
+    notice.querySelector('[data-draft-restore]').onclick=()=>{const draft=read(); if(!draft) return; Object.entries(draft.values || {}).forEach(([name,value])=>{if(form.elements[name] && form.elements[name].type !== 'hidden') form.elements[name].value=value;}); notice.hidden=true; form.dispatchEvent(new Event('input',{bubbles:true}));};
+    window.addEventListener('gport:process-open', event => { if (event.detail?.editing) { notice.hidden=true; return; } notice.hidden=!read(); });
+    window.addEventListener('gport:process-saved', () => discard());
   };
 
   const createMobileNav = () => {
@@ -98,10 +181,13 @@
       const summary = payload.summary || {};
       const roleNames = { admin:'Administrador', analyst:'Analista', vgm:'VGM', liberacao:'Liberação', financeiro:'Financeiro' };
       byId('dashboardIntro').textContent = `Painel de ${roleNames[payload.role] || 'operação'} · dados carregados sob suas permissões.`;
-      const cards = [
-        ['Prazos hoje', summary.due_today || 0], ['Prazos próximos', summary.due_next_7_days || 0],
-        ['VGM pendentes', summary.vgm_pending || 0], ['Liberações pendentes', summary.release_pending || 0]
-      ];
+      const cardSets = {
+        admin: [['Processos na visão',summary.total || 0],['Prazos hoje',summary.due_today || 0],['VGM pendentes',summary.vgm_pending || 0],['Liberações pendentes',summary.release_pending || 0]],
+        analyst: [['Meus processos',summary.total || 0],['Prazos hoje',summary.due_today || 0],['VGM pendentes',summary.vgm_pending || 0],['Liberações pendentes',summary.release_pending || 0]],
+        vgm: [['VGM pendentes',summary.vgm_pending || 0],['Prazos hoje',summary.due_today || 0],['Próximos 7 dias',summary.due_next_7_days || 0],['Processos na visão',summary.total || 0]],
+        liberacao: [['Liberações pendentes',summary.release_pending || 0],['Prazos vencidos',summary.overdue || 0],['Prazos hoje',summary.due_today || 0],['Processos na visão',summary.total || 0]]
+      };
+      const cards = cardSets[payload.role] || cardSets.analyst;
       kpis.innerHTML = cards.map(([label, value]) => `<article class="dashboard-kpi"><span>${label}</span><strong>${value}</strong></article>`).join('');
       byId('dashboardRecent').replaceChildren(...(payload.recent || []).map(item => {
         const row = document.createElement('button'); row.type='button'; row.className='dashboard-row';
