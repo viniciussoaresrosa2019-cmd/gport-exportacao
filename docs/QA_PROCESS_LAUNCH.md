@@ -2,6 +2,31 @@
 
 Data da revisão local: 02/08/2026. Escopo: código e testes automatizados locais. Nenhum dado publicado foi consultado, criado, alterado ou excluído.
 
+## Execução em homologação — 02/08/2026
+
+Ambiente isolado: `gport-exportacao-hml`. Foram usadas somente contas e dados fictícios. O roteiro `scripts/qa-process-launch-hml.ps1` criou um exportador e um processo com prefixo `QA-HML` e removeu ambos ao final.
+
+| Cenário executado | Resultado |
+|---|---|
+| Health check | Aprovado (`200`) |
+| Processos sem sessão | Bloqueado corretamente (`401`) |
+| Login dos quatro perfis de teste | Aprovado (`200`) |
+| Criação de exportador de teste | Aprovado (`201`) |
+| Processo incompleto | Rejeitado corretamente (`400`) |
+| Criação de processo FCL válido | Aprovado (`201`) |
+| Reenvio com a mesma chave de idempotência | Mesmo processo retornado (`200`) |
+| Analista visualiza processo compartilhado | Aprovado (`200`) |
+| Primeira edição do processo | Aprovada (`200`) |
+| Segunda edição com versão antiga | Bloqueada corretamente (`409`) |
+| Analista altera VGM/liberação | Bloqueado corretamente (`403`) |
+| VGM altera status de VGM | Aprovado (`200`) |
+| Liberação altera status de liberação | Aprovado (`200`) |
+| Mutação sem token CSRF | Bloqueada corretamente (`403`) |
+| Evento de atualização em tempo real | Recebido em outra sessão (`True`) |
+| Timeout simulado seguido de reenvio | Exatamente um processo persistido (`1`) |
+| Carga controlada | 10 de 10 lançamentos concluídos; limpeza aprovada |
+| Limpeza de processo e exportador de teste | Aprovada (`204`) |
+
 ## Regras mapeadas
 
 | Item | Regra validada no servidor |
@@ -24,20 +49,18 @@ Data da revisão local: 02/08/2026. Escopo: código e testes automatizados locai
 | Criação | LCL, MAPA, RUC manual e Apenas DU-E | Alta | Coberto por testes de regressão. |
 | Validação | Vazio, espaço, `.` ou `*` em campo obrigatório | Alta | Aprovado na validação de servidor. |
 | Validação | Contêiner fora de `AAAA9999999` | Alta | Aprovado na validação de servidor. |
-| Concorrência | Edição com versão antiga | Alta | API responde `409`; requer confirmação em homologação. |
-| Concorrência | Clique duplo, retry e timeout após envio | Alta | Chave de idempotência adicionada; requer confirmação em homologação. |
+| Concorrência | Edição com versão antiga | Alta | Aprovado na homologação (`409`). |
+| Concorrência | Clique duplo, retry e timeout após envio | Alta | Aprovado na homologação, sem duplicidade. |
 | Segurança | Sem sessão, CSRF, payload acima de 256 KB, CORS | Alta | Coberto pela suíte existente. |
 | Segurança | Injeção e XSS | Média | Queries são parametrizadas e interface escapa valores; requer teste ativo em homologação. |
 | Interface | Desktop, celular, teclado, leitor de tela, zoom | Média | Não executado: requer navegador e ambiente de homologação. |
-| Desempenho | Latência, usuários simultâneos, CPU/RAM e banco | Média | Não executado: requer métricas e ambiente de homologação. |
+| Desempenho | Dez lançamentos simultâneos | Média | Aprovado na homologação; é teste de fumaça, não substitui carga prolongada com métricas de CPU/RAM/banco. |
 
 ## Achados
 
 ### Alto — requer validação antes da publicação
 
-1. **Sem ambiente de homologação separado informado.** Não é seguro executar concorrência, perda de conexão, duplicação e exclusão no site publicado. Crie uma instância Render e um projeto Supabase dedicados a teste, com contas e dados fictícios.
-
-2. **Duplicidade por reenvio:** corrigida no código com `idempotency_key`. A migração deve ser aplicada antes do deploy e validada com duas abas ou uma repetição de requisição no ambiente de homologação.
+1. **Duplicidade por reenvio:** corrigida no código com `idempotency_key` e confirmada por reenvio controlado após timeout na homologação. A concorrência por versões também foi confirmada com `409`.
 
 ### Médio
 
@@ -65,7 +88,7 @@ Data da revisão local: 02/08/2026. Escopo: código e testes automatizados locai
 
 - [ ] `npm test` e `npm run security:check` aprovados.
 - [ ] Migração `2026-08-02-process-idempotency.sql` aplicada em homologação e produção.
-- [ ] Cenários de concorrência e recuperação de rede aprovados em homologação.
+- [x] Reenvio após timeout aprovado em homologação, sem duplicidade.
 - [ ] Não há erro recorrente no Render nem no Supabase.
 - [ ] O responsável aprova a decisão sobre auditoria de exclusão e migrações no startup.
 
