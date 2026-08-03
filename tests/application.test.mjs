@@ -4,6 +4,13 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 const read = file => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+const interfaceFiles = [
+  'public/index.html',
+  'public/assets/legacy-ui.js',
+  'public/assets/app-runtime.js',
+  'public/assets/experience.js'
+];
+const readInterface = async () => (await Promise.all(interfaceFiles.map(read))).join('\n');
 
 test('API possui as proteções essenciais de autenticação e processos', async () => {
   const server = await read('src/server.js');
@@ -19,13 +26,13 @@ test('API normaliza valores numéricos no formato brasileiro para contêineres',
   assert.match(server, /const normalizeBrazilianNumber = value =>/);
   assert.match(server, /text\.replaceAll\('\.', ''\)\.replace\(',', '\.'\)/);
   assert.match(server, /tare: cleanNonNegative\(item\.tare, 999999, 'Tara', \{ integer: true, required: true \}\)/);
-  assert.match(await read('public/index.html'), /data-currency-value/);
-  assert.match(await read('public/index.html'), /formatCurrencyValue/);
+  assert.match(await readInterface(), /data-currency-value/);
+  assert.match(await readInterface(), /formatCurrencyValue/);
 });
 
 test('lançamento exige campos operacionais e dados individuais completos do contêiner', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   for (const required of ['isf_lacey', 'cleanRequiredDate', 'invoice_number', '4 letras e 7 dígitos', 'Informe os dados de todos os contêineres', 'cleanCnpj', '/^[.*]+$/']) {
     assert.ok(server.includes(required), `Validação obrigatória ausente: ${required}`);
   }
@@ -36,7 +43,7 @@ test('lançamento exige campos operacionais e dados individuais completos do con
 
 test('lançamento novo é idempotente contra clique duplo, timeout ou reenvio', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   const migration = await read('database/migrations/2026-08-02-process-idempotency.sql');
   assert.match(server, /const idempotencyKey = body\.idempotencyKey/);
   assert.match(server, /WHERE p\.idempotency_key=\$1/);
@@ -47,7 +54,7 @@ test('lançamento novo é idempotente contra clique duplo, timeout ou reenvio', 
 });
 
 test('novo lançamento não reaproveita o ID de um processo aberto anteriormente', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /editingProcessId = null;/);
   assert.match(html, /form\.elements\.id\.value = '';/);
   assert.match(html, /el\('newBtn'\)\.onclick = \(\) => open\(null\);/);
@@ -57,7 +64,7 @@ test('novo lançamento não reaproveita o ID de um processo aberto anteriormente
 
 test('RUC manual dispensa DU-E somente para o exportador marcado', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /ruc_manual BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(server, /required: !rucManual/);
   assert.match(server, /processClientSettings/);
@@ -68,7 +75,7 @@ test('RUC manual dispensa DU-E somente para o exportador marcado', async () => {
 
 test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mínimo', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   const migration = await read('database/migrations/2026-08-02-apenas-due.sql');
   assert.match(server, /due_only/);
   assert.match(server, /RUC manual e Apenas DU-E não podem ser usados juntos/);
@@ -81,14 +88,14 @@ test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mí
 
 test('dados operacionais são padronizados em maiúsculas sem alterar e-mail', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /const upperText = value => typeof value === 'string' \? value\.toLocaleUpperCase\('pt-BR'\) : value/);
   assert.match(server, /email: cleanText\(body\.email, 160, 'E-mail'\)/);
   assert.match(html, /const normalizeUppercaseInput = input => \{ input\.value = input\.value\.toLocaleUpperCase\('pt-BR'\); \}/);
 });
 
 test('edição restaura o porto de origem mesmo quando o banco o normaliza em maiúsculas', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /const normalizedPort = value => String\(value \|\| ''\)/);
   assert.match(html, /normalize\('NFD'\)/);
   assert.match(html, /const restoreOriginPort = value =>/);
@@ -112,7 +119,7 @@ test('sessão, CSRF, autorização e validação têm proteções regressivas', 
 
 test('administrador redefine senha por formulário confirmado e rota protegida', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /app\.patch\('\/api\/users\/:id', authenticate, adminOnly/);
   assert.match(server, /password_hash=COALESCE/);
   assert.match(server, /token_version=token_version \+ CASE WHEN \$3 IS NULL THEN 0 ELSE 1 END/);
@@ -124,7 +131,7 @@ test('administrador redefine senha por formulário confirmado e rota protegida',
 });
 
 test('criação de usuário mantém referência ao formulário após requisições assíncronas', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /const userForm = e\.currentTarget;/);
   assert.match(html, /new FormData\(userForm\)/);
   assert.match(html, /userForm\.reset\(\); toast\.success\('Usuário criado com sucesso\.'/);
@@ -144,7 +151,7 @@ test('configuração do banco não aceita TLS inseguro remotamente', async () =>
 
 test('CAPTCHA Turnstile é validado no servidor e não expõe a chave secreta', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   const env = await read('.env.example');
   assert.match(server, /turnstile\/v0\/siteverify/);
   assert.match(server, /TURNSTILE_SITE_KEY e TURNSTILE_SECRET_KEY devem ser configuradas juntas/);
@@ -154,14 +161,14 @@ test('CAPTCHA Turnstile é validado no servidor e não expõe a chave secreta', 
 });
 
 test('interface mantém a sintaxe JavaScript válida', async () => {
-  const html = await read('public/index.html');
-  const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match => match[1]).join('\n');
-  const result = spawnSync(process.execPath, ['--check'], { input: scripts, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stderr || 'Falha de sintaxe na interface.');
+  for (const file of interfaceFiles.filter(item => item.endsWith('.js'))) {
+    const result = spawnSync(process.execPath, ['--check'], { input: await read(file), encoding: 'utf8' });
+    assert.equal(result.status, 0, `${file}: ${result.stderr || 'Falha de sintaxe na interface.'}`);
+  }
 });
 
 test('interface possui notificações toast acessíveis para ações principais', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   const css = await read('public/assets/gport.css');
   const toastCss = await read('public/assets/toasts.css');
   assert.match(html, /id="toastRegion"/);
@@ -172,23 +179,33 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(html, /toast\.success\('Status de VGM atualizado\.'/);
   assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
   assert.match(html, /toast\.warning\('Selecione qual dado deseja pesquisar\.'/);
-  assert.match(css, /\.toast-region\{position:fixed/);
+  assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(html, /toast__title/);
   assert.match(html, /toast__progress/);
   assert.match(toastCss, /body\.theme-dark #toastRegion \.toast/);
   assert.match(toastCss, /gport-toast-progress/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
-  assert.match(css, /prefers-reduced-motion:reduce/);
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
 });
 
-test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
+test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
+  assert.match(html, /assets\/legacy-ui\.js\?v=20260803\.1" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=20260803\.1" defer/);
+  assert.match(html, /assets\/experience\.js\?v=20260803\.1" defer/);
+  assert.doesNotMatch(html, /\sstyle="/i);
+  assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
+  assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
+});
+
+test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
+  const html = await readInterface();
   const experience = await read('public/assets/experience.js');
   assert.match(html, /<meta name="description" content="GPORT: gestão interna de processos de exportação/);
   assert.match(html, /id="toastRegion" class="toast-region" role="status"/);
   assert.match(experience, /header\.scope = 'col'/);
   assert.match(experience, /cell\.setAttribute\('headers', headers\[index\]\.id\)/);
+  assert.match(experience, /item\.textContent\.trim\(\)/);
 });
 
 test('migração de estabilidade está disponível', async () => {
@@ -230,7 +247,7 @@ test('rotas sensíveis exigem autenticação, CSRF e autorização no servidor',
 
 test('exclusão de exportador preserva processos vinculados', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /UPDATE clients SET active=false/);
   assert.match(server, /client\.deactivated/);
   assert.match(server, /ALTER TABLE clients ADD COLUMN IF NOT EXISTS active BOOLEAN/);
@@ -250,7 +267,7 @@ test('listagem paginada compartilha processos entre usuários autenticados', asy
 
 test('atualização em tempo real respeita a autorização de leitura', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /app\.get\('\/api\/events', authenticate/);
   assert.match(server, /app\.get\('\/api\/processes\/:id', authenticate/);
   assert.match(server, /app\.get\('\/api\/realtime\/metrics', authenticate, adminOnly/);
@@ -287,7 +304,7 @@ test('painel operacional e notificações usam endpoints autenticados e não car
 });
 
 test('interface progressiva mantém confirmações internas, skeleton e cartões móveis', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   const experience = await read('public/assets/experience.js');
   assert.match(html, /id="confirmDialog"/);
   assert.match(html, /const confirmAction =/);
@@ -301,7 +318,7 @@ test('interface progressiva mantém confirmações internas, skeleton e cartões
 });
 
 test('lançamento progressivo possui seis etapas, modo rápido e rascunho local sem enviar dados', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   const experience = await read('public/assets/experience.js');
   const css = await read('public/assets/experience.css');
   for (const title of ['Processo', 'Exportador', 'Rota', 'Documentos', 'Carga', 'Revisão']) assert.match(experience, new RegExp(`\\['${title}'`));
@@ -315,14 +332,14 @@ test('lançamento progressivo possui seis etapas, modo rápido e rascunho local 
 });
 
 test('filtro de processos é persistido somente durante a sessão do navegador', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /const processFilterSessionKey = 'gport:process-filter:v1'/);
   assert.match(html, /sessionStorage\.setItem\(processFilterSessionKey/);
   assert.match(html, /sessionStorage\.removeItem\(processFilterSessionKey\)/);
 });
 
 test('Prazos e Financeiro permanecem reversíveis, mas fora da navegação operacional atual', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /id="deadlineNav" href="#" hidden aria-hidden="true"/);
   assert.match(html, /id="financialNav" href="#financeiro" hidden aria-hidden="true"/);
   assert.match(html, /el\('financialNav'\)\.hidden = true/);
@@ -340,13 +357,13 @@ test('roteiro de homologação cobre painel e notificações sem usar produção
 
 test('VGM em draft ou enviado pelo cliente conta como enviado em todas as telas', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /IN \('Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'\)/);
   assert.match(html, /\['Sim','Enviado pelo Cliente','Enviando no DRAFT'\]\.includes\(p\.vgmStatus\)/);
 });
 
 test('liberação permite filtrar por porto e ordena pelo deadline crescente', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /releasePortFilter='all'/);
   assert.match(html, /releasePortFilters/);
   assert.match(html, /data-release-port/);
@@ -356,7 +373,7 @@ test('liberação permite filtrar por porto e ordena pelo deadline crescente', a
 
 test('processos podem ser filtrados por cliente e ordenados por cliente e lançamento', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /const clientId = String\(req\.query\.client \|\| ''\)\.trim\(\)/);
   assert.match(server, /const clientName = String\(req\.query\.clientName \|\| ''\)\.trim\(\)/);
   assert.match(server, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
@@ -373,7 +390,7 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
 
 test('processos históricos não somem quando referências falham e qualquer usuário autenticado pode cadastrar exportador', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /app\.post\('\/api\/clients', authenticate, clientCreatorOnly/);
   assert.match(server, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
   assert.match(html, /const remoteProcesses = await processRequest/);
@@ -389,7 +406,7 @@ test('cadastro de exportador reativa registro excluído e trata duplicidade sem 
 
 test('canal verde libera o processo automaticamente no servidor e na interface', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : requestedReleaseStatus/);
   assert.match(html, /if \(releaseChannel === 'Verde'\) \{ releaseStatus = 'Sim'/);
 });
@@ -401,7 +418,7 @@ test('edição preserva o identificador técnico único do processo', async () =
 });
 
 test('interface reutiliza dados de referência entre paginação e filtros', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /const referenceDataTtlMs = 5 \* 60 \* 1000/);
   assert.match(html, /refreshData\(\{ append=false, refreshReferenceData=false \} = \{\}\)/);
   assert.match(html, /const needsReferenceData = refreshReferenceData \|\| Date\.now\(\) >= referenceDataCache\.expiresAt/);
@@ -410,7 +427,7 @@ test('interface reutiliza dados de referência entre paginação e filtros', asy
 
 test('login e carregamento inicial não aguardam dados auxiliares para exibir processos', async () => {
   const server = await read('src/server.js');
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(server, /void clearLoginFailures\(req\)/);
   assert.match(html, /const referenceRequests = needsReferenceData/);
   assert.match(html, /Promise\.allSettled\(\[request\('\/api\/clients'\), request\('\/api\/assignees'\)\]\)/);
@@ -437,8 +454,11 @@ test('documentação operacional de backup, Entra e menor privilégio existe', a
 });
 
 test('capa do processo segue o modelo operacional com checklist e grade de contêineres', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
+  const runtime = await read('public/assets/app-runtime.js');
   assert.match(html, /function printCoverFromDocumentModel\(p\)/);
+  assert.match(runtime, /function printCoverFromDocumentModelBase\(p\)/);
+  assert.doesNotMatch(runtime, /function printOperationalCover\(p\)/);
   assert.match(html, /DEADLINES \/ PRAZOS/);
   assert.match(html, /CHECK LIST/);
   assert.match(html, /MERCADORIAS A SEREM EMBARCADAS/);
@@ -465,7 +485,7 @@ test('notificações de prazo são deduplicadas, configuráveis e respeitam o pe
 });
 
 test('histórico de edição apresenta campos e valores anterior e novo sem inserir HTML', async () => {
-  const html = await read('public/index.html');
+  const html = await readInterface();
   assert.match(html, /const labels=\{booking:'Booking'/);
   assert.match(html, /value\?\.before/);
   assert.match(html, /value\?\.after/);

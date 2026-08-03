@@ -1,20 +1,23 @@
-# Atlas Export Web
+# Interface web do GPORT
 
-Estrutura inicial da aplicação web que substituirá progressivamente o MVP em arquivo único.
+O conteúdo desta pasta é servido pelo Express em `src/server.js`.
 
-## Organização
+## Estrutura ativa
 
-- `index.html`: ponto de entrada do navegador.
-- `assets/app.css`: estilos globais e componentes visuais.
-- `assets/app.js`: inicialização da interface e futura comunicação com a API.
-- `docs/api-contract.md`: contrato inicial das rotas do backend.
+- `index.html`: marcação semântica e referências aos recursos; não contém JavaScript, estilos ou eventos inline.
+- `assets/gport.css`: tokens e componentes visuais básicos.
+- `assets/toasts.css`: única fonte dos estilos de notificação.
+- `assets/experience.css`: experiência progressiva, responsividade e classes estruturais.
+- `assets/legacy-ui.js`: camada visual compartilhada ainda necessária para compatibilidade.
+- `assets/app-runtime.js`: integração autenticada com API e fluxos operacionais atuais.
+- `assets/experience.js`: melhorias progressivas de formulário, dashboard, notificações e acessibilidade.
 
-Nesta primeira etapa a interface continua sendo estática. A próxima etapa é criar o servidor e banco de dados para que processos, usuários e clientes sejam compartilhados entre os computadores.
+Os scripts clássicos são carregados com `defer` e na ordem acima porque a camada atual ainda reutiliza funções da camada de compatibilidade. Não transforme um arquivo isolado em módulo ES sem antes eliminar essas dependências globais e executar os testes de regressão.
 
-Para abrir localmente, execute na pasta `atlas-export-web`:
+Para desenvolvimento, inicie o servidor completo na raiz do projeto:
 
 ```powershell
-python -m http.server 8080
+npm run start
 ```
 
-Depois acesse `http://localhost:8080`.
+Não abra `index.html` diretamente: autenticação, CSP, CSRF, API e substituição da chave Turnstile são aplicadas pelo servidor.

@@ -144,18 +144,21 @@
   };
 
   const createMobileNav = () => {
-    if (byId('mobileNav')) return;
     const original = document.querySelector('.side nav, .side');
     if (!original) return;
-    const entries = [...original.querySelectorAll('a,button')].filter(item => item.id && /Nav$/.test(item.id));
+    // Recria o menu depois que o perfil for carregado: links ocultos para o
+    // perfil atual e links auxiliares sem texto não podem virar botões móveis.
+    const entries = [...original.querySelectorAll('a,button')].filter(item => item.id && /Nav$/.test(item.id) && !item.hidden && item.textContent.trim());
     if (!entries.length) return;
-    const nav = document.createElement('nav'); nav.id = 'mobileNav'; nav.className = 'mobile-nav'; nav.setAttribute('aria-label', 'Navegação principal');
+    const nav = byId('mobileNav') || document.createElement('nav');
+    nav.id = 'mobileNav'; nav.className = 'mobile-nav'; nav.setAttribute('aria-label', 'Navegação principal'); nav.replaceChildren();
     entries.forEach(item => {
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = item.textContent.trim();
+      const label = item.textContent.trim();
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.setAttribute('aria-label', label);
       button.addEventListener('click', () => { item.click(); nav.querySelectorAll('button').forEach(b => b.classList.remove('is-active')); button.classList.add('is-active'); });
       nav.appendChild(button);
     });
-    document.body.appendChild(nav);
+    if (!nav.isConnected) document.body.appendChild(nav);
   };
 
   const api = async (url, options = {}) => {
@@ -254,6 +257,7 @@
       if (!loginDialog.open && !dashboardLoaded && byId('currentUserName')?.textContent !== 'Aguardando login') { showDashboard(); loadNotifications(); }
     }).observe(loginDialog, { attributes:true, attributeFilter:['open'] });
     byId('processNav')?.addEventListener('click', () => { if (dashboard()) dashboard().hidden = true; });
+    window.addEventListener('gport:role-tabs-updated', createMobileNav);
     window.addEventListener('gport:process-changed', () => { loadDashboard(); loadNotifications(); });
     window.setInterval(() => { if (!document.hidden) loadNotifications(); }, 90_000);
     observer.observe(document.body, { childList:true, subtree:true });
