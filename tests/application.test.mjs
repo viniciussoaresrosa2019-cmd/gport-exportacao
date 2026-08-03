@@ -312,6 +312,13 @@ test('filtro de processos é persistido somente durante a sessão do navegador',
   assert.match(html, /sessionStorage\.removeItem\(processFilterSessionKey\)/);
 });
 
+test('Prazos e Financeiro permanecem reversíveis, mas fora da navegação operacional atual', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /id="deadlineNav" href="#" hidden aria-hidden="true"/);
+  assert.match(html, /id="financialNav" href="#financeiro" hidden aria-hidden="true"/);
+  assert.match(html, /el\('financialNav'\)\.hidden = true/);
+});
+
 test('roteiro de homologação cobre painel e notificações sem usar produção', async () => {
   const script = await read('scripts/qa-process-launch-hml.ps1');
   assert.match(script, /gport-exportacao-hml\.onrender\.com/);

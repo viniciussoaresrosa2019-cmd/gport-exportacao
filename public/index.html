@@ -10,7 +10,7 @@
 </head>
 <body>
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-relevant="additions" aria-label="Notificações do sistema"></div>
-  <div class="shell"><aside class="side"><div class="brand"><img src="logo-gport.png" alt="GPORT Comércio Exterior"></div><nav><a id="processNav" class="active" href="#processos">▦ &nbsp; Processos</a><a href="#">◷ &nbsp; Prazos</a><a id="vgmNav" href="#vgm" hidden>▤ &nbsp; VGM</a><a id="vgmReportNav" hidden></a><a id="releaseNav" href="#liberacao" hidden>✓ &nbsp; Liberação</a><a id="followupNav" href="#followup" hidden>↻ &nbsp; Follow up</a><a id="financialNav" href="#financeiro" hidden>◈ &nbsp; Financeiro</a><a id="reportsNav" href="#relatorios">▱ &nbsp; Relatórios</a><a id="usersNav" href="#usuarios" hidden>◉ &nbsp; Usuários</a><a id="settingsNav" href="#configuracoes">⚙ &nbsp; Configurações</a></nav><div class="hint">Gestão interna de processos de exportação.</div></aside>
+  <div class="shell"><aside class="side"><div class="brand"><img src="logo-gport.png" alt="GPORT Comércio Exterior"></div><nav><a id="processNav" class="active" href="#processos">▦ &nbsp; Processos</a><a id="deadlineNav" href="#" hidden aria-hidden="true">◷ &nbsp; Prazos</a><a id="vgmNav" href="#vgm" hidden>▤ &nbsp; VGM</a><a id="vgmReportNav" hidden></a><a id="releaseNav" href="#liberacao" hidden>✓ &nbsp; Liberação</a><a id="followupNav" href="#followup" hidden>↻ &nbsp; Follow up</a><a id="financialNav" href="#financeiro" hidden aria-hidden="true">◈ &nbsp; Financeiro</a><a id="reportsNav" href="#relatorios">▱ &nbsp; Relatórios</a><a id="usersNav" href="#usuarios" hidden>◉ &nbsp; Usuários</a><a id="settingsNav" href="#configuracoes">⚙ &nbsp; Configurações</a></nav><div class="hint">Gestão interna de processos de exportação.</div></aside>
   <main><section id="processesPage"><div class="top"><div><p class="eyebrow">Operação de exportação · <span id="currentUserName">Aguardando login</span></p><h1>Planilha de processos</h1></div><div style="display:flex;gap:10px"><button class="btn secondary" id="clientsBtn">Clientes</button><button class="btn" id="newBtn">+ Novo processo</button></div></div>
     <section class="stats" style="grid-template-columns:repeat(2,1fr)"><div class="stat"><span>Processos cadastrados</span><strong id="totalProcesses">0</strong></div><div class="stat"><span>Deadline de draft nos próximos 7 dias</span><strong id="dueSoon">0</strong></div></section>
     <div class="toolbar"><select id="searchField" class="select" aria-label="Campo para filtrar"><option value="" selected disabled>Selecione o dado</option><option value="booking">BOOKING</option><option value="fatura">FATURA</option><option value="due">DUE</option><option value="navio">NAVIO</option><option value="agencia">AGÊNCIA</option><option value="porto">PORTO</option><option value="importador">IMPORTADOR</option></select><input id="search" class="search" placeholder="Informe o valor a pesquisar"><button class="btn" id="filterBtn" type="button">Filtrar</button><button class="btn secondary" id="clearFilterBtn" type="button">Limpar</button></div><p id="filterSummary" class="eyebrow" style="margin:-5px 0 14px" hidden></p><p id="realtimeNotice" class="eyebrow" aria-live="polite" hidden></p>
@@ -194,7 +194,10 @@
         el('vgmNav').hidden = !['admin', 'analyst', 'vgm'].includes(role); el('vgmReportNav').hidden = true; el('openVgmReportBtn').hidden = !['admin', 'vgm'].includes(role);
         el('releaseNav').hidden = !['admin', 'analyst', 'liberacao'].includes(role);
         el('followupNav').hidden = !['admin', 'analyst'].includes(role);
-        el('financialNav').hidden = !['admin', 'financeiro'].includes(role);
+        // Financeiro e Prazos permanecem no código para reversão futura, mas
+        // ficam fora da experiência operacional atual por decisão de produto.
+        el('financialNav').hidden = true;
+        el('deadlineNav').hidden = true;
         el('reportsNav').hidden = role !== 'admin';
         if (el('vgmNav').hidden && el('releaseNav').hidden) showProcessesPage();
       };
