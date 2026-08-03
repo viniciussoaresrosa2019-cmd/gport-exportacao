@@ -462,3 +462,22 @@ test('histórico de edição apresenta campos e valores anterior e novo sem inse
   assert.match(html, /value\?\.after/);
   assert.match(html, /details\.textContent=historyDetails\(item\)/);
 });
+
+test('observabilidade agrega somente métricas técnicas e protege o endpoint para administradores', async () => {
+  const server = await read('src/server.js');
+  const env = await read('.env.example');
+  assert.match(server, /const observability = \{ startedAt/);
+  assert.match(server, /recordApiMetric/);
+  assert.match(server, /app\.get\('\/api\/observability\/metrics', authenticate, adminOnly/);
+  assert.match(server, /averageMs/);
+  assert.match(server, /OBSERVABILITY_SLOW_REQUEST_MS/);
+  assert.match(env, /OBSERVABILITY_SLOW_REQUEST_MS=1000/);
+});
+
+test('roteiro de medição de homologação é passivo e não transmite credenciais', async () => {
+  const script = await read('scripts/measure-homologation.ps1');
+  assert.match(script, /Não faz login, não envia cookies e não altera dados/);
+  assert.match(script, /api\/health/);
+  assert.match(script, /experience\.js/);
+  assert.doesNotMatch(script, /-Headers|Authorization\s*=|WebSession|Credential|Password\s*=/i);
+});

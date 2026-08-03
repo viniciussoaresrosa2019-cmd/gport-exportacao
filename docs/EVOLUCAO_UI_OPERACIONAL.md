@@ -91,3 +91,71 @@ Estas métricas são de arquivos e testes estáticos; não substituem RUM/Lighth
 | Histórico visual completo de antes/depois na interface (a auditoria já guarda mudanças) | Alto | Médio |
 | Modelos de capa configuráveis por exportador | Médio | Médio |
 | Integrações oficiais de terminais/portos por API autorizada | Alto | Alto |
+
+## Fase seguinte — lançamento guiado e carregamento imediato
+
+Esta fase preserva os mesmos campos, rotas e regras de validação já usadas
+pela API. Nenhuma tabela, permissão ou processo existente foi removido.
+
+- O formulário agora reorganiza os campos existentes em seis etapas reais:
+  Processo, Exportador, Rota, Documentos, Carga e Revisão. A opção **Modo
+  rápido** deixa todas as etapas visíveis para usuários experientes.
+- O avanço de etapa valida somente os campos daquela seção, move o foco para
+  o primeiro campo inválido e atualiza a contagem de pendências.
+- Um rascunho local é salvo apenas para lançamentos novos, no navegador do
+  usuário. Ele não é enviado à API, pode ser restaurado ou descartado e é
+  removido após o primeiro salvamento bem-sucedido.
+- O login e a restauração de sessão agora fecham a tela de autenticação e
+  mostram o skeleton imediatamente. A lista e as referências são carregadas
+  em segundo plano; uma falha pontual não invalida a sessão recém-criada.
+- A busca de Processos é preservada durante a sessão do navegador. Ela é
+  removida por **Limpar** ou ao encerrar a sessão do navegador.
+- Follow up ganhou a ação **Ver histórico**, que mostra a linha do tempo da
+  auditoria no próprio sistema; o PDF continua disponível.
+
+### Métricas desta fase
+
+| Medida | Base anterior | Após esta fase | Interpretação |
+|---|---:|---:|---|
+| `index.html` | 182.506 B (medição HML) | 185.633 B local | Ainda é o principal gargalo de manutenção; esta fase não pretendeu uma extração grande e irreversível. |
+| `experience.js` cacheável | 12.262 B | 20.111 B | A lógica nova fica em arquivo cacheável, não em código adicional de tela. |
+| `experience.css` cacheável | 9.529 B | 12.609 B | Estilos de etapas, rascunho e histórico, reutilizados pelo cache. |
+| Testes automatizados | 37 | 39 | Todos aprovados localmente. |
+| `npm audit --omit=dev` | 0 vulnerabilidades | 0 vulnerabilidades | Resultado local em 03/08/2026. |
+
+### Itens que exigem decisão operacional antes de implementar
+
+1. **Antiduplicação entre duas abas ou dois usuários:** a API já é idempotente
+   para reenvio da mesma chave. Bloquear dois lançamentos intencionalmente
+   iguais exigiria definir a chave de unicidade de negócio (por exemplo,
+   exportador + booking + fatura), pois alguns fluxos podem admitir registros
+   semelhantes.
+2. **Lembretes de prazo:** antecedência, destinatários, janela de silêncio e
+   prioridade devem ser definidos antes de criar notificações automáticas.
+3. **Alertas externos e monitoramento:** Render/Supabase/Sentry ou serviço
+   equivalente exigem uma conta/configuração externa e responsável pelos
+   alertas.
+
+## Fase seguinte — lembretes de prazo e auditoria legível
+
+- A central de notificações agora cria lembretes persistentes de deadline ao
+  ser aberta: **vencido**, **em 24 horas** e **em 48 horas**. A regra segue o
+  perfil: Administrador vê os processos aplicáveis; Analista recebe os seus;
+  VGM recebe pendências de VGM; Liberação recebe pendências de liberação.
+- A chave de deduplicação inclui processo, estágio e data do prazo. Assim o
+  mesmo alerta é reaberto somente quando há uma mudança relevante de prazo,
+  sem multiplicar cartões a cada atualização da página.
+- A variável não sensível `DEADLINE_NOTIFICATIONS_ENABLED=true` permite pausar
+  essa geração sem publicar código. Para avisar pessoas que estejam
+  desconectadas, ainda será necessário decidir e configurar um agendador
+  externo (por exemplo, Render Cron); não há envio de e-mail implementado.
+- O histórico visual de edição passou a mostrar até cinco campos com valor
+  anterior e novo. O conteúdo continua renderizado por `textContent`, sem
+  interpretar valores do banco como HTML.
+
+### Limitação conhecida
+
+O botão **Desfazer exclusão** não foi adicionado: processos usam exclusão
+definitiva no fluxo atual. Torná-la reversível exige mudar a regra para
+exclusão lógica, migração e política de retenção; isso é uma decisão de
+negócio e não será ativado silenciosamente.

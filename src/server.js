@@ -10,6 +10,21 @@ import { query } from './db.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+// Métricas operacionais sem corpo de requisição, usuário, token ou parâmetros.
+// Permanecem em memória por instância; um provedor externo pode coletar o
+// endpoint administrativo caso seja configurado posteriormente.
+const slowRequestMs = Math.max(100, Number(process.env.OBSERVABILITY_SLOW_REQUEST_MS || 1000));
+const observability = { startedAt: new Date().toISOString(), total: 0, errors: 0, slow: 0, routes: new Map() };
+const metricRoute = request => String(request.route?.path || request.path || 'unknown')
+  .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:id');
+const recordApiMetric = (request, status, durationMs) => {
+  const route = metricRoute(request);
+  const current = observability.routes.get(route) || { count: 0, errors: 0, slow: 0, totalMs: 0, maxMs: 0 };
+  current.count += 1; current.totalMs += durationMs; current.maxMs = Math.max(current.maxMs, durationMs);
+  if (status >= 500) { current.errors += 1; observability.errors += 1; }
+  if (durationMs >= slowRequestMs) { current.slow += 1; observability.slow += 1; }
+  observability.total += 1; observability.routes.set(route, current);
+};
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) throw new Error('Defina um JWT_SECRET forte com pelo menos 32 caracteres.');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -56,6 +71,12 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Max-Age', '600');
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  const startedAt = performance.now();
+  res.once('finish', () => recordApiMetric(req, res.statusCode, Math.round(performance.now() - startedAt)));
   next();
 });
 app.use(express.json({ limit: '256kb', strict: true, type: 'application/json' }));
@@ -563,6 +584,14 @@ app.get('/api/events', authenticate, (req, res) => {
 });
 app.get('/api/realtime/metrics', authenticate, adminOnly, (_req, res) => {
   res.json({ ...realtimeMetrics, activeConnections: realtimeSubscribers.size });
+});
+app.get('/api/observability/metrics', authenticate, adminOnly, (_req, res) => {
+  const routes = [...observability.routes.entries()].map(([route, value]) => ({
+    route, count: value.count, errors: value.errors, slow: value.slow,
+    averageMs: value.count ? Math.round(value.totalMs / value.count) : 0, maxMs: value.maxMs
+  })).sort((a, b) => b.count - a.count || b.averageMs - a.averageMs);
+  res.json({ startedAt: observability.startedAt, slowRequestMs, total: observability.total,
+    errors: observability.errors, slow: observability.slow, routes });
 });
 // Resumo operacional enxuto: evita que o painel inicial carregue a lista
 // inteira de processos. As regras de leitura continuam centralizadas na API.

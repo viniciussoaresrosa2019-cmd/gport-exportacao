@@ -84,6 +84,18 @@ try {
   $release = Get-Login $ReleaseUser $releasePassword 'release'
   $adminCookies = $admin.Cookies; $adminCsrf = $admin.Csrf
 
+  # Dashboard e notificações são individuais, mas sempre passam pela mesma
+  # autenticação e pelas permissões do perfil conectado.
+  foreach ($account in @(
+    @{ Name = 'admin'; Session = $admin },
+    @{ Name = 'analyst'; Session = $analyst },
+    @{ Name = 'vgm'; Session = $vgm },
+    @{ Name = 'release'; Session = $release }
+  )) {
+    Assert-Status (Invoke-Api @('-b', $account.Session.Cookies, "$base/api/dashboard") "dashboard-$($account.Name)") '200' "dashboard_$($account.Name)"
+    Assert-Status (Invoke-Api @('-b', $account.Session.Cookies, "$base/api/notifications") "notifications-$($account.Name)") '200' "notificacoes_$($account.Name)"
+  }
+
   $suffix = [guid]::NewGuid().ToString('N').Substring(0, 10).ToUpperInvariant()
   $clientPayload = @{ name = "QA-HML EXPORTADOR $suffix"; taxId = '12.345.678/0001-95'; country = 'BRASIL'; rucManual = $false; dueOnly = $false }
   $clientRequest = Write-Json 'client' $clientPayload
@@ -175,6 +187,18 @@ try {
   $releaseRequest = Write-Json 'release-valid' @{ releaseStatus = 'Sim'; releaseDate = $today }
   $releaseOk = Invoke-Api @('-X', 'PATCH', '-b', $release.Cookies, '-H', "X-CSRF-Token: $($release.Csrf)", '-H', 'Content-Type: application/json', '--data-binary', "@$releaseRequest", "$base/api/processes/$processId/release") 'release-ok'
   Assert-Status $releaseOk '200' 'liberacao_atualiza_status'
+
+  # A alteração de VGM cria uma notificação deduplicada para o perfil VGM.
+  # Espera curta para a gravação assíncrona, sem repetir nem alterar o processo.
+  Start-Sleep -Milliseconds 350
+  $vgmNotifications = Invoke-Api @('-b', $vgm.Cookies, "$base/api/notifications") 'notifications-vgm-after-update'
+  Assert-Status $vgmNotifications '200' 'notificacoes_vgm_apos_atualizacao'
+  $notificationItems = @((Get-Content $vgmNotifications.Body -Raw | ConvertFrom-Json))
+  $vgmNotification = $notificationItems | Where-Object { $_.process_id -eq $processId -and $_.type -eq 'vgm' } | Select-Object -First 1
+  $results['notificacao_vgm_deduplicada'] = "$([bool]$vgmNotification) (esperado True)"
+  if (!$vgmNotification) { throw 'A atualização de VGM não gerou a notificação esperada.' }
+  $markRead = Invoke-Api @('-X', 'PATCH', '-b', $vgm.Cookies, '-H', "X-CSRF-Token: $($vgm.Csrf)", "$base/api/notifications/$($vgmNotification.id)/read") 'notification-read'
+  Assert-Status $markRead '204' 'notificacao_marcada_como_lida'
 
   # CSRF: mutação autenticada sem token deve ser bloqueada.
   $csrfDenied = Invoke-Api @('-X', 'DELETE', '-b', $admin.Cookies, "$base/api/processes/$processId") 'csrf-negado'
