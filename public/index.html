@@ -407,6 +407,30 @@
         if (p.dueEmissao && !dueIssueDate) throw new Error('Informe a data de emissão da DU-E no formato dd/mm.');
         return { processId:p.id || null, processNumber:p.numero || p.booking || `SEM-BOOKING-${Date.now()}`, displayProcessNumber:p.numeroProcesso || null, status:p.status, clientId:client?.id, importer:p.importador, invoice:p.fatura, booking:p.booking, dueNumber:p.due, dueIssueDate, rucNumber:p.ruc, originPort:p.origem, destinationPort:p.destino, vessel:p.navio, agency:p.agencia, carrier:p.armador, shipmentType:dueOnly ? 'FCL' : p.tipoEmbarque, blType:p.tipoBL, freightType:p.tipoFrete, mapaInspection:dueOnly ? false : p.vistoriaMapa === 'Sim', isfLacey:dueOnly ? false : p.isfLacey === 'Sim', deadline:dueOnly ? null : deadline, shippingDate:dueOnly ? null : shippingDate, containerCollectionDate:dueOnly ? null : containerCollectionDate, collectionTerminal:p.terminal, freeTimeDays:dueOnly ? null : (p.freetime === '' ? null : Number(p.freetime)), incoterm:dueOnly ? '' : p.incoterm, containerQuantity:dueOnly ? Math.max(1, numbers.length) : (p.qtdContainers === '' ? null : Number(p.qtdContainers)), containerType:dueOnly ? 'NÃO INFORMADO' : p.tipoContainer, containerDetails:numbers.map((number, i) => ({ number, tare:taras[i] || '', seal:seals[i] || '', invoiceNumber:notes[i] || '', new_seal:newSeals[i] || '' })), cubicMeters:dueOnly ? null : decimalForDatabase(p.metragem, 'A metragem cúbica'), netWeightKg:dueOnly ? null : decimalForDatabase(p.pesoLiquido, 'O peso líquido'), grossWeightKg:dueOnly ? null : decimalForDatabase(p.pesoBruto, 'O peso bruto'), packagesQuantity:dueOnly ? null : (p.volumes === '' ? null : Number(p.volumes)), cargoValue:dueOnly ? null : currencyForDatabase(p.valor), currency:dueOnly ? 'USD' : (p.moeda || 'USD') };
       };
+      // O banco normaliza o porto de origem para maiúsculas. Como as opções
+      // visíveis preservam acentos e capitalização, atribuir o texto direto ao
+      // <select> pode não encontrar uma opção e deixá-lo em branco na edição.
+      // A comparação abaixo ignora maiúsculas e acentos, sem alterar o valor
+      // originalmente armazenado para processos antigos.
+      const normalizedPort = value => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLocaleUpperCase('pt-BR');
+      const restoreOriginPort = value => {
+        const originSelect = form.elements.origem;
+        const origin = String(value || '').trim();
+        if (!originSelect || !origin) return;
+        const option = [...originSelect.options].find(item => normalizedPort(item.value || item.textContent) === normalizedPort(origin));
+        if (option) {
+          originSelect.value = option.value;
+          return;
+        }
+        // Preserva também portos cadastrados em versões anteriores que não
+        // estejam na lista padrão, evitando apagar o dado ao editar e salvar.
+        const legacyOption = new Option(origin, origin, false, true);
+        originSelect.add(legacyOption);
+      };
       const nativeOpenProcess = open;
       open = p => {
         // Os campos dos contêineres são gerados dinamicamente. Limpe a tela
@@ -415,6 +439,7 @@
         el('containerDetails').innerHTML = '';
         nativeOpenProcess(p);
         newProcessIdempotencyKey = p ? null : crypto.randomUUID();
+        if (p) restoreOriginPort(p.origem);
         syncDueOnlyLaunchFields();
         if (!p) return;
         form.elements.id.value = p.id;

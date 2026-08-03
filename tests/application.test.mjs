@@ -78,6 +78,15 @@ test('dados operacionais são padronizados em maiúsculas sem alterar e-mail', a
   assert.match(html, /const normalizeUppercaseInput = input => \{ input\.value = input\.value\.toLocaleUpperCase\('pt-BR'\); \}/);
 });
 
+test('edição restaura o porto de origem mesmo quando o banco o normaliza em maiúsculas', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /const normalizedPort = value => String\(value \|\| ''\)/);
+  assert.match(html, /normalize\('NFD'\)/);
+  assert.match(html, /const restoreOriginPort = value =>/);
+  assert.match(html, /if \(p\) restoreOriginPort\(p\.origem\)/);
+  assert.match(html, /const legacyOption = new Option\(origin, origin, false, true\)/);
+});
+
 test('sessão, CSRF, autorização e validação têm proteções regressivas', async () => {
   const server = await read('src/server.js');
   for (const required of [
