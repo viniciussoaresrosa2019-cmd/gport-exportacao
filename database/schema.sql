@@ -83,6 +83,20 @@ CREATE INDEX processes_created_at_idx ON processes(created_at DESC);
 CREATE INDEX processes_client_id_idx ON processes(client_id);
 CREATE INDEX processes_analyst_id_idx ON processes(analyst_id);
 
+CREATE TABLE user_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  process_id UUID REFERENCES processes(id) ON DELETE CASCADE,
+  type VARCHAR(40) NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  message VARCHAR(280) NOT NULL,
+  dedupe_key VARCHAR(180) NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id,dedupe_key)
+);
+CREATE INDEX user_notifications_user_unread_idx ON user_notifications(user_id,read_at,created_at DESC);
+
 CREATE TABLE audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id),

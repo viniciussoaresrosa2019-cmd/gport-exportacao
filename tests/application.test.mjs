@@ -123,6 +123,13 @@ test('administrador redefine senha por formulário confirmado e rota protegida',
   assert.match(html, /api\/users\/\$\{values\.userId\}/);
 });
 
+test('criação de usuário mantém referência ao formulário após requisições assíncronas', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /const userForm = e\.currentTarget;/);
+  assert.match(html, /new FormData\(userForm\)/);
+  assert.match(html, /userForm\.reset\(\); toast\.success\('Usuário criado com sucesso\.'/);
+});
+
 test('configuração do banco não aceita TLS inseguro remotamente', async () => {
   const db = await read('src/db.js');
   assert.match(db, /DB_SSL_REJECT_UNAUTHORIZED=false não é permitido em produção/);
@@ -251,6 +258,37 @@ test('atualização em tempo real respeita a autorização de leitura', async ()
   assert.match(html, /if \(isNewProcess\) processPagination\.total \+= 1/);
   assert.match(html, /data = before; render\(\); renderVgm\(\); throw error;/);
   assert.match(html, /data = before; render\(\); renderRelease\(\); throw error;/);
+});
+
+test('painel operacional e notificações usam endpoints autenticados e não carregam a lista inteira', async () => {
+  const server = await read('src/server.js');
+  const experience = await read('public/assets/experience.js');
+  const css = await read('public/assets/experience.css');
+  assert.match(server, /app\.get\('\/api\/dashboard', authenticate/);
+  assert.match(server, /LIMIT 6/);
+  assert.match(server, /app\.get\('\/api\/notifications', authenticate/);
+  assert.match(server, /app\.patch\('\/api\/notifications\/:id\/read', authenticate/);
+  assert.match(server, /CREATE TABLE IF NOT EXISTS user_notifications/);
+  assert.match(server, /UNIQUE\(user_id,dedupe_key\)/);
+  assert.match(experience, /loadDashboard/);
+  assert.match(experience, /loadNotifications/);
+  assert.match(experience, /gport:process-changed/);
+  assert.match(css, /\.dashboard-kpis/);
+  assert.match(css, /\.notification-panel/);
+});
+
+test('interface progressiva mantém confirmações internas, skeleton e cartões móveis', async () => {
+  const html = await read('public/index.html');
+  const experience = await read('public/assets/experience.js');
+  assert.match(html, /id="confirmDialog"/);
+  assert.match(html, /const confirmAction =/);
+  assert.match(html, /await confirmAction\('Excluir processo'/);
+  assert.match(html, /classList\.add\('is-skeleton'\)/);
+  assert.match(html, /assets\/experience\.css/);
+  assert.match(html, /assets\/experience\.js/);
+  assert.match(experience, /labelResponsiveTables/);
+  assert.match(experience, /enhanceProcessForm/);
+  assert.match(experience, /mobile-nav/);
 });
 
 test('VGM em draft ou enviado pelo cliente conta como enviado em todas as telas', async () => {

@@ -564,6 +564,67 @@ app.get('/api/events', authenticate, (req, res) => {
 app.get('/api/realtime/metrics', authenticate, adminOnly, (_req, res) => {
   res.json({ ...realtimeMetrics, activeConnections: realtimeSubscribers.size });
 });
+// Resumo operacional enxuto: evita que o painel inicial carregue a lista
+// inteira de processos. As regras de leitura continuam centralizadas na API.
+app.get('/api/dashboard', authenticate, asyncRoute(async (req, res) => {
+  const role = req.user.role;
+  const analystScope = role === 'analyst' ? ' AND p.analyst_id=$1' : '';
+  const params = role === 'analyst' ? [req.user.sub] : [];
+  const pendingVgmScope = role === 'analyst' ? ' AND p.analyst_id=$1' : '';
+  const [summary, recent, channels] = await Promise.all([
+    query(`SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE p.deadline IS NOT NULL AND p.deadline::date=CURRENT_DATE)::int AS due_today,
+      COUNT(*) FILTER (WHERE p.deadline IS NOT NULL AND p.deadline::date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7)::int AS due_next_7_days,
+      COUNT(*) FILTER (WHERE p.deadline IS NOT NULL AND p.deadline < NOW())::int AS overdue,
+      COUNT(*) FILTER (WHERE p.vgm_status NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT'))::int AS vgm_pending,
+      COUNT(*) FILTER (WHERE p.release_status <> 'Sim')::int AS release_pending
+      FROM processes p WHERE TRUE${analystScope}`, params),
+    query(`${processSelect} WHERE TRUE${analystScope} ORDER BY p.updated_at DESC,p.id DESC LIMIT 6`, params),
+    query(`SELECT COALESCE(p.release_channel,'Sem canal') AS name,COUNT(*)::int AS total
+      FROM processes p WHERE TRUE${analystScope} GROUP BY p.release_channel ORDER BY total DESC,name`, params)
+  ]);
+  const values = summary.rows[0] || {};
+  // Cada perfil recebe os indicadores mais relevantes; todos continuam sob as
+  // mesmas permissões de processos já definidas para o produto.
+  const priorities = role === 'vgm' ? ['vgm_pending','due_next_7_days']
+    : role === 'liberacao' ? ['release_pending','overdue']
+      : role === 'financeiro' ? ['due_next_7_days','total']
+        : ['due_today','overdue','vgm_pending','release_pending'];
+  res.json({ role, priorities, summary: values, recent: recent.rows, channels: channels.rows });
+}));
+
+const notificationTargetsFor = async ({ type, process, actorId }) => {
+  if (!process?.id) return [];
+  const roles = type === 'vgm' ? ['admin','vgm'] : type === 'release' ? ['admin','liberacao'] : ['admin','analyst'];
+  const recipients = await query('SELECT id,role FROM users WHERE active=TRUE AND role=ANY($1::varchar[])', [roles]);
+  return recipients.rows.filter(user => user.id !== actorId || type !== 'process').map(user => user.id);
+};
+const createNotification = async ({ userId, processId, type, title, message, dedupeKey }) => {
+  await query(`INSERT INTO user_notifications(user_id,process_id,type,title,message,dedupe_key)
+    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (user_id,dedupe_key) DO UPDATE
+    SET title=EXCLUDED.title,message=EXCLUDED.message,created_at=NOW(),read_at=NULL`, [userId, processId, type, title, message, dedupeKey]);
+};
+const notifyProcessChange = async (process, change, actorId = null) => {
+  const context = change === 'vgm-updated'
+    ? { type:'vgm', title:'Atualização de VGM', message:`VGM atualizado no processo ${process.booking || 'sem booking'}.` }
+    : change === 'release-updated'
+      ? { type:'release', title:'Atualização de liberação', message:`Liberação atualizada no processo ${process.booking || 'sem booking'}.` }
+      : { type:'process', title:'Processo atualizado', message:`O processo ${process.booking || 'sem booking'} recebeu uma atualização.` };
+  const recipients = await notificationTargetsFor({ type:context.type, process, actorId });
+  await Promise.all(recipients.map(userId => createNotification({ userId, processId:process.id, ...context, dedupeKey:`${context.type}:${process.id}` })));
+};
+app.get('/api/notifications', authenticate, asyncRoute(async (req, res) => {
+  const result = await query(`SELECT id,process_id,type,title,message,read_at,created_at
+    FROM user_notifications WHERE user_id=$1 ORDER BY read_at NULLS FIRST,created_at DESC LIMIT 30`, [req.user.sub]);
+  res.json(result.rows);
+}));
+app.patch('/api/notifications/:id/read', authenticate, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error:'Notificação inválida.' });
+  const result = await query('UPDATE user_notifications SET read_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING id', [req.params.id, req.user.sub]);
+  if (!result.rowCount) return res.status(404).json({ error:'Notificação não encontrada.' });
+  res.status(204).end();
+}));
 const processSearchFields = {
   todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
   booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
@@ -659,6 +720,7 @@ app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (r
     result = await insertProcess(retry);
   }
   await audit(req.user.sub, 'process.created', 'process', result.rows[0].id);
+  notifyProcessChange(result.rows[0], 'created', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'created');
   res.status(201).json(result.rows[0]);
 }));
@@ -678,6 +740,7 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
   const result = await query(`UPDATE processes SET ${set} WHERE id=$${values.length + 1} RETURNING *`, [...values, req.params.id]);
   await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes: processChanges(previous, p) });
+  notifyProcessChange(result.rows[0], 'updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'updated');
   res.json(result.rows[0]);
 }));
@@ -715,6 +778,7 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   await audit(req.user.sub, 'process.vgm_updated', 'process', req.params.id, { vgmStatus, physicalProcessAnalyst, vgmSentTo, vgmSentDate: result.rows[0].vgm_sent_date });
+  notifyProcessChange(result.rows[0], 'vgm-updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'vgm-updated');
   res.json(result.rows[0]);
 }));
@@ -751,6 +815,7 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
   `, [releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   await audit(req.user.sub, 'process.release_updated', 'process', req.params.id, { releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate: result.rows[0].release_date });
+  notifyProcessChange(result.rows[0], 'release-updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'release-updated');
   res.json(result.rows[0]);
 }));
@@ -916,6 +981,21 @@ const ensureProcessFields = async () => {
   await query('CREATE INDEX IF NOT EXISTS processes_client_created_at_idx ON processes(client_id, created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_vgm_status_idx ON processes(vgm_status)');
   await query('CREATE INDEX IF NOT EXISTS audit_log_entity_created_at_idx ON audit_log(entity, created_at DESC)');
+  // Caixa de notificações persistente e por usuário. A chave de deduplicação
+  // impede que o mesmo evento gere alertas repetidos em reconexões/reloads.
+  await query(`CREATE TABLE IF NOT EXISTS user_notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    process_id UUID REFERENCES processes(id) ON DELETE CASCADE,
+    type VARCHAR(40) NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    message VARCHAR(280) NOT NULL,
+    dedupe_key VARCHAR(180) NOT NULL,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id,dedupe_key)
+  )`);
+  await query('CREATE INDEX IF NOT EXISTS user_notifications_user_unread_idx ON user_notifications(user_id,read_at,created_at DESC)');
 };
 
 ensureProcessFields()
