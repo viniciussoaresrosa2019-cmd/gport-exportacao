@@ -614,7 +614,47 @@ const notifyProcessChange = async (process, change, actorId = null) => {
   const recipients = await notificationTargetsFor({ type:context.type, process, actorId });
   await Promise.all(recipients.map(userId => createNotification({ userId, processId:process.id, ...context, dedupeKey:`${context.type}:${process.id}` })));
 };
+// Os lembretes são calculados quando a central de notificações é consultada.
+// Isso evita um worker sempre ativo no plano atual e mantém o envio limitado a
+// processos que o perfil já pode consultar. Um cron pode chamar essa mesma
+// rotina no futuro, caso seja necessário avisar usuários desconectados.
+const deadlineNotificationsEnabled = process.env.DEADLINE_NOTIFICATIONS_ENABLED !== 'false';
+const createDeadlineNotificationsFor = async user => {
+  if (!deadlineNotificationsEnabled) return;
+  let scope = '';
+  const params = [];
+  if (user.role === 'analyst') {
+    scope = ' AND p.analyst_id=$1'; params.push(user.sub);
+  } else if (user.role === 'vgm') {
+    scope = " AND COALESCE(p.vgm_status,'Não') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')";
+  } else if (user.role === 'liberacao') {
+    scope = " AND COALESCE(p.release_status,'Não') <> 'Sim'";
+  } else if (user.role !== 'admin') {
+    return;
+  }
+  const result = await query(`SELECT p.id,p.booking,p.deadline::date AS deadline_date,
+      CASE
+        WHEN p.deadline::date < CURRENT_DATE THEN 'overdue'
+        WHEN p.deadline::date = CURRENT_DATE + 1 THEN '24h'
+        WHEN p.deadline::date = CURRENT_DATE + 2 THEN '48h'
+      END AS stage
+    FROM processes p
+    WHERE p.deadline IS NOT NULL
+      AND (p.deadline::date < CURRENT_DATE OR p.deadline::date IN (CURRENT_DATE + 1,CURRENT_DATE + 2))${scope}
+    ORDER BY p.deadline::date ASC,p.id ASC LIMIT 60`, params);
+  await Promise.all(result.rows.map(item => {
+    const booking = item.booking || 'sem booking';
+    const title = item.stage === 'overdue' ? 'Prazo vencido'
+      : item.stage === '24h' ? 'Prazo em 24 horas' : 'Prazo em 48 horas';
+    return createNotification({
+      userId: user.sub, processId: item.id, type: 'deadline', title,
+      message: `O deadline de draft do processo ${booking} requer atenção.`,
+      dedupeKey: `deadline:${item.stage}:${item.id}:${item.deadline_date}`
+    });
+  }));
+};
 app.get('/api/notifications', authenticate, asyncRoute(async (req, res) => {
+  await createDeadlineNotificationsFor(req.user);
   const result = await query(`SELECT id,process_id,type,title,message,read_at,created_at
     FROM user_notifications WHERE user_id=$1 ORDER BY read_at NULLS FIRST,created_at DESC LIMIT 30`, [req.user.sub]);
   res.json(result.rows);

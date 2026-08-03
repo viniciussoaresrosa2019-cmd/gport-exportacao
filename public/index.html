@@ -281,7 +281,12 @@
       const historyDetails = item => {
         let details = item.details || {}; try { details = typeof details === 'string' ? JSON.parse(details) : details; } catch { details = {}; }
         if (item.action === 'process.created') return 'Processo cadastrado no sistema.';
-        if (item.action === 'process.updated') return 'Dados do processo foram alterados.';
+        if (item.action === 'process.updated') {
+          const labels={booking:'Booking',client_id:'Exportador',importer:'Importador',invoice:'Fatura',deadline:'Deadline de draft',shipping_date:'Data de envio do draft',container_collection_date:'Data da coleta',origin_port:'Porto de origem',destination_port:'Porto de destino',vessel:'Navio',agency:'Agência',carrier:'Armador',due_number:'DUE',ruc_number:'RUC',status:'Status',bl_type:'Tipo de BL',freight_type:'Tipo de frete',incoterm:'Incoterm',container_quantity:'Quantidade de contêineres',container_type:'Tipo de contêiner',cargo_value:'Valor da carga',currency:'Moeda'};
+          const display=value=>{if(value===null||value===undefined||value==='')return '—';if(typeof value==='object')return 'Atualizado';return String(value).slice(0,80)};
+          const changes=details.changes&&typeof details.changes==='object'?Object.entries(details.changes):[];
+          return changes.length?changes.slice(0,5).map(([field,value])=>`${labels[field]||field}: ${display(value?.before)} → ${display(value?.after)}`).join(' · '):'Dados do processo foram alterados.';
+        }
         if (item.action === 'process.vgm_updated') return [details.vgmStatus && `Status VGM: ${details.vgmStatus}`, details.vgmSentTo && `Enviado para: ${details.vgmSentTo}`, details.physicalProcessAnalyst && `Processo físico com: ${details.physicalProcessAnalyst}`].filter(Boolean).join(' · ') || 'Controle de VGM atualizado.';
         if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
         if (item.action === 'process.followup_updated') return [details.followupStatus && `Status: ${details.followupStatus}`, details.followupNote && `Observação: ${details.followupNote}`].filter(Boolean).join(' · ') || 'Follow up atualizado.';

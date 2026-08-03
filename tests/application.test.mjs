@@ -440,3 +440,25 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont�
   assert.match(html, /cell\('EXPORTADOR:',exporterName,'exporter'\)/);
   assert.match(html, /NOVO LACRE/);
 });
+
+test('notificações de prazo são deduplicadas, configuráveis e respeitam o perfil operacional', async () => {
+  const server = await read('src/server.js');
+  const env = await read('.env.example');
+  assert.match(server, /DEADLINE_NOTIFICATIONS_ENABLED/);
+  assert.match(server, /createDeadlineNotificationsFor/);
+  assert.match(server, /deadline:.*item\.id.*item\.deadline_date/);
+  assert.match(server, /CURRENT_DATE \+ 1/);
+  assert.match(server, /CURRENT_DATE \+ 2/);
+  assert.match(server, /p\.analyst_id=\$1/);
+  assert.match(server, /COALESCE\(p\.vgm_status,'Não'\)/);
+  assert.match(server, /COALESCE\(p\.release_status,'Não'\)/);
+  assert.match(env, /DEADLINE_NOTIFICATIONS_ENABLED=true/);
+});
+
+test('histórico de edição apresenta campos e valores anterior e novo sem inserir HTML', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /const labels=\{booking:'Booking'/);
+  assert.match(html, /value\?\.before/);
+  assert.match(html, /value\?\.after/);
+  assert.match(html, /details\.textContent=historyDetails\(item\)/);
+});
