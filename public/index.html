@@ -439,7 +439,19 @@
         el('containerDetails').innerHTML = '';
         nativeOpenProcess(p);
         newProcessIdempotencyKey = p ? null : crypto.randomUUID();
-        if (p) restoreOriginPort(p.origem);
+        if (!p) {
+          // Não reutilize nenhum identificador do último processo salvo. O
+          // reset do navegador não é suficiente em todos os fluxos de modal,
+          // pois campos hidden podem manter o valor alterado por JavaScript.
+          // Sem essa limpeza um lançamento novo poderia virar um PATCH e
+          // sobrescrever o processo aberto anteriormente.
+          editingProcessId = null;
+          form.elements.id.value = '';
+          form.elements.createdAt.value = '';
+          form.elements.numeroProcesso.value = '';
+        } else {
+          restoreOriginPort(p.origem);
+        }
         syncDueOnlyLaunchFields();
         if (!p) return;
         form.elements.id.value = p.id;
@@ -451,6 +463,9 @@
         form.elements.coleta.value = dateForField(p.coleta);
         syncDueOnlyLaunchFields();
       };
+      // Garante que o botão sempre use a abertura reforçada acima, mesmo se
+      // outro script tiver registrado um manipulador anterior.
+      el('newBtn').onclick = () => open(null);
       let processPagination = { offset:0, limit:50, hasMore:false, total:0 };
       const updateLoadMoreButton = () => {
         let button = el('loadMoreProcesses');
@@ -747,7 +762,9 @@
       // A validação é tratada pela própria rotina de salvamento, que apresenta
       // mensagens claras. Isso evita o bloqueio silencioso do navegador.
       form.noValidate = true;
-      const processIdFromForm = () => String(form.elements.id?.value || '').trim();
+      // `editingProcessId` é a única fonte de verdade para decidir entre POST
+      // (novo) e PATCH (edição). O campo hidden é mantido apenas para a tela.
+      const processIdFromForm = () => String(editingProcessId || '').trim();
       const showProcessSaveState = text => { const button = form.querySelector('button[type="submit"]'); if (button) button.textContent = text; };
       const persistProcessForm = async ({ closeAfter = false, quiet = false } = {}) => {
         if (processSaveBusy) { processSavePending = true; return false; }
@@ -768,6 +785,9 @@
         }
         const values = Object.fromEntries(new FormData(form));
         const processId = processIdFromForm();
+        // Nunca permita que um ID residual de um formulário anterior seja
+        // enviado em uma criação nova.
+        if (!processId) values.id = '';
         values.updatedAt = data.find(item => item.id === processId)?.updatedAt || null;
         const isNewProcess = !processId;
         // Um autosave só existe na edição. Um lançamento novo é salvo apenas

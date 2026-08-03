@@ -46,6 +46,15 @@ test('lançamento novo é idempotente contra clique duplo, timeout ou reenvio', 
   assert.match(migration, /processes_idempotency_key_unique_idx/);
 });
 
+test('novo lançamento não reaproveita o ID de um processo aberto anteriormente', async () => {
+  const html = await read('public/index.html');
+  assert.match(html, /editingProcessId = null;/);
+  assert.match(html, /form\.elements\.id\.value = '';/);
+  assert.match(html, /el\('newBtn'\)\.onclick = \(\) => open\(null\);/);
+  assert.match(html, /const processIdFromForm = \(\) => String\(editingProcessId \|\| ''\)\.trim\(\);/);
+  assert.match(html, /if \(!processId\) values\.id = '';/);
+});
+
 test('RUC manual dispensa DU-E somente para o exportador marcado', async () => {
   const server = await read('src/server.js');
   const html = await read('public/index.html');
@@ -83,7 +92,7 @@ test('edição restaura o porto de origem mesmo quando o banco o normaliza em ma
   assert.match(html, /const normalizedPort = value => String\(value \|\| ''\)/);
   assert.match(html, /normalize\('NFD'\)/);
   assert.match(html, /const restoreOriginPort = value =>/);
-  assert.match(html, /if \(p\) restoreOriginPort\(p\.origem\)/);
+  assert.match(html, /else \{\s*restoreOriginPort\(p\.origem\);/);
   assert.match(html, /const legacyOption = new Option\(origin, origin, false, true\)/);
 });
 
