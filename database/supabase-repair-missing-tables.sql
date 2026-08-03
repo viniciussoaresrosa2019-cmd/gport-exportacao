@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS clients (
   email VARCHAR(160),
   country VARCHAR(80),
   address TEXT,
+  ruc_manual BOOLEAN NOT NULL DEFAULT FALSE,
+  due_only BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS processes (
   bl_type VARCHAR(40),
   freight_type VARCHAR(40),
   mapa_inspection BOOLEAN NOT NULL DEFAULT FALSE,
+  isf_lacey BOOLEAN NOT NULL DEFAULT FALSE,
   vgm_status VARCHAR(30) NOT NULL DEFAULT 'Não' CHECK (vgm_status IN ('Não', 'Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT')),
   physical_process_analyst VARCHAR(120),
   container_quantity INTEGER CHECK (container_quantity >= 0),

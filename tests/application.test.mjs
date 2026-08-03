@@ -34,6 +34,42 @@ test('lançamento exige campos operacionais e dados individuais completos do con
   }
 });
 
+test('lançamento novo é idempotente contra clique duplo, timeout ou reenvio', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  const migration = await read('database/migrations/2026-08-02-process-idempotency.sql');
+  assert.match(server, /const idempotencyKey = body\.idempotencyKey/);
+  assert.match(server, /WHERE p\.idempotency_key=\$1/);
+  assert.match(server, /analyst_id,idempotency_key\) VALUES/);
+  assert.match(html, /newProcessIdempotencyKey/);
+  assert.match(html, /payload\.idempotencyKey/);
+  assert.match(migration, /processes_idempotency_key_unique_idx/);
+});
+
+test('RUC manual dispensa DU-E somente para o exportador marcado', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /ruc_manual BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(server, /required: !rucManual/);
+  assert.match(server, /processClientSettings/);
+  assert.match(html, /name="rucManual" type="checkbox"/);
+  assert.match(html, /rucManual: c\.ruc_manual === true/);
+  assert.match(html, /data-due-label/);
+});
+
+test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mínimo', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  const migration = await read('database/migrations/2026-08-02-apenas-due.sql');
+  assert.match(server, /due_only/);
+  assert.match(server, /RUC manual e Apenas DU-E não podem ser usados juntos/);
+  assert.match(server, /\{ rucManual = false, dueOnly = false \}/);
+  assert.match(html, /Apenas DU-E/);
+  assert.match(html, /syncDueOnlyLaunchFields/);
+  assert.match(html, /containerType:dueOnly \? 'NÃO INFORMADO'/);
+  assert.match(migration, /ALTER COLUMN deadline DROP NOT NULL/);
+});
+
 test('dados operacionais são padronizados em maiúsculas sem alterar e-mail', async () => {
   const server = await read('src/server.js');
   const html = await read('public/index.html');
@@ -254,6 +290,18 @@ test('interface reutiliza dados de referência entre paginação e filtros', asy
   assert.match(html, /refreshData\(\{ append=false, refreshReferenceData=false \} = \{\}\)/);
   assert.match(html, /const needsReferenceData = refreshReferenceData \|\| Date\.now\(\) >= referenceDataCache\.expiresAt/);
   assert.match(html, /refreshData\(\{ refreshReferenceData:true \}\)/);
+});
+
+test('login e carregamento inicial não aguardam dados auxiliares para exibir processos', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /void clearLoginFailures\(req\)/);
+  assert.match(html, /const referenceRequests = needsReferenceData/);
+  assert.match(html, /Promise\.allSettled\(\[request\('\/api\/clients'\), request\('\/api\/assignees'\)\]\)/);
+  assert.match(html, /const remoteProcesses = await processRequest/);
+  assert.match(html, /applyProcessPage\(remoteProcesses, append\)/);
+  assert.match(html, /showProcessLoading\(\)/);
+  assert.match(html, /void referenceRequests\.then/);
 });
 
 test('rate limit distribuído tem fallback local e não exige segredo no cliente', async () => {

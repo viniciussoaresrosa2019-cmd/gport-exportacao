@@ -281,7 +281,10 @@ app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
   const user = (await query('SELECT * FROM users WHERE LOWER(username)=LOWER($1)', [username])).rows[0];
   const verified = await bcrypt.compare(password, user?.password_hash || dummyPasswordHash);
   if (!user || !user.active || !verified) { await registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
-  await clearLoginFailures(req);
+  // A limpeza do contador distribuído não precisa atrasar a resposta de uma
+  // autenticação válida. Caso a infraestrutura de rate limit esteja lenta,
+  // o contador expira normalmente e a proteção continua ativa.
+  void clearLoginFailures(req);
   setSession(res, user);
   res.json({ user: publicUser(user) });
 }));
@@ -404,7 +407,7 @@ const validatedClient = body => ({
   contact: upperText(cleanText(body.contact, 120, 'Contato')), phone: cleanText(body.phone, 50, 'Telefone'),
   // E-mail não é convertido: embora normalmente não diferencie maiúsculas,
   // preservamos o formato informado para compatibilidade com provedores.
-  email: cleanText(body.email, 160, 'E-mail'), country: upperText(cleanText(body.country, 80, 'País')), address: upperText(cleanText(body.address, 500, 'Endereço'))
+  email: cleanText(body.email, 160, 'E-mail'), country: upperText(cleanText(body.country, 80, 'País')), address: upperText(cleanText(body.address, 500, 'Endereço')), rucManual: body.rucManual === true, dueOnly: body.dueOnly === true
 });
 app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req, res) => {
   const c = validatedClient(req.body);
@@ -412,14 +415,15 @@ app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req,
   // nome for cadastrado novamente, reativamos o registro existente em vez de
   // devolver uma violação de chave única como erro interno.
   const existing = (await query('SELECT id,active FROM clients WHERE LOWER(name)=LOWER($1) LIMIT 1', [c.name])).rows[0];
+  if (c.rucManual && c.dueOnly) return res.status(400).json({ error: 'RUC manual e Apenas DU-E não podem ser usados juntos.' });
   if (existing) {
     if (existing.active) return res.status(409).json({ error: 'Este exportador já está cadastrado.' });
-    const restored = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,active=true WHERE id=$8 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, existing.id]);
+    const restored = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,ruc_manual=$8,due_only=$9,active=true WHERE id=$10 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, existing.id]);
     await audit(req.user.sub, 'client.reactivated', 'client', existing.id);
     publishReferenceChange('clients', 'reactivated');
     return res.status(200).json(restored.rows[0]);
   }
-  const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address]);
+  const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address,ruc_manual,due_only) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
   publishReferenceChange('clients', 'created');
   res.status(201).json(result.rows[0]);
@@ -427,7 +431,8 @@ app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req,
 app.patch('/api/clients/:id', authenticate, clientManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
   const c = validatedClient(req.body);
-  const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7 WHERE id=$8 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, req.params.id]);
+  if (c.rucManual && c.dueOnly) return res.status(400).json({ error: 'RUC manual e Apenas DU-E não podem ser usados juntos.' });
+  const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,ruc_manual=$8,due_only=$9 WHERE id=$10 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Exportador não encontrado.' });
   await audit(req.user.sub, 'client.updated', 'client', req.params.id);
   publishReferenceChange('clients', 'updated');
@@ -466,32 +471,32 @@ const validateContainerDetails = (value, quantity, mapaInspection) => {
 const toDbProcess = body => ({
   process_number: body.processNumber, display_process_number: body.displayProcessNumber, status: body.status || 'Em andamento', client_id: body.clientId, importer: body.importer, invoice: body.invoice, booking: body.booking, due_number: body.dueNumber, due_issue_date: body.dueIssueDate, ruc_number: body.rucNumber, origin_port: body.originPort, destination_port: body.destinationPort, vessel: body.vessel, agency: body.agency, carrier: body.carrier, deadline: body.deadline, shipping_date: body.shippingDate, container_collection_date: body.containerCollectionDate, collection_terminal: body.collectionTerminal, free_time_days: body.freeTimeDays, incoterm: body.incoterm, shipment_type: body.shipmentType, bl_type: body.blType, freight_type: body.freightType, mapa_inspection: body.mapaInspection === true, isf_lacey: body.isfLacey === true, container_quantity: body.containerQuantity, container_type: body.containerType, container_details: JSON.stringify(body.containerDetails || []), cubic_meters: body.cubicMeters, net_weight_kg: body.netWeightKg, gross_weight_kg: body.grossWeightKg, packages_quantity: body.packagesQuantity, cargo_value: body.cargoValue, currency: body.currency || 'USD'
 });
-const validatedProcess = raw => {
+const validatedProcess = (raw, { rucManual = false, dueOnly = false } = {}) => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Object.assign(new Error('Dados do processo inválidos.'), { status: 400 });
-  const shipmentType = cleanText(raw.shipmentType, 3, 'Tipo de embarque', { required: true });
+  const shipmentType = dueOnly ? 'FCL' : cleanText(raw.shipmentType, 3, 'Tipo de embarque', { required: true });
   if (!['FCL', 'LCL'].includes(shipmentType)) throw Object.assign(new Error('Tipo de embarque inválido.'), { status: 400 });
-  if (typeof raw.mapaInspection !== 'boolean') throw Object.assign(new Error('MAPA é obrigatório.'), { status: 400 });
-  if (typeof raw.isfLacey !== 'boolean') throw Object.assign(new Error('ISF/LACEY é obrigatório.'), { status: 400 });
-  const mapaInspection = raw.mapaInspection;
-  const isfLacey = raw.isfLacey;
+  if (!dueOnly && typeof raw.mapaInspection !== 'boolean') throw Object.assign(new Error('MAPA é obrigatório.'), { status: 400 });
+  if (!dueOnly && typeof raw.isfLacey !== 'boolean') throw Object.assign(new Error('ISF/LACEY é obrigatório.'), { status: 400 });
+  const mapaInspection = dueOnly ? false : raw.mapaInspection;
+  const isfLacey = dueOnly ? false : raw.isfLacey;
   const containerQuantity = shipmentType === 'LCL' ? null : cleanNonNegative(raw.containerQuantity, 100, 'Quantidade de contêineres', { integer: true, required: true });
-  const incoterm = cleanText(raw.incoterm, 10, 'Incoterm', { required: true }).toUpperCase();
-  const currency = cleanText(raw.currency, 3, 'Moeda', { required: true }).toUpperCase();
-  if (!validIncoterms.has(incoterm)) throw Object.assign(new Error('Incoterm inválido.'), { status: 400 });
+  const incoterm = dueOnly ? '' : cleanText(raw.incoterm, 10, 'Incoterm', { required: true }).toUpperCase();
+  const currency = dueOnly ? 'USD' : cleanText(raw.currency, 3, 'Moeda', { required: true }).toUpperCase();
+  if (!dueOnly && !validIncoterms.has(incoterm)) throw Object.assign(new Error('Incoterm inválido.'), { status: 400 });
   if (!validCurrencies.has(currency)) throw Object.assign(new Error('Moeda inválida.'), { status: 400 });
   const result = {
     processNumber: cleanText(raw.processNumber, 80, 'Número técnico do processo'), displayProcessNumber: cleanText(raw.displayProcessNumber, 80, 'Número do processo'),
     status: cleanText(raw.status || 'Em andamento', 40, 'Status', { required: true }), clientId: cleanText(raw.clientId, 36, 'Exportador', { required: true }),
-    importer: cleanText(raw.importer, 200, 'Importador', { required: true }), invoice: cleanText(raw.invoice, 120, 'Fatura', { required: true }), booking: cleanText(raw.booking, 120, 'Booking', { required: true }),
-    dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: true }), dueIssueDate: cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: true }),
-    originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: true }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: true }),
-    vessel: cleanText(raw.vessel, 160, 'Navio', { required: true }), agency: cleanText(raw.agency, 160, 'Agência', { required: true }), carrier: cleanText(raw.carrier, 160, 'Armador', { required: true }),
-    deadline: cleanRequiredDate(raw.deadline, 'Deadline de draft'), shippingDate: cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: cleanRequiredDate(raw.containerCollectionDate, 'Data da coleta'),
-    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal da coleta', { required: true }), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true, required: true }), incoterm, shipmentType,
-    blType: cleanText(raw.blType, 80, 'Tipo de BL', { required: true }), freightType: cleanText(raw.freightType, 80, 'Tipo de frete', { required: true }), mapaInspection, isfLacey, containerQuantity,
-    containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType, 80, 'Tipo de contêiner', { required: true }), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica', { required: true }),
-    netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido', { required: true }), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto', { required: true }),
-    packagesQuantity: cleanNonNegative(raw.packagesQuantity, 99999999, 'Quantidade de pacotes', { integer: true, required: true }), cargoValue: cleanNonNegative(raw.cargoValue, 999999999999, 'Valor da carga', { required: true }), currency
+    importer: cleanText(raw.importer, 200, 'Importador', { required: !dueOnly }), invoice: cleanText(raw.invoice, 120, 'Fatura', { required: true }), booking: cleanText(raw.booking, 120, 'Booking', { required: true }),
+    dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: !rucManual }), dueIssueDate: (rucManual || dueOnly) ? cleanOptionalDate(raw.dueIssueDate, 'Data da DUE') : cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: !dueOnly }),
+    originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: !dueOnly }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: !dueOnly }),
+    vessel: cleanText(raw.vessel, 160, 'Navio', { required: true }), agency: cleanText(raw.agency, 160, 'Agência', { required: !dueOnly }), carrier: cleanText(raw.carrier, 160, 'Armador', { required: !dueOnly }),
+    deadline: dueOnly ? null : cleanRequiredDate(raw.deadline, 'Deadline de draft'), shippingDate: dueOnly ? null : cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: dueOnly ? null : cleanRequiredDate(raw.containerCollectionDate, 'Data da coleta'),
+    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal da coleta', { required: !dueOnly }), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true, required: !dueOnly }), incoterm, shipmentType,
+    blType: cleanText(raw.blType, 80, 'Tipo de BL', { required: !dueOnly }), freightType: cleanText(raw.freightType, 80, 'Tipo de frete', { required: !dueOnly }), mapaInspection, isfLacey, containerQuantity,
+    containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType || (dueOnly ? 'NÃO INFORMADO' : ''), 80, 'Tipo de contêiner', { required: true }), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica', { required: !dueOnly }),
+    netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido', { required: !dueOnly }), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto', { required: !dueOnly }),
+    packagesQuantity: cleanNonNegative(raw.packagesQuantity, 99999999, 'Quantidade de pacotes', { integer: true, required: !dueOnly }), cargoValue: cleanNonNegative(raw.cargoValue, 999999999999, 'Valor da carga', { required: !dueOnly }), currency
   };
   ['processNumber','displayProcessNumber','importer','invoice','booking','dueNumber','rucNumber','originPort','destinationPort','vessel','agency','carrier','collectionTerminal'].forEach(key => {
     result[key] = upperText(result[key]);
@@ -499,6 +504,12 @@ const validatedProcess = raw => {
   if (!validId(result.clientId)) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
   result.containerDetails = shipmentType === 'LCL' ? [] : validateContainerDetails(raw.containerDetails || [], containerQuantity, mapaInspection);
   return result;
+};
+const processClientSettings = async clientId => {
+  if (!validId(clientId)) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
+  const result = await query('SELECT ruc_manual,due_only FROM clients WHERE id=$1', [clientId]);
+  if (!result.rowCount) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
+  return { rucManual: result.rows[0].ruc_manual === true, dueOnly: result.rows[0].due_only === true };
 };
 const auditValue = value => {
   if (value === null || value === undefined) return null;
@@ -556,7 +567,7 @@ app.get('/api/realtime/metrics', authenticate, adminOnly, (_req, res) => {
 const processSearchFields = {
   todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
   booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
-  origem: 'p.origin_port', destino: 'p.destination_port', navio: 'p.vessel', analista: 'u.username',
+  origem: 'p.origin_port', destino: 'p.destination_port', porto: "CONCAT_WS(' ',p.origin_port,p.destination_port)", navio: 'p.vessel', analista: 'u.username',
   prazo: "TO_CHAR(p.deadline,'DD/MM')", envio: "TO_CHAR(p.shipping_date,'DD/MM')", coleta: "TO_CHAR(p.container_collection_date,'DD/MM')",
   agencia: 'p.agency', armador: 'p.carrier', tipoembarque: 'p.shipment_type', tipobl: 'p.bl_type', tipofrete: 'p.freight_type',
   vistoriomapa: "CASE WHEN p.mapa_inspection THEN 'Sim' ELSE 'Não' END", incoterm: 'p.incoterm', containers: "p.container_details::text",
@@ -601,6 +612,15 @@ app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
 }));
 app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };
+  // A chave é criada pelo navegador uma única vez por lançamento. Repetições
+  // por clique duplo, timeout ou reconexão devolvem o mesmo processo, sem
+  // proibir processos legítimos que compartilhem o mesmo Booking.
+  const idempotencyKey = body.idempotencyKey ? String(body.idempotencyKey).trim() : null;
+  if (idempotencyKey && !validId(idempotencyKey)) return res.status(400).json({ error: 'Identificador de envio inválido.' });
+  if (idempotencyKey) {
+    const existing = await query(`${processSelect} WHERE p.idempotency_key=$1`, [idempotencyKey]);
+    if (existing.rowCount) return res.status(200).json(existing.rows[0]);
+  }
   // A criação não aceita um identificador existente. Essa proteção impede que
   // qualquer falha da interface transforme uma edição em processo duplicado.
   if (String(body.processId || body.id || '').trim()) {
@@ -613,21 +633,30 @@ app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (r
     const booking = String(body.booking || '').trim();
     body.processNumber = booking || `SEM-BOOKING-${Date.now()}`;
   }
-  const p = toDbProcess(validatedProcess(body));
-  const values = processColumns.map(key => p[key] ?? null);
+  const p = toDbProcess(validatedProcess(body, await processClientSettings(body.clientId)));
   const placeholders = processColumns.map((_, i) => `$${i + 1}`).join(',');
+  const insertProcess = process => {
+    const processValues = processColumns.map(key => process[key] ?? null);
+    return query(
+      `INSERT INTO processes(${processColumns.join(',')},analyst_id,idempotency_key) VALUES(${placeholders},$${processValues.length + 1},$${processValues.length + 2}) RETURNING *`,
+      [...processValues, req.user.sub, idempotencyKey]
+    );
+  };
   let result;
   try {
-    result = await query(`INSERT INTO processes(${processColumns.join(',')},analyst_id) VALUES(${placeholders},$${values.length + 1}) RETURNING *`, [...values, req.user.sub]);
+    result = await insertProcess(p);
   } catch (error) {
+    if (idempotencyKey && error.code === '23505' && String(error.constraint || '').includes('idempotency_key')) {
+      const existing = await query(`${processSelect} WHERE p.idempotency_key=$1`, [idempotencyKey]);
+      if (existing.rowCount) return res.status(200).json(existing.rows[0]);
+    }
     // O booking pode ser usado em mais de um lançamento. process_number é um
     // identificador técnico único, então em caso de repetição mantemos o
     // booking visível e só acrescentamos um sufixo interno invisível ao usuário.
     if (error.code !== '23505' || error.constraint !== 'processes_process_number_key') throw error;
     body.processNumber = `${String(body.processNumber || 'SEM-BOOKING').slice(0, 55)}-${Date.now()}`;
     const retry = toDbProcess(body);
-    const retryValues = processColumns.map(key => retry[key] ?? null);
-    result = await query(`INSERT INTO processes(${processColumns.join(',')},analyst_id) VALUES(${placeholders},$${retryValues.length + 1}) RETURNING *`, [...retryValues, req.user.sub]);
+    result = await insertProcess(retry);
   }
   await audit(req.user.sub, 'process.created', 'process', result.rows[0].id);
   publishProcessChange(result.rows[0], 'created');
@@ -645,7 +674,7 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   // interface. Preservá-lo em toda edição evita colisões de unicidade quando
   // o usuário altera booking ou outros campos do processo.
   body.processNumber = previous.process_number;
-  const p = toDbProcess(validatedProcess(body)); const values = processColumns.map(key => p[key] ?? null);
+  const p = toDbProcess(validatedProcess(body, await processClientSettings(body.clientId))); const values = processColumns.map(key => p[key] ?? null);
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
   const result = await query(`UPDATE processes SET ${set} WHERE id=$${values.length + 1} RETURNING *`, [...values, req.params.id]);
   await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes: processChanges(previous, p) });
@@ -818,6 +847,13 @@ const ensureProcessFields = async () => {
   // não bloqueia o cadastro de um novo processo.
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0');
   await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE');
+  await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS ruc_manual BOOLEAN NOT NULL DEFAULT FALSE');
+  await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS due_only BOOLEAN NOT NULL DEFAULT FALSE');
+  // Exportadores "Apenas DU-E" não fornecem os dados operacionais completos.
+  // A API preserva a validação completa para os demais exportadores.
+  for (const column of ['importer', 'origin_port', 'destination_port', 'deadline']) {
+    await query(`ALTER TABLE processes ALTER COLUMN ${column} DROP NOT NULL`);
+  }
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS status VARCHAR(40) NOT NULL DEFAULT 'Em andamento'");
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS client_id UUID');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS importer VARCHAR(200)');
@@ -863,6 +899,8 @@ const ensureProcessFields = async () => {
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_status VARCHAR(15) NOT NULL DEFAULT 'Pendente'");
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_note VARCHAR(500)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS idempotency_key UUID');
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS processes_idempotency_key_unique_idx ON processes(idempotency_key) WHERE idempotency_key IS NOT NULL');
   await query(`CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
     BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$ LANGUAGE plpgsql`);
   await query(`DO $$ BEGIN

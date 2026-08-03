@@ -34,7 +34,7 @@ Execute esta lista em toda publicação. O deploy só deve seguir se todos os it
 - [ ] `GET /api/processes` sem login retorna `401`.
 - [ ] Uma origem externa não autorizada recebe `403` no preflight CORS.
 - [ ] Login, criação de processo, edição própria, VGM e liberação foram testados com dados de teste.
-- [ ] A tentativa de editar um processo de outro analista é rejeitada pelo servidor.
+- [ ] A regra aprovada de acesso compartilhado foi confirmada: usuários autenticados visualizam, criam, editam e excluem processos; VGM, liberação e follow-up continuam restritos aos perfis previstos.
 - [ ] Logs e alertas do Render não mostram erros recorrentes.
 
 ## Incidentes
