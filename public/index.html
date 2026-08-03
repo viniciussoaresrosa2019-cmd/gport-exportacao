@@ -952,9 +952,14 @@
         } catch (error) { toast.error(error.message); }
       };
       el('userForm').onsubmit = async e => {
-        e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget));
+        e.preventDefault();
+        // `currentTarget` pode se tornar null depois de um await. Guarde o
+        // formulário antes das requisições para que o reset final não quebre
+        // após o usuário ser criado com sucesso.
+        const userForm = e.currentTarget;
+        const v = Object.fromEntries(new FormData(userForm));
         if (v.password !== v.confirmPassword) return alert('A confirmação de senha não confere.');
-        try { await request('/api/users', { method:'POST', body:JSON.stringify({ username:v.username, password:v.password, role:'analyst' }) }); users = await request('/api/users'); renderUsers(); e.currentTarget.reset(); }
+        try { await request('/api/users', { method:'POST', body:JSON.stringify({ username:v.username, password:v.password, role:'analyst' }) }); users = await request('/api/users'); renderUsers(); userForm.reset(); toast.success('Usuário criado com sucesso.'); }
         catch (error) { alert(error.message); }
       };
       el('userList').onchange = async e => {
