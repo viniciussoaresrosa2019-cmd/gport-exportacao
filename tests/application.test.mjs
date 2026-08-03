@@ -110,6 +110,19 @@ test('sessão, CSRF, autorização e validação têm proteções regressivas', 
   assert.match(server, /turnstileAllowedHostnames/);
 });
 
+test('administrador redefine senha por formulário confirmado e rota protegida', async () => {
+  const server = await read('src/server.js');
+  const html = await read('public/index.html');
+  assert.match(server, /app\.patch\('\/api\/users\/:id', authenticate, adminOnly/);
+  assert.match(server, /password_hash=COALESCE/);
+  assert.match(server, /token_version=token_version \+ CASE WHEN \$3 IS NULL THEN 0 ELSE 1 END/);
+  assert.match(html, /id="passwordResetDialog"/);
+  assert.match(html, /id="passwordResetForm"/);
+  assert.match(html, /const openPasswordReset = user =>/);
+  assert.match(html, /values\.password !== values\.confirmPassword/);
+  assert.match(html, /api\/users\/\$\{values\.userId\}/);
+});
+
 test('configuração do banco não aceita TLS inseguro remotamente', async () => {
   const db = await read('src/db.js');
   assert.match(db, /DB_SSL_REJECT_UNAUTHORIZED=false não é permitido em produção/);
