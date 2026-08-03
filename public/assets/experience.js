@@ -3,6 +3,22 @@
   const byId = id => document.getElementById(id);
   const labelsFor = table => [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
   const labelResponsiveTables = () => {
+    // As tabelas são recriadas após filtros e atualizações em tempo real. A
+    // semântica é aplicada aqui para que leitores de tela mantenham a relação
+    // entre cada célula e o respectivo cabeçalho, inclusive no layout móvel.
+    document.querySelectorAll('table').forEach((table, tableIndex) => {
+      const headers = [...table.querySelectorAll('thead th')];
+      headers.forEach((header, index) => {
+        header.scope = 'col';
+        if (!header.id) header.id = `gport-table-${tableIndex}-column-${index}`;
+      });
+      table.querySelectorAll('tbody tr').forEach(row => {
+        if (row.classList.contains('client-group')) return;
+        [...row.children].forEach((cell, index) => {
+          if (headers[index]) cell.setAttribute('headers', headers[index].id);
+        });
+      });
+    });
     document.querySelectorAll('#processesPage table, #vgmList table, #releaseList table, #followupPdfList table').forEach(table => {
       const labels = labelsFor(table);
       table.querySelectorAll('tbody tr').forEach(row => {

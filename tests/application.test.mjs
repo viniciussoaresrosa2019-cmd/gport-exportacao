@@ -182,6 +182,15 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
 });
 
+test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
+  const html = await read('public/index.html');
+  const experience = await read('public/assets/experience.js');
+  assert.match(html, /<meta name="description" content="GPORT: gestão interna de processos de exportação/);
+  assert.match(html, /id="toastRegion" class="toast-region" role="status"/);
+  assert.match(experience, /header\.scope = 'col'/);
+  assert.match(experience, /cell\.setAttribute\('headers', headers\[index\]\.id\)/);
+});
+
 test('migração de estabilidade está disponível', async () => {
   const migration = await read('database/migrations/2026-07-25-stability-security.sql');
   assert.match(migration, /processes_updated_at/);
