@@ -25,15 +25,15 @@ Data da linha de base: 03/08/2026.  Esta evolução deve ser validada primeiro n
 3. Se uma fase causar regressão, republicar o commit anterior conhecido no Render ou restaurar somente os arquivos dessa fase, nunca o banco de produção.
 4. Migrações de banco futuras devem ser aditivas, com `IF NOT EXISTS`, e acompanhadas de procedimento de reversão separado.
 
-## Fases previstas
+## Fases previstas e estado
 
 1. Base visual, componentes reutilizáveis, estados de carregamento, confirmação e acessibilidade.
 2. Formulário de processo organizado por seções, preservação de rascunho local e proteção de envio duplicado.
 3. Dashboard por perfil, notificações internas e histórico visual — envolve novas estruturas de dados e será documentado/testado antes de ativação.
-4. Revisão de performance, responsividade, testes e guia de publicação.
+4. Revisão de performance, responsividade, testes e guia de publicação — extração dos scripts e dos estilos inline concluída; desacoplamento da camada legada permanece gradual.
 
 ## Riscos conhecidos antes do início
 
-- `public/index.html` é muito grande e contém comportamentos duplicados; alterações diretas sem isolamento têm risco de regressão.
-- Os arquivos `public/assets/app.js`, `public/assets/app.css` e `public/assets/api-client.js` parecem remanescentes de uma interface anterior. Eles serão mantidos até que a ausência de dependências seja comprovada.
+- A camada `public/assets/legacy-ui.js` ainda compartilha funções e estado com `app-runtime.js`; sua remoção integral continua sendo de alto risco e exige testes reais de navegador por fluxo.
+- Os arquivos antigos `public/assets/app.js`, `public/assets/app.css` e `public/assets/api-client.js` foram removidos após busca de referências no HTML, servidor, scripts, testes e documentação. Eles não eram carregados pela aplicação.
 - As tabelas de Processos, VGM e Liberação usam rolagem horizontal em telas pequenas; a solução será progressiva para não perder campos operacionais.
