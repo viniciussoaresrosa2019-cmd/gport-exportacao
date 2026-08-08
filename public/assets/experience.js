@@ -116,31 +116,6 @@
       status.textContent = saving ? 'Salvando…' : 'Salvo';
     }).observe(saveButton, { attributes:true, childList:true, subtree:true, characterData:true });
     updateFlow();
-    installProcessDraft(form);
-  };
-
-  const draftStorageKey = 'gport:process-draft:v2';
-  const installProcessDraft = form => {
-    if (form.dataset.draftReady) return;
-    form.dataset.draftReady = 'true';
-    const dialog = byId('dialog'); let timer = null;
-    const notice = document.createElement('aside'); notice.className='draft-notice'; notice.hidden=true;
-    notice.innerHTML='<strong>Rascunho local encontrado</strong><span>Os dados não enviados foram preservados neste navegador.</span><div><button type="button" class="btn secondary" data-draft-discard>Descartar</button><button type="button" class="btn" data-draft-restore>Restaurar</button></div>';
-    form.querySelector('.form-progress')?.after(notice);
-    const read = () => { try { return JSON.parse(localStorage.getItem(draftStorageKey) || 'null'); } catch { return null; } };
-    const discard = () => { localStorage.removeItem(draftStorageKey); notice.hidden=true; };
-    const save = () => {
-      if (!dialog?.open || form.elements.id?.value) return;
-      const values=Object.fromEntries(new FormData(form));
-      if (!Object.values(values).some(value => String(value || '').trim())) return;
-      localStorage.setItem(draftStorageKey, JSON.stringify({ savedAt:Date.now(), values }));
-    };
-    form.addEventListener('input', () => { clearTimeout(timer); timer=setTimeout(save,450); }, true);
-    form.addEventListener('change', () => { clearTimeout(timer); timer=setTimeout(save,450); }, true);
-    notice.querySelector('[data-draft-discard]').onclick=discard;
-    notice.querySelector('[data-draft-restore]').onclick=()=>{const draft=read(); if(!draft) return; Object.entries(draft.values || {}).forEach(([name,value])=>{if(form.elements[name] && form.elements[name].type !== 'hidden') form.elements[name].value=value;}); notice.hidden=true; form.dispatchEvent(new Event('input',{bubbles:true}));};
-    window.addEventListener('gport:process-open', event => { if (event.detail?.editing) { notice.hidden=true; return; } notice.hidden=!read(); });
-    window.addEventListener('gport:process-saved', () => discard());
   };
 
   const createMobileNav = () => {
@@ -229,37 +204,17 @@
     document.querySelectorAll('main > section').forEach(section => { section.hidden = section !== page; });
     loadDashboard();
   };
-  const makeNotifications = () => {
-    if (byId('notificationToggle')) return;
-    const button = document.createElement('button'); button.id='notificationToggle'; button.className='notification-toggle'; button.type='button'; button.setAttribute('aria-label','Abrir notificações'); button.innerHTML='◉<span id="notificationCount" class="notification-count"></span>';
-    const panel = document.createElement('section'); panel.id='notificationPanel'; panel.className='notification-panel'; panel.hidden=true; panel.setAttribute('aria-label','Notificações'); panel.innerHTML='<div class="notification-panel__head"><h2>Notificações</h2><button class="close" type="button" aria-label="Fechar notificações">×</button></div><div id="notificationItems"></div>';
-    button.onclick=()=>{panel.hidden=!panel.hidden;if(!panel.hidden)loadNotifications();}; panel.querySelector('.close').onclick=()=>{panel.hidden=true;}; document.body.append(button,panel);
-  };
-  const loadNotifications = async () => {
-    makeNotifications();
-    try {
-      const items = await api('/api/notifications'); const list = byId('notificationItems'); const unread = items.filter(item => !item.read_at).length;
-      const count=byId('notificationCount'); count.textContent=unread>9?'9+':String(unread); count.classList.toggle('has-items',unread>0);
-      list.replaceChildren(...items.map(item => {
-        const element=document.createElement('button'); element.type='button'; element.className=`notification-item${item.read_at?' is-read':''}`;
-        element.innerHTML='<strong></strong><span></span>'; element.querySelector('strong').textContent=item.title; element.querySelector('span').textContent=item.message;
-        element.onclick=async()=>{ if(!item.read_at) { try{await api(`/api/notifications/${item.id}/read`,{method:'PATCH'});}catch{} } byId('notificationPanel').hidden=true; byId('processNav')?.click(); if(item.process_id) window.setTimeout(()=>document.querySelector(`[data-id="${CSS.escape(item.process_id)}"]`)?.click(),120); loadNotifications(); };
-        return element;
-      }));
-      if(!items.length) list.innerHTML='<p class="notification-empty">Nenhuma notificação nova.</p>';
-    } catch { /* migração indisponível ou sessão não autenticada: não exibir erro técnico */ }
-  };
   const observer = new MutationObserver(labelResponsiveTables);
   document.addEventListener('DOMContentLoaded', () => {
-    enhanceProcessForm(); createMobileNav(); makeDashboard(); makeNotifications(); labelResponsiveTables();
+    localStorage.removeItem('gport:process-draft:v2');
+    enhanceProcessForm(); createMobileNav(); makeDashboard(); labelResponsiveTables();
     const loginDialog = byId('loginDialog');
     if (loginDialog) new MutationObserver(() => {
-      if (!loginDialog.open && !dashboardLoaded && byId('currentUserName')?.textContent !== 'Aguardando login') { showDashboard(); loadNotifications(); }
+      if (!loginDialog.open && !dashboardLoaded && byId('currentUserName')?.textContent !== 'Aguardando login') { showDashboard(); }
     }).observe(loginDialog, { attributes:true, attributeFilter:['open'] });
     byId('processNav')?.addEventListener('click', () => { if (dashboard()) dashboard().hidden = true; });
     window.addEventListener('gport:role-tabs-updated', createMobileNav);
-    window.addEventListener('gport:process-changed', () => { loadDashboard(); loadNotifications(); });
-    window.setInterval(() => { if (!document.hidden) loadNotifications(); }, 90_000);
+    window.addEventListener('gport:process-changed', loadDashboard);
     observer.observe(document.body, { childList:true, subtree:true });
   });
 })();

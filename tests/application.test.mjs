@@ -190,9 +190,9 @@ test('interface possui notificações toast acessíveis para ações principais'
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.1" defer/);
-  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.1" defer/);
-  assert.match(html, /assets\/experience\.js\?v=20260808\.1" defer/);
+  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.2" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.2" defer/);
+  assert.match(html, /assets\/experience\.js\?v=20260808\.2" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
   assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
@@ -205,7 +205,7 @@ test('login sempre abre a página inicial sem preferência de redirecionamento',
   assert.doesNotMatch(html, /name="startPage"|Página após login/);
   assert.doesNotMatch(legacy, /savedAccessibility\?\.startPage|startPage:v\.startPage|startPage:'processos'/);
   assert.match(legacy, /delete savedAccessibility\.startPage/);
-  assert.match(experience, /showDashboard\(\);\s*loadNotifications\(\)/);
+  assert.match(experience, /showDashboard\(\);/);
 });
 
 test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
@@ -296,8 +296,10 @@ test('atualização em tempo real respeita a autorização de leitura', async ()
   assert.match(html, /data = before; render\(\); renderRelease\(\); throw error;/);
 });
 
-test('painel operacional e notificações usam endpoints autenticados e não carregam a lista inteira', async () => {
+test('painel operacional não carrega a lista inteira e a interface de notificações permanece desativada', async () => {
+  const index = await read('public/index.html');
   const server = await read('src/server.js');
+  const legacy = await read('public/assets/legacy-ui.js');
   const experience = await read('public/assets/experience.js');
   const css = await read('public/assets/experience.css');
   assert.match(server, /app\.get\('\/api\/dashboard', authenticate/);
@@ -307,10 +309,13 @@ test('painel operacional e notificações usam endpoints autenticados e não car
   assert.match(server, /CREATE TABLE IF NOT EXISTS user_notifications/);
   assert.match(server, /UNIQUE\(user_id,dedupe_key\)/);
   assert.match(experience, /loadDashboard/);
-  assert.match(experience, /loadNotifications/);
   assert.match(experience, /gport:process-changed/);
   assert.match(css, /\.dashboard-kpis/);
-  assert.match(css, /\.notification-panel/);
+  assert.doesNotMatch(index, /deadlineAlerts|Planilha e alertas|Alertar sobre prazos próximos/);
+  assert.match(legacy, /delete savedAccessibility\.deadlineAlerts/);
+  assert.doesNotMatch(legacy, /atlas-export-notification-prompted|Notification\.requestPermission|elements\.deadlineAlerts|p\.deadlineAlerts|v\.deadlineAlerts/);
+  assert.doesNotMatch(experience, /loadNotifications|makeNotifications|notificationToggle|\/api\/notifications/);
+  assert.doesNotMatch(css, /\.notification-panel|\.notification-toggle|\.notification-item/);
 });
 
 test('interface progressiva mantém confirmações internas, skeleton e cartões móveis', async () => {
@@ -327,17 +332,16 @@ test('interface progressiva mantém confirmações internas, skeleton e cartões
   assert.match(experience, /mobile-nav/);
 });
 
-test('lançamento progressivo possui seis etapas, modo rápido e rascunho local sem enviar dados', async () => {
+test('lançamento progressivo possui seis etapas e modo rápido sem oferecer rascunho local', async () => {
   const html = await readInterface();
   const experience = await read('public/assets/experience.js');
   const css = await read('public/assets/experience.css');
   for (const title of ['Processo', 'Exportador', 'Rota', 'Documentos', 'Carga', 'Revisão']) assert.match(experience, new RegExp(`\\['${title}'`));
   assert.match(experience, /Modo rápido/);
-  assert.match(experience, /gport:process-draft:v2/);
-  assert.match(experience, /gport:process-open/);
-  assert.match(experience, /gport:process-saved/);
-  assert.match(html, /gport:process-saved/);
-  assert.match(css, /\.draft-notice/);
+  assert.match(experience, /localStorage\.removeItem\('gport:process-draft:v2'\)/);
+  assert.doesNotMatch(experience, /installProcessDraft|draft-notice|data-draft-restore|localStorage\.setItem\('gport:process-draft/);
+  assert.doesNotMatch(html, /gport:process-open|gport:process-saved/);
+  assert.doesNotMatch(css, /\.draft-notice/);
   assert.match(css, /\.form-review__summary/);
 });
 

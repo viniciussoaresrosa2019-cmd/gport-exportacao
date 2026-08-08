@@ -409,7 +409,7 @@
           restoreOriginPort(p.origem);
         }
         syncDueOnlyLaunchFields();
-        if (!p) { window.dispatchEvent(new CustomEvent('gport:process-open', { detail:{ editing:false, id:null } })); return; }
+        if (!p) return;
         form.elements.id.value = p.id;
         form.elements.exportador.value = p.clientId || clients.find(client => client.nome === p.exportador)?.id || '';
         renderClientOptions();
@@ -418,7 +418,6 @@
         form.elements.envio.value = dateForField(p.envio);
         form.elements.coleta.value = dateForField(p.coleta);
         syncDueOnlyLaunchFields();
-        window.dispatchEvent(new CustomEvent('gport:process-open', { detail:{ editing:true, id:p.id } }));
       };
       // Garante que o botão sempre use a abertura reforçada acima, mesmo se
       // outro script tiver registrado um manipulador anterior.
@@ -784,7 +783,6 @@
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;
           editingProcessId = view.id;
-          window.dispatchEvent(new CustomEvent('gport:process-saved', { detail:{ id:view.id, isNew:isNewProcess } }));
           if (isNewProcess) newProcessIdempotencyKey = null;
           if (isNewProcess) {
             // Um filtro anterior não deve esconder um processo recém-lançado.
