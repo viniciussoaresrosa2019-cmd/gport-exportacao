@@ -190,9 +190,9 @@ test('interface possui notificações toast acessíveis para ações principais'
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.3" defer/);
-  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.3" defer/);
-  assert.match(html, /assets\/experience\.js\?v=20260808\.3" defer/);
+  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.5" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.5" defer/);
+  assert.match(html, /assets\/experience\.js\?v=20260808\.5" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
   assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
@@ -387,11 +387,15 @@ test('liberação permite filtrar por porto e ordena pelo deadline crescente', a
   assert.match(html, /data-release-port/);
   assert.match(html, /deadlineOrder\(a\) - deadlineOrder\(b\)/);
   assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
+  assert.match(html, /const knownPortMap = new Map\(\)/);
+  assert.match(html, /if\(key&&!knownPortMap\.has\(key\)\)knownPortMap\.set\(key,port\)/);
+  assert.doesNotMatch(html, /new Set\(\[\.\.\.standardPorts/);
 });
 
 test('processos podem ser filtrados por cliente e ordenados por cliente e lançamento', async () => {
   const server = await read('src/server.js');
   const html = await readInterface();
+  const css = await read('public/assets/gport.css');
   assert.match(server, /const clientId = String\(req\.query\.client \|\| ''\)\.trim\(\)/);
   assert.match(server, /const clientName = String\(req\.query\.clientName \|\| ''\)\.trim\(\)/);
   assert.match(server, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
@@ -403,6 +407,7 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /searchParams\.set\('clientName', selectedClient\.nome\)/);
   assert.match(html, /function matchesClientFilter\(process\)/);
   assert.match(html, /class="client-group"/);
+  assert.match(css, /#processesPage \.table-wrap thead th\{background:#0d4f85;color:#fff/);
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
 });
 
