@@ -190,12 +190,22 @@ test('interface possui notificações toast acessíveis para ações principais'
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /assets\/legacy-ui\.js\?v=20260803\.1" defer/);
-  assert.match(html, /assets\/app-runtime\.js\?v=20260803\.1" defer/);
-  assert.match(html, /assets\/experience\.js\?v=20260803\.1" defer/);
+  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.1" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.1" defer/);
+  assert.match(html, /assets\/experience\.js\?v=20260808\.1" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
   assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
+});
+
+test('login sempre abre a página inicial sem preferência de redirecionamento', async () => {
+  const html = await read('public/index.html');
+  const legacy = await read('public/assets/legacy-ui.js');
+  const experience = await read('public/assets/experience.js');
+  assert.doesNotMatch(html, /name="startPage"|Página após login/);
+  assert.doesNotMatch(legacy, /savedAccessibility\?\.startPage|startPage:v\.startPage|startPage:'processos'/);
+  assert.match(legacy, /delete savedAccessibility\.startPage/);
+  assert.match(experience, /showDashboard\(\);\s*loadNotifications\(\)/);
 });
 
 test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
