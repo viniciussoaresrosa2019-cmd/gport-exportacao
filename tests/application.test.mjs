@@ -206,6 +206,9 @@ test('interface associa labels, nomeia controles e permite abrir processos pelo 
   const accessibility = await read('public/assets/accessibility.js');
   const css = await read('public/assets/gport.css');
   assert.match(accessibility, /label\.htmlFor = control\.id/);
+  const runtime = await read('public/assets/app-runtime.js');
+  assert.match(runtime, /label\.htmlFor = 'clientDueOnly'/);
+  assert.match(runtime, /id="clientDueOnly" name="dueOnly"/);
   assert.match(accessibility, /row\.tabIndex = 0/);
   assert.match(accessibility, /event\.key === 'Enter' \|\| event\.key === ' '/);
   assert.match(accessibility, /\.indicator-cell[\s\S]*status-text/);

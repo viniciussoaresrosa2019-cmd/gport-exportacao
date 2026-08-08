@@ -262,7 +262,8 @@
       const dueOnlyClientControl = (() => {
         const label = document.createElement('label');
         label.className = 'check-row';
-        label.innerHTML = '<input name="dueOnly" type="checkbox" class="control-auto-width"> Apenas DU-E';
+        label.htmlFor = 'clientDueOnly';
+        label.innerHTML = '<input id="clientDueOnly" name="dueOnly" type="checkbox" class="control-auto-width"> Apenas DU-E';
         el('clientForm').querySelector('input[name="rucManual"]').closest('label').insertAdjacentElement('afterend', label);
         return label.querySelector('input');
       })();
