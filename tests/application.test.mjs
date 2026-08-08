@@ -190,9 +190,9 @@ test('interface possui notificações toast acessíveis para ações principais'
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.2" defer/);
-  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.2" defer/);
-  assert.match(html, /assets\/experience\.js\?v=20260808\.2" defer/);
+  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.3" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.3" defer/);
+  assert.match(html, /assets\/experience\.js\?v=20260808\.3" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
   assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
@@ -342,6 +342,10 @@ test('lançamento progressivo possui seis etapas e modo rápido sem oferecer ras
   assert.doesNotMatch(experience, /installProcessDraft|draft-notice|data-draft-restore|localStorage\.setItem\('gport:process-draft/);
   assert.doesNotMatch(html, /gport:process-open|gport:process-saved/);
   assert.doesNotMatch(css, /\.draft-notice/);
+  assert.match(experience, /input instanceof HTMLSelectElement/);
+  assert.match(experience, /selectedOptions\[0\]\?\.textContent/);
+  assert.match(experience, /addEventListener\('gport:review-update', updateReview\)/);
+  assert.match(html, /dispatchEvent\(new Event\('gport:review-update'\)\)/);
   assert.match(css, /\.form-review__summary/);
 });
 
@@ -500,10 +504,18 @@ test('notificações de prazo são deduplicadas, configuráveis e respeitam o pe
 
 test('histórico de edição apresenta campos e valores anterior e novo sem inserir HTML', async () => {
   const html = await readInterface();
-  assert.match(html, /const labels=\{booking:'Booking'/);
+  assert.match(html, /due_issue_date:'Data de emissão da DUE'/);
+  assert.match(html, /container_details:'Dados dos contêineres'/);
+  assert.match(html, /field==='client_id'/);
+  assert.match(html, /field==='container_details'/);
   assert.match(html, /value\?\.before/);
   assert.match(html, /value\?\.after/);
+  assert.match(html, /filter\(change=>change\.before!==change\.after\)/);
+  assert.match(html, /Registro técnico sem alteração visível nos dados do processo/);
+  assert.match(html, /return visible\.join\('\\n'\)/);
+  assert.doesNotMatch(html, /labels\[field\]\|\|field/);
   assert.match(html, /details\.textContent=historyDetails\(item\)/);
+  assert.match(html, /esc\(historyDetails\(item\)\)\.replace\(\/\\n\/g,'<br>'\)/);
 });
 
 test('observabilidade agrega somente métricas técnicas e protege o endpoint para administradores', async () => {

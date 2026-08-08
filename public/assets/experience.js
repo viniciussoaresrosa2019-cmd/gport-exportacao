@@ -74,11 +74,19 @@
     review.innerHTML = '<p class="intro">Revise os campos obrigatórios e salve o processo. Nenhum dado é enviado antes de selecionar <strong>Salvar processo</strong>.</p><dl class="form-review__summary" id="processReviewSummary"></dl>';
     let activeStep = 0; let quickMode = false;
     const sectionInputs = section => [...section.querySelectorAll('input,select,textarea')].filter(input => !input.disabled && input.type !== 'hidden');
+    const reviewValue = name => {
+      const input = form.elements[name];
+      const raw = String(input?.value || '').trim();
+      if (!raw) return 'Não informado';
+      if (input instanceof HTMLSelectElement) return input.selectedOptions[0]?.textContent?.trim() || raw;
+      return raw;
+    };
     const updateReview = () => {
       const pairs = [['BOOKING','booking'],['EXPORTADOR','exportador'],['ORIGEM','origem'],['NAVIO','navio'],['DEADLINE','prazo'],['FATURA','fatura']];
       const summary = byId('processReviewSummary'); if (!summary) return;
-      summary.replaceChildren(...pairs.map(([label, name]) => { const group=document.createElement('div'); const term=document.createElement('dt'); const value=document.createElement('dd'); term.textContent=label; value.textContent=String(form.elements[name]?.value || 'Não informado'); group.append(term,value); return group; }));
+      summary.replaceChildren(...pairs.map(([label, name]) => { const group=document.createElement('div'); const term=document.createElement('dt'); const value=document.createElement('dd'); term.textContent=label; value.textContent=reviewValue(name); group.append(term,value); return group; }));
     };
+    form.addEventListener('gport:review-update', updateReview);
     const updateFlow = () => {
       let invalid = 0;
       steps.forEach((section, index) => {

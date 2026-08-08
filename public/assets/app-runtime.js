@@ -174,7 +174,7 @@
         el('followupPdfList').innerHTML = followupProcesses.length ? `<table class="data-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>NAVIO</th><th>ANALISTA</th><th>HISTÓRICO</th></tr></thead><tbody>${followupProcesses.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(p.navio || '—')}</td><td>${esc(p.analista || '—')}</td><td><button class="btn secondary followup-history" data-followup-history="${p.id}">Ver histórico</button> <button class="btn secondary followup-pdf" data-followup-pdf="${p.id}">Gerar PDF</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo encontrado.</div>';
       };
       const historyLabel = item => {
-        const details = typeof item.details === 'string' ? JSON.parse(item.details || '{}') : (item.details || {});
+        let details = item.details || {}; try { details = typeof details === 'string' ? JSON.parse(details) : details; } catch { details = {}; }
         if (item.action === 'process.created') return 'Processo lançado';
         if (item.action === 'process.updated') return 'Processo alterado';
         if (item.action === 'process.vgm_updated') return ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(details.vgmStatus) ? 'VGM enviado' : 'VGM atualizado';
@@ -190,10 +190,18 @@
         let details = item.details || {}; try { details = typeof details === 'string' ? JSON.parse(details) : details; } catch { details = {}; }
         if (item.action === 'process.created') return 'Processo cadastrado no sistema.';
         if (item.action === 'process.updated') {
-          const labels={booking:'Booking',client_id:'Exportador',importer:'Importador',invoice:'Fatura',deadline:'Deadline de draft',shipping_date:'Data de envio do draft',container_collection_date:'Data da coleta',origin_port:'Porto de origem',destination_port:'Porto de destino',vessel:'Navio',agency:'Agência',carrier:'Armador',due_number:'DUE',ruc_number:'RUC',status:'Status',bl_type:'Tipo de BL',freight_type:'Tipo de frete',incoterm:'Incoterm',container_quantity:'Quantidade de contêineres',container_type:'Tipo de contêiner',cargo_value:'Valor da carga',currency:'Moeda'};
-          const display=value=>{if(value===null||value===undefined||value==='')return '—';if(typeof value==='object')return 'Atualizado';return String(value).slice(0,80)};
+          const labels={process_number:'Número técnico',display_process_number:'Número do processo',status:'Status',client_id:'Exportador',importer:'Importador',invoice:'Fatura',booking:'Booking',due_number:'DUE',due_issue_date:'Data de emissão da DUE',ruc_number:'RUC',origin_port:'Porto de origem',destination_port:'Porto de destino',vessel:'Navio',agency:'Agência',carrier:'Armador',deadline:'Deadline de draft',shipping_date:'Data de envio do draft',container_collection_date:'Data da coleta',collection_terminal:'Terminal da coleta',free_time_days:'Free time',incoterm:'Incoterm',shipment_type:'Tipo de embarque',bl_type:'Tipo de BL',freight_type:'Tipo de frete',mapa_inspection:'MAPA',isf_lacey:'ISF/LACEY',container_quantity:'Quantidade de contêineres',container_type:'Tipo de contêiner',container_details:'Dados dos contêineres',cubic_meters:'M³',net_weight_kg:'Peso líquido',gross_weight_kg:'Peso bruto',packages_quantity:'Quantidade de pacotes',cargo_value:'Valor da carga',currency:'Moeda'};
+          const dateFields=new Set(['due_issue_date','deadline','shipping_date','container_collection_date']);
+          const parseJson=value=>{if(typeof value!=='string')return value;const text=value.trim();if(!text||!['[','{'].includes(text[0]))return value;try{return JSON.parse(text)}catch{return value}};
+          const containers=value=>{const list=parseJson(value);if(!Array.isArray(list))return 'Dados atualizados';if(!list.length)return 'Nenhum contêiner';const visible=list.slice(0,4).map((container,index)=>{const parts=[container.number||`Contêiner ${index+1}`];if(container.tare!==undefined&&container.tare!=='')parts.push(`tara ${container.tare} kg`);if(container.seal)parts.push(`lacre ${container.seal}`);if(container.invoice_number||container.invoiceNumber)parts.push(`NF ${container.invoice_number||container.invoiceNumber}`);if(container.new_seal)parts.push(`novo lacre ${container.new_seal}`);return parts.join(', ')});if(list.length>visible.length)visible.push(`mais ${list.length-visible.length} contêiner(es)`);return visible.join(' | ')};
+          const display=(field,value)=>{if(value===null||value===undefined||value==='')return '—';if(field==='client_id')return clients.find(client=>client.id===value)?.nome||'Exportador alterado';if(field==='container_details')return containers(value);if(dateFields.has(field))return dateForField(value)||'—';if(['mapa_inspection','isf_lacey'].includes(field)&&typeof value==='boolean')return value?'Sim':'Não';const parsed=parseJson(value);if(typeof parsed==='object')return 'Dados atualizados';return String(parsed).slice(0,120)};
           const changes=details.changes&&typeof details.changes==='object'?Object.entries(details.changes):[];
-          return changes.length?changes.slice(0,5).map(([field,value])=>`${labels[field]||field}: ${display(value?.before)} → ${display(value?.after)}`).join(' · '):'Dados do processo foram alterados.';
+          if(!changes.length)return 'Dados do processo foram alterados.';
+          const readable=changes.map(([field,value])=>({label:labels[field]||'Campo do processo',before:display(field,value?.before),after:display(field,value?.after)})).filter(change=>change.before!==change.after);
+          if(!readable.length)return 'Registro técnico sem alteração visível nos dados do processo.';
+          const visible=readable.slice(0,8).map(change=>`${change.label}: ${change.before} → ${change.after}`);
+          if(readable.length>visible.length)visible.push(`Outros ${readable.length-visible.length} campo(s) também foram alterados.`);
+          return visible.join('\n');
         }
         if (item.action === 'process.vgm_updated') return [details.vgmStatus && `Status VGM: ${details.vgmStatus}`, details.vgmSentTo && `Enviado para: ${details.vgmSentTo}`, details.physicalProcessAnalyst && `Processo físico com: ${details.physicalProcessAnalyst}`].filter(Boolean).join(' · ') || 'Controle de VGM atualizado.';
         if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
@@ -215,8 +223,8 @@
       };
       const printFollowupPdf = async process => {
         const events = await request(`/api/processes/${process.id}/followup-history`);
-        const rows = events.length ? events.map(item => `<tr><td>${esc(historyDateTime(item.created_at))}</td><td>${esc(historyLabel(item))}</td><td>${esc(historyDetails(item))}</td><td>${esc(item.username || '—')}</td></tr>`).join('') : '<tr><td colspan="4">Nenhuma alteração registrada.</td></tr>';
-        const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Histórico ${esc(process.booking || '')}</title><style>@page{size:A4;margin:16mm}body{font-family:Arial,sans-serif;color:#111;margin:0}h1{font-size:20px;margin:0 0 5px}p{margin:4px 0;color:#444;font-size:12px}.head{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:11px}th{text-align:left;background:#eee;padding:9px;border:1px solid #bbb}td{padding:9px;border:1px solid #ccc;vertical-align:top;line-height:1.35}.footer{margin-top:18px;color:#555;font-size:10px}</style></head><body><div class="head"><h1>Histórico do processo</h1><p><strong>Booking:</strong> ${esc(process.booking || '—')}</p><p><strong>Exportador:</strong> ${esc(process.exportador || '—')} &nbsp; | &nbsp; <strong>Importador:</strong> ${esc(process.importador || '—')}</p><p><strong>Navio:</strong> ${esc(process.navio || '—')} &nbsp; | &nbsp; <strong>Analista:</strong> ${esc(process.analista || '—')}</p></div><table><thead><tr><th>DATA E HORA</th><th>ALTERAÇÃO</th><th>O QUE FOI ALTERADO</th><th>USUÁRIO</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Documento gerado em ${new Date().toLocaleString('pt-BR')}</div></body></html>`;
+        const rows = events.length ? events.map(item => {const date=esc(historyDateTime(item.created_at)).replace(' ','<br>');const details=esc(historyDetails(item)).replace(/\n/g,'<br>');return `<tr><td>${date}</td><td>${esc(historyLabel(item))}</td><td>${details}</td><td>${esc(item.username || '—')}</td></tr>`}).join('') : '<tr><td colspan="4">Nenhuma alteração registrada.</td></tr>';
+        const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Histórico ${esc(process.booking || '')}</title><style>@page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;color:#111;margin:0}h1{font-size:21px;margin:0 0 6px}p{margin:4px 0;color:#444;font-size:12px}.head{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10.5px}th{text-align:left;background:#e9edf2;padding:8px;border:1px solid #aaa}td{padding:8px;border:1px solid #bbb;vertical-align:top;line-height:1.4;overflow-wrap:anywhere}th:nth-child(1){width:13%}th:nth-child(2){width:14%}th:nth-child(3){width:61%}th:nth-child(4){width:12%}.footer{margin-top:16px;color:#555;font-size:9px}</style></head><body><div class="head"><h1>Histórico do processo</h1><p><strong>Booking:</strong> ${esc(process.booking || '—')}</p><p><strong>Exportador:</strong> ${esc(process.exportador || '—')} &nbsp; | &nbsp; <strong>Importador:</strong> ${esc(process.importador || '—')}</p><p><strong>Navio:</strong> ${esc(process.navio || '—')} &nbsp; | &nbsp; <strong>Analista:</strong> ${esc(process.analista || '—')}</p></div><table><thead><tr><th>DATA E HORA</th><th>ALTERAÇÃO</th><th>O QUE FOI ALTERADO</th><th>USUÁRIO</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Documento gerado em ${new Date().toLocaleString('pt-BR')}</div></body></html>`;
         el('previewTitle').textContent = 'Histórico do processo';
         el('pdfFrame').srcdoc = html; el('previewDialog').showModal();
       };
@@ -409,7 +417,7 @@
           restoreOriginPort(p.origem);
         }
         syncDueOnlyLaunchFields();
-        if (!p) return;
+        if (!p) { form.dispatchEvent(new Event('gport:review-update')); return; }
         form.elements.id.value = p.id;
         form.elements.exportador.value = p.clientId || clients.find(client => client.nome === p.exportador)?.id || '';
         renderClientOptions();
@@ -418,6 +426,7 @@
         form.elements.envio.value = dateForField(p.envio);
         form.elements.coleta.value = dateForField(p.coleta);
         syncDueOnlyLaunchFields();
+        form.dispatchEvent(new Event('gport:review-update'));
       };
       // Garante que o botão sempre use a abertura reforçada acima, mesmo se
       // outro script tiver registrado um manipulador anterior.
