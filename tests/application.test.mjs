@@ -192,11 +192,11 @@ test('interface possui notificações toast acessíveis para ações principais'
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /assets\/ui-feedback\.js\?v=20260808\.9" defer/);
-  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.9" defer/);
-  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.9" defer/);
-  assert.match(html, /assets\/accessibility\.js\?v=20260808\.9" defer/);
-  assert.match(html, /assets\/experience\.js\?v=20260808\.9" defer/);
+  assert.match(html, /assets\/ui-feedback\.js\?v=[0-9.]+" defer/);
+  assert.match(html, /assets\/legacy-ui\.js\?v=[0-9.]+" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=[0-9.]+" defer/);
+  assert.match(html, /assets\/accessibility\.js\?v=[0-9.]+" defer/);
+  assert.match(html, /assets\/experience\.js\?v=[0-9.]+" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
   assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');

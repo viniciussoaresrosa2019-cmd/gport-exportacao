@@ -10,7 +10,9 @@
   };
 
   const associateLabels = (root = document) => {
-    root.querySelectorAll('label:not([for])').forEach(label => {
+    const labels = [...root.querySelectorAll('label:not([for])')];
+    if (root.nodeType === Node.ELEMENT_NODE && root.matches('label:not([for])')) labels.unshift(root);
+    labels.forEach(label => {
       const control = label.querySelector('input, select, textarea')
         || label.parentElement?.querySelector(':scope > input, :scope > select, :scope > textarea');
       if (!control) return;

@@ -633,7 +633,7 @@
       };
       const registrationCodeField = document.createElement('div');
       registrationCodeField.className = 'field';
-      registrationCodeField.innerHTML = '<label>Código de cadastro (se solicitado)</label><input name="registrationCode" type="password" autocomplete="off">';
+      registrationCodeField.innerHTML = '<label for="signupRegistrationCode">Código de cadastro (se solicitado)</label><input id="signupRegistrationCode" name="registrationCode" type="password" autocomplete="off">';
       el('signupForm').querySelector('.grid').appendChild(registrationCodeField);
       el('signupForm').onsubmit = async e => {
         e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget));
