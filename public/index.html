@@ -4,10 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="GPORT: gestão interna de processos de exportação para equipes de despacho aduaneiro.">
+  <meta name="csp-nonce" content="__CSP_NONCE__">
   <title>GPORT | Gestão de Processos</title>
-  <link rel="stylesheet" href="assets/gport.css?v=20260808.8">
-  <link rel="stylesheet" href="assets/toasts.css?v=20260808.6">
-  <link rel="stylesheet" href="assets/experience.css?v=20260808.6">
+  <link rel="stylesheet" href="assets/gport.css?v=20260808.9">
+  <link rel="stylesheet" href="assets/toasts.css?v=20260808.9">
+  <link rel="stylesheet" href="assets/experience.css?v=20260808.9">
 </head>
 <body>
   <div id="toastRegion" class="toast-region" role="status" aria-live="polite" aria-relevant="additions"></div>
@@ -44,9 +45,11 @@
   <dialog id="previewDialog"><div class="modal-head"><h2 id="previewTitle">Prévia da capa do processo</h2><button class="close" id="closePreviewBtn" aria-label="Fechar">×</button></div><div class="preview-frame-wrap"><iframe id="pdfFrame" title="Prévia da capa" class="preview-frame"></iframe></div><div class="actions preview-actions"><button type="button" class="btn secondary" id="closePreviewBtn2">Fechar</button><button type="button" class="btn" id="printPdfBtn">Imprimir ou salvar em PDF</button></div></dialog>
   <dialog id="settingsDialog"><div class="modal-head"><div><p class="eyebrow">Configurações</p><h2 class="m-0">Preferências do sistema</h2></div><button class="close" id="closeSettingsBtn" aria-label="Fechar">×</button></div><form id="accessibilityForm"><p class="form-note">As preferências são aplicadas somente neste navegador.</p><div class="section-title">Visual e acessibilidade</div><div class="grid"><div class="field"><label>Tema</label><select name="theme"><option value="auto">Automático</option><option value="light">Claro</option><option value="dark">Escuro</option></select></div><div class="field"><label>Tamanho do texto</label><select name="fontSize"><option value="normal">Padrão</option><option value="large">Grande</option><option value="xlarge">Muito grande</option></select></div><div class="field"><label>Densidade da planilha</label><select name="density"><option value="normal">Padrão</option><option value="compact">Compacta</option></select></div></div><div class="section-title">Formato e idioma</div><div class="grid"><div class="field"><label>Idioma</label><select name="language"><option value="pt-BR">Português (Brasil)</option><option value="en-US">English (US)</option></select></div><div class="field"><label>Formato de data</label><select name="dateFormat"><option value="pt-BR">DD/MM/AAAA</option><option value="en-US">MM/DD/AAAA</option></select></div></div><div class="section-title">Planilha</div><div class="grid"><div class="field wide"><label>Colunas visíveis</label><div class="checkbox-group"><label class="text-sm"><input type="checkbox" name="showBooking" checked class="control-auto-width"> Booking</label><label class="text-sm"><input type="checkbox" name="showAnalyst" checked class="control-auto-width"> Analista</label><label class="text-sm"><input type="checkbox" name="showPdf" checked class="control-auto-width"> PDF</label></div></div></div><div class="actions actions-split"><button type="button" class="btn secondary" id="settingsLogoutBtn">Desconectar</button><div class="action-cluster"><button type="button" class="btn secondary" id="closeSettingsBtn2">Cancelar</button><button class="btn" type="submit">Salvar preferências</button></div></div></form></dialog>
   <dialog id="financialDialog"><div class="modal-head"><div><p class="eyebrow">Financeiro</p><h2 class="m-0">Controle financeiro</h2></div><button class="close" id="closeFinancialBtn" aria-label="Fechar">×</button></div><div class="dialog-content"><p class="intro mt-0">Visão dos valores, faturas, exportadores e status dos processos.</p><div id="financialList" class="panel scrollable-panel"></div></div></dialog>
-  <script src="assets/legacy-ui.js?v=20260808.5" defer></script>
-  <script src="assets/app-runtime.js?v=20260808.5" defer></script>
-  <script src="assets/experience.js?v=20260808.5" defer></script>
+  <script src="assets/ui-feedback.js?v=20260808.9" defer></script>
+  <script src="assets/legacy-ui.js?v=20260808.9" defer></script>
+  <script src="assets/app-runtime.js?v=20260808.9" defer></script>
+  <script src="assets/accessibility.js?v=20260808.9" defer></script>
+  <script src="assets/experience.js?v=20260808.9" defer></script>
   __TURNSTILE_SCRIPT__
 </body></html>
 

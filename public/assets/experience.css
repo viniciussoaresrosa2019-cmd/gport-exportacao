@@ -28,6 +28,9 @@ body.theme-dark .dashboard-kpi,body.theme-dark .dashboard-card{background:#222a3
   .dashboard-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.dashboard-kpi{padding:14px}.dashboard-kpi strong{font-size:26px}.dashboard-grid{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){.skeleton-line{animation:none}}
+
+/* Reserva de geometria para impedir saltos enquanto dados autenticados chegam. */
+#rows{min-height:84px}#vgmList,#releaseList,#followupPdfList{min-height:180px}.dashboard-kpis{min-height:116px}.dashboard-grid{min-height:236px}
 /* Reserva a proporção real da marca antes do download da imagem e reduz CLS. */
 .brand img,.login-mark{aspect-ratio:277/100}
 

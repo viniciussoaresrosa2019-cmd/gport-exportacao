@@ -6,8 +6,10 @@ import test from 'node:test';
 const read = file => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
 const interfaceFiles = [
   'public/index.html',
+  'public/assets/ui-feedback.js',
   'public/assets/legacy-ui.js',
   'public/assets/app-runtime.js',
+  'public/assets/accessibility.js',
   'public/assets/experience.js'
 ];
 const readInterface = async () => (await Promise.all(interfaceFiles.map(read))).join('\n');
@@ -190,12 +192,34 @@ test('interface possui notificações toast acessíveis para ações principais'
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.5" defer/);
-  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.5" defer/);
-  assert.match(html, /assets\/experience\.js\?v=20260808\.5" defer/);
+  assert.match(html, /assets\/ui-feedback\.js\?v=20260808\.9" defer/);
+  assert.match(html, /assets\/legacy-ui\.js\?v=20260808\.9" defer/);
+  assert.match(html, /assets\/app-runtime\.js\?v=20260808\.9" defer/);
+  assert.match(html, /assets\/accessibility\.js\?v=20260808\.9" defer/);
+  assert.match(html, /assets\/experience\.js\?v=20260808\.9" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
   assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
+});
+
+test('interface associa labels, nomeia controles e permite abrir processos pelo teclado', async () => {
+  const accessibility = await read('public/assets/accessibility.js');
+  const css = await read('public/assets/gport.css');
+  assert.match(accessibility, /label\.htmlFor = control\.id/);
+  assert.match(accessibility, /row\.tabIndex = 0/);
+  assert.match(accessibility, /event\.key === 'Enter' \|\| event\.key === ' '/);
+  assert.match(accessibility, /\.indicator-cell[\s\S]*status-text/);
+  assert.match(css, /\.indicator-cell \.status-text/);
+  assert.match(css, /\.clickable:focus-visible/);
+});
+
+test('CSP da página usa nonce e não depende de unsafe-inline', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  assert.doesNotMatch(server, /style-src 'self' 'unsafe-inline'/);
+  assert.match(server, /style-src 'self' 'nonce-\$\{nonce\}'/);
+  assert.match(runtime, /securePrintHtml/);
+  assert.match(runtime, /style\.nonce = cspNonce/);
 });
 
 test('login sempre abre a página inicial sem preferência de redirecionamento', async () => {
@@ -407,7 +431,8 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /searchParams\.set\('clientName', selectedClient\.nome\)/);
   assert.match(html, /function matchesClientFilter\(process\)/);
   assert.match(html, /class="client-group"/);
-  assert.match(css, /#processesPage \.table-wrap thead th\{background:#0d4f85;color:#fff/);
+  assert.match(css, /#processesPage \.table-wrap thead th\{background:#155b91;color:#fff/);
+  assert.match(css, /\.client-group td\{[^}]*background:#155b91!important;color:#fff/);
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
 });
 

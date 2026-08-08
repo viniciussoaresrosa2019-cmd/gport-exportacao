@@ -87,11 +87,12 @@ let indexHtmlPromise;
 const renderIndex = asyncRoute(async (_req, res) => {
   indexHtmlPromise ||= readFile(path.join(webRoot, 'index.html'), 'utf8');
   const nonce = randomBytes(18).toString('base64');
-  res.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com`);
+  res.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://challenges.cloudflare.com; style-src 'self' 'nonce-${nonce}'; script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com`);
   res.setHeader('Cache-Control', 'no-store');
   const turnstileScript = turnstileEnabled ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=initializeTurnstile&render=explicit" async defer></script>' : '';
   res.type('html').send((await indexHtmlPromise)
     .replaceAll('__TURNSTILE_SITE_KEY__', turnstileEnabled ? turnstileSiteKey : '')
+    .replaceAll('__CSP_NONCE__', nonce)
     .replace('__TURNSTILE_SCRIPT__', turnstileScript)
     .replaceAll('<script>', `<script nonce="${nonce}">`));
 });

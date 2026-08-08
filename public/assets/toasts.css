@@ -89,6 +89,9 @@
   transform-origin:left;
   animation:gport-toast-progress var(--toast-duration,4s) linear both;
 }
+.toast--duration-short{--toast-duration:4s}
+.toast--duration-medium{--toast-duration:5s}
+.toast--duration-long{--toast-duration:10s}
 #toastRegion .toast.is-leaving{animation:gport-toast-leave .15s ease-in both}
 #toastRegion .toast.is-leaving .toast__progress{animation:none}
 

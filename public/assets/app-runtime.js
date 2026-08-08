@@ -1,50 +1,19 @@
     /* Integração com a API: dados e credenciais não ficam mais no localStorage. */
     (() => {
-      const toastRegion = document.getElementById('toastRegion');
-      const safeToastMessage = (message, fallback = 'Não foi possível concluir a operação. Tente novamente.') => {
-        const text = String(message || '').trim();
-        if (!text || /(sql|postgres|database|stack|trace|token|password|senha|\bat\s+\w+\s*\()/i.test(text)) return fallback;
-        return text.slice(0, 240);
+      const { toast, safeMessage: safeToastMessage, confirmAction } = window.gportUi;
+      const cspNonce = document.querySelector('meta[name="csp-nonce"]')?.content || '';
+      const securePrintHtml = html => html.replaceAll('<style>', `<style nonce="${cspNonce}">`);
+      const syncShipmentTypeWithoutInlineStyle = () => {
+        const isLcl = form.elements.tipoEmbarque.value === 'LCL';
+        el('containerFields').querySelectorAll('input,select').forEach(input => { input.disabled = isLcl; });
+        el('containerFields').hidden = isLcl;
+        if (isLcl) {
+          for (const name of ['qtdContainers','tipoContainer','containers','tara','lacre','lacreNovo','notasFiscais']) form.elements[name].value = '';
+          el('containerDetails').replaceChildren();
+        }
       };
-      const createToast = (type, message, { duration } = {}) => {
-        if (!toastRegion) return;
-        const settings = {
-          success: { icon:'✓', duration:4000, label:'Concluído' },
-          error: { icon:'!', duration:10000, label:'Não foi possível concluir a ação' },
-          warning: { icon:'!', duration:5000, label:'Atenção' },
-          info: { icon:'i', duration:4000, label:'Informação' }
-        }[type] || { icon:'i', duration:4000, label:'Informação' };
-        const item = document.createElement('div');
-        item.className = `toast toast--${type}`;
-        item.setAttribute('role', type === 'error' ? 'alert' : 'status');
-        item.innerHTML = `<span class="toast__icon" aria-hidden="true">${settings.icon}</span><span class="toast__content"><strong class="toast__title"></strong><span class="toast__message"></span></span><button class="toast__close" type="button" aria-label="Fechar notificação">×</button><span class="toast__progress" aria-hidden="true"></span>`;
-        item.querySelector('.toast__title').textContent = settings.label;
-        item.querySelector('.toast__message').textContent = safeToastMessage(message);
-        const dismiss = () => {
-          if (!item.isConnected) return;
-          item.classList.add('is-leaving');
-          window.setTimeout(() => item.remove(), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
-        };
-        item.querySelector('.toast__close').onclick = dismiss;
-        toastRegion.append(item);
-        const timeout = duration === undefined ? settings.duration : duration;
-        if (timeout > 0) { item.style.setProperty('--toast-duration', `${timeout}ms`); window.setTimeout(dismiss, timeout); }
-        else item.querySelector('.toast__progress').hidden = true;
-      };
-      const toast = Object.freeze({
-        success: message => createToast('success', message),
-        error: message => createToast('error', safeToastMessage(message)),
-        warning: message => createToast('warning', message),
-        info: message => createToast('info', message)
-      });
-      // Compatibilidade temporária: blocos legados que ainda chamam alert()
-      // deixam de interromper o trabalho do usuário e usam o padrão visual atual.
-      window.alert = message => {
-        const text = safeToastMessage(message);
-        if (/sucesso|salvo|exclu[ií]do|atualizado/i.test(text)) toast.success(text);
-        else if (/revise|obrigat|selecione|confirma/i.test(text)) toast.warning(text);
-        else toast.error(text);
-      };
+      syncShipmentType = syncShipmentTypeWithoutInlineStyle;
+      form.elements.tipoEmbarque.onchange = syncShipmentTypeWithoutInlineStyle;
       const pendingToast = sessionStorage.getItem('gport_toast_notice');
       if (pendingToast) { sessionStorage.removeItem('gport_toast_notice'); window.setTimeout(() => toast.info(pendingToast), 50); }
       const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
@@ -73,7 +42,7 @@
         renderVgm();
       };
       const showVgmReportPage = () => {
-        if (!['admin', 'vgm'].includes(currentUser?.role)) { alert('Acesso restrito a VGM e Administrador.'); return; }
+        if (!['admin', 'vgm'].includes(currentUser?.role)) { toast.warning('Acesso restrito a VGM e Administrador.'); return; }
         el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = false; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = true;
         el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.add('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
         renderVgmReport();
@@ -89,7 +58,7 @@
         renderFollowup();
       };
       const showReportsPage = () => {
-        if (currentUser?.role !== 'admin') { alert('Apenas administradores podem acessar os relatórios.'); return; }
+        if (currentUser?.role !== 'admin') { toast.warning('Apenas administradores podem acessar os relatórios.'); return; }
         el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = false;
         el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.add('active');
         const now = new Date(); if (!el('reportMonth').value) el('reportMonth').value = now.toISOString().slice(0,7); if (!el('reportYear').value) el('reportYear').value = now.getFullYear(); syncReportView();
@@ -148,7 +117,7 @@
         const days = [...groups.values()].sort((a,b) => b.key.localeCompare(a.key));
         const max = Math.max(...days.map(d => d.total), 1);
         el('vgmReportTotal').textContent = sent.length; el('vgmReportDays').textContent = days.length;
-        el('vgmDailyChart').innerHTML = days.length ? days.map((d,i) => `<div class="bar-row"><span class="bar-rank">${i+1}</span><span class="bar-label">${esc(d.name)}</span><span class="bar-track"><span class="bar-fill" style="width:${Math.max((d.total/max)*100,5)}%;background:#0b8a6d"></span></span><span class="bar-value">${d.total}</span></div>`).join('') : '<div class="chart-empty">Nenhum VGM enviado com data registrada.</div>';
+        el('vgmDailyChart').innerHTML = days.length ? days.map((d,i) => `<div class="bar-row"><span class="bar-rank">${i+1}</span><span class="bar-label">${esc(d.name)}</span><progress class="bar-progress bar-progress--vgm" max="${max}" value="${d.total}" aria-label="${esc(d.name)}: ${d.total} VGM(s)"></progress><span class="bar-value">${d.total}</span></div>`).join('') : '<div class="chart-empty">Nenhum VGM enviado com data registrada.</div>';
         el('vgmDailyReport').innerHTML = days.length ? `<table class="report-table"><thead><tr><th>DATA DO ENVIO</th><th>VGMs ENVIADOS</th></tr></thead><tbody>${days.map(d => `<tr><td>${esc(d.name)}</td><td>${d.total}</td></tr>`).join('')}</tbody></table>` : '';
       };
       const renderRelease = () => {
@@ -226,7 +195,7 @@
         const rows = events.length ? events.map(item => {const date=esc(historyDateTime(item.created_at)).replace(' ','<br>');const details=esc(historyDetails(item)).replace(/\n/g,'<br>');return `<tr><td>${date}</td><td>${esc(historyLabel(item))}</td><td>${details}</td><td>${esc(item.username || '—')}</td></tr>`}).join('') : '<tr><td colspan="4">Nenhuma alteração registrada.</td></tr>';
         const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Histórico ${esc(process.booking || '')}</title><style>@page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;color:#111;margin:0}h1{font-size:21px;margin:0 0 6px}p{margin:4px 0;color:#444;font-size:12px}.head{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10.5px}th{text-align:left;background:#e9edf2;padding:8px;border:1px solid #aaa}td{padding:8px;border:1px solid #bbb;vertical-align:top;line-height:1.4;overflow-wrap:anywhere}th:nth-child(1){width:13%}th:nth-child(2){width:14%}th:nth-child(3){width:61%}th:nth-child(4){width:12%}.footer{margin-top:16px;color:#555;font-size:9px}</style></head><body><div class="head"><h1>Histórico do processo</h1><p><strong>Booking:</strong> ${esc(process.booking || '—')}</p><p><strong>Exportador:</strong> ${esc(process.exportador || '—')} &nbsp; | &nbsp; <strong>Importador:</strong> ${esc(process.importador || '—')}</p><p><strong>Navio:</strong> ${esc(process.navio || '—')} &nbsp; | &nbsp; <strong>Analista:</strong> ${esc(process.analista || '—')}</p></div><table><thead><tr><th>DATA E HORA</th><th>ALTERAÇÃO</th><th>O QUE FOI ALTERADO</th><th>USUÁRIO</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">Documento gerado em ${new Date().toLocaleString('pt-BR')}</div></body></html>`;
         el('previewTitle').textContent = 'Histórico do processo';
-        el('pdfFrame').srcdoc = html; el('previewDialog').showModal();
+        el('pdfFrame').srcdoc = securePrintHtml(html); el('previewDialog').showModal();
       };
       const renderFinancial = () => {
         el('financialList').innerHTML = data.length ? `<table class="data-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR</th><th>FATURA</th><th>VALOR</th><th>MOEDA</th><th>STATUS</th></tr></thead><tbody>${data.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}</td><td>${esc(p.fatura || '—')}</td><td>${esc(money(p))}</td><td>${esc(p.moeda || 'USD')}</td><td>${esc(p.status || '—')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo cadastrado.</div>';
@@ -241,23 +210,6 @@
         if (!response.ok) throw new Error(body.error || 'Não foi possível concluir a operação.');
         return body;
       };
-      const confirmAction = (title, message, { destructive = true } = {}) => new Promise(resolve => {
-        const modal = el('confirmDialog');
-        if (!modal || typeof modal.showModal !== 'function') { resolve(false); return; }
-        el('confirmDialogTitle').textContent = title;
-        el('confirmDialogMessage').textContent = message;
-        const accept = el('confirmDialogAccept');
-        accept.textContent = destructive ? 'Excluir' : 'Confirmar';
-        accept.classList.toggle('danger', destructive);
-        const finish = value => {
-          accept.onclick = null; el('confirmDialogCancel').onclick = null;
-          if (modal.open) modal.close(); resolve(value);
-        };
-        accept.onclick = () => finish(true);
-        el('confirmDialogCancel').onclick = () => finish(false);
-        modal.oncancel = event => { event.preventDefault(); finish(false); };
-        modal.showModal(); accept.focus();
-      });
       const value = (v) => v === null || v === undefined ? '' : v;
       const containerParts = (v) => String(v || '').split('/').map(x => x.trim()).filter(Boolean);
       const dateTimeInput = value => value ? String(value).replace('Z', '').slice(0, 16) : '';
@@ -439,7 +391,7 @@
           button.className = 'btn secondary load-more-processes';
           const panel = document.querySelector('#processPage .panel:last-of-type');
           if (panel) panel.after(button);
-          button.onclick = () => refreshData({ append:true }).catch(error => alert(error.message));
+          button.onclick = () => refreshData({ append:true }).catch(error => toast.error(error.message));
         }
         button.hidden = !processPagination.hasMore;
         button.textContent = `Carregar mais processos (${data.length} de ${processPagination.total})`;
@@ -831,7 +783,7 @@
       el('usersNav').onclick = async e => {
         e.preventDefault();
         try { users = (await request('/api/users')).map(u => ({ ...u })); renderUsers(); el('usersDialog').showModal(); }
-        catch (error) { alert(error.message); }
+        catch (error) { toast.error(error.message); }
       };
       el('vgmNav').onclick = e => {
         e.preventDefault();
@@ -938,15 +890,15 @@
         // após o usuário ser criado com sucesso.
         const userForm = e.currentTarget;
         const v = Object.fromEntries(new FormData(userForm));
-        if (v.password !== v.confirmPassword) return alert('A confirmação de senha não confere.');
+        if (v.password !== v.confirmPassword) return toast.warning('A confirmação de senha não confere.');
         try { await request('/api/users', { method:'POST', body:JSON.stringify({ username:v.username, password:v.password, role:'analyst' }) }); users = await request('/api/users'); renderUsers(); userForm.reset(); toast.success('Usuário criado com sucesso.'); }
-        catch (error) { alert(error.message); }
+        catch (error) { toast.error(error.message); }
       };
       el('userList').onchange = async e => {
         const input = e.target.closest('.user-role'); if (!input) return;
         const user = users.find(u => u.username === input.dataset.user); if (!user) return;
         try { await request(`/api/users/${user.id}`, { method:'PATCH', body:JSON.stringify({ role:input.value }) }); users = await request('/api/users'); renderUsers(); }
-        catch (error) { alert(error.message); input.value = user.role; }
+        catch (error) { toast.error(error.message); input.value = user.role; }
       };
       el('userList').onclick = async e => {
         const button = e.target.closest('.reset-password, .delete-user'); if (!button) return;
@@ -958,13 +910,12 @@
           } else {
             if (!(await confirmAction('Excluir funcionário', `Excluir o funcionário ${user.username}? O acesso ao sistema será removido.`))) return;
             await request(`/api/users/${user.id}`, { method:'DELETE' });
-            alert(`Funcionário ${user.username} excluído com sucesso.`);
+            toast.success(`Funcionário ${user.username} excluído com sucesso.`);
           }
           users = await request('/api/users'); renderUsers();
-        } catch (error) { alert(error.message); }
+        } catch (error) { toast.error(error.message); }
       };
-      document.querySelector('#settingsDialog form').insertAdjacentHTML('beforeend', '<div class="actions"><button type="button" class="btn secondary" id="apiLogout">Desconectar</button></div>');
-      document.getElementById('apiLogout').onclick = async () => { try { await request('/api/auth/logout', { method:'POST' }); sessionStorage.setItem('gport_toast_notice', 'Você saiu do sistema com segurança.'); } finally { location.reload(); } };
+      el('settingsLogoutBtn').onclick = async () => { try { await request('/api/auth/logout', { method:'POST' }); sessionStorage.setItem('gport_toast_notice', 'Você saiu do sistema com segurança.'); } finally { location.reload(); } };
       function printCoverFromDocumentModelBase(p) {
         // Pelo botão do formulário, "exportador" é o ID do cadastro; pela
         // lista, ele já é o nome. Aceitar os dois evita exibir o UUID na capa.
@@ -989,7 +940,7 @@
           @page{size:A4;margin:7mm}*{box-sizing:border-box}body{margin:0;color:#000;font:9px "Times New Roman",Times,serif}.sheet{height:282mm;overflow:hidden;border:1.5px solid #000}.port{height:9mm;padding:1.2mm;text-align:center;font:bold 17px "Times New Roman",Times,serif;letter-spacing:.8px}.head{display:grid;grid-template-columns:31% 46% 23%;height:21mm;border-top:1.5px solid #000;border-bottom:1.5px solid #000}.head>div,.head h1{margin:0;padding:2mm;border-right:1px solid #000}.head>div:last-child{border:0}.logo{display:flex;align-items:center;justify-content:center}.logo img{max-width:39mm;max-height:14mm;object-fit:contain;filter:grayscale(1) contrast(300%) brightness(0)}.head h1{text-align:center;font:bold 14px "Times New Roman",Times,serif;line-height:1.08}.process{font:bold 10px "Times New Roman",Times,serif}.process span{display:block;margin-top:.7mm;font-size:9px}.workflow{display:grid;grid-template-columns:31% 34% 35%;height:86mm;border-bottom:1.5px solid #000;overflow:hidden}.workflow section{border-right:1px solid #000}.workflow section:last-child{border:0}.title{height:7mm;padding:1.6mm;text-align:center;border-bottom:1px solid #000;font:bold 10px "Times New Roman",Times,serif}.line{height:7mm;padding:1.45mm 2mm;border-bottom:1px solid #000;font:bold 9px "Times New Roman",Times,serif;line-height:1.15}.stamp-line{height:11.5mm;padding:1.45mm 2mm;border-bottom:1px solid #000;font:bold 9px "Times New Roman",Times,serif;line-height:1.15}.options{padding:2mm;font:bold 8.8px "Times New Roman",Times,serif;line-height:1.35}.options strong{display:block;margin-bottom:.5mm}.option-row{display:grid;grid-template-columns:1fr 1fr;gap:2mm;margin-bottom:1.4mm}.option-row>div{min-width:0}.bl-row{grid-template-columns:58% 42%}.freight-row{grid-template-columns:1fr;gap:1mm}.inline-checks{display:grid;grid-template-columns:1fr;gap:.9mm;margin-top:3.3mm;font-size:8px;line-height:1.1;align-content:start}.freight-row .inline-checks{grid-template-columns:1fr;margin-top:1mm}.freight-row .inline-checks .certificate-title{margin:0}.inline-checks span{white-space:nowrap}.inline-checks i{display:inline-block;width:9px;height:9px;margin-left:.7mm;border:1px solid #000;vertical-align:-1px}.mapa-label{font-size:17px;letter-spacing:.3px;margin-top:2mm}.mark{display:flex;align-items:center;justify-content:flex-start;gap:1mm}.mark i{display:inline-block;flex:0 0 10px;width:10px;height:10px;margin-left:1mm;border:1px solid #000;line-height:9px;text-align:center;font-style:normal}.info{display:grid;grid-template-columns:40% 22% 38%;grid-template-rows:8mm repeat(5,9mm);border-bottom:1px solid #000}.field{min-width:0;padding:1.25mm 1.8mm;border-right:1px solid #000;border-bottom:1px solid #000}.field b{display:block;font-size:8px}.field span{display:block;min-height:3mm;margin-top:.8mm;overflow-wrap:anywhere;font-weight:bold;font-size:9px;line-height:1.1}.booking{grid-column:1/3}.bl{grid-column:3}.exporter{grid-column:1}.invoice{grid-column:2}.cnpj{grid-column:3}.importer{grid-column:1/3}.value{grid-column:3}.vessel{grid-column:1/3}.incoterm{grid-column:3}.agency{grid-column:1/3}.due{grid-column:3}.carrier{grid-column:1/3;border-bottom:0}.ruc{grid-column:3;border-bottom:0}.bar{padding:1.2mm;background:#000;color:#fff;text-align:center;font:bold 10px "Times New Roman",Times,serif}.cargo{display:grid;grid-template-columns:2fr 1fr 1.2fr}.cargo .field{height:10mm}.cargo .field:nth-child(3n){border-right:0}.containers{width:100%;border-collapse:collapse}.containers th,.containers td{height:${Math.max(2.8, Math.min(6.2, 48 / rowCount)).toFixed(2)}mm;padding:.8mm 1.4mm;border:1px solid #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:8.5px}.containers th{height:5mm;background:#000;color:#fff;text-align:center;font:bold 8.7px "Times New Roman",Times,serif}.containers th:nth-child(1){width:34%}.containers th:nth-child(2){width:15%}.containers th:nth-child(3){width:22%}.containers th:nth-child(4){width:12%}.containers th:nth-child(5){width:17%}.foot{padding:1.2mm 2mm;text-align:right;font-size:7px}
         </style></head><body><main class="sheet"><div class="port">${esc((p.origem || 'PORTO DE ORIGEM').toUpperCase())}</div><header class="head"><div class="logo"><img src="logo-gport.png" alt="GPORT"></div><h1>PROCESSO DE<br>EXPORTAÇÃO</h1><div class="process">PROCESSO Nº.<span>${esc(p.numeroProcesso || '')}</span></div></header><section class="workflow"><section><div class="title">DEADLINES / PRAZOS</div><div class="line">DRAFT: ${esc(fmtCoverDate(p.prazo))}</div><div class="line">AGENDAMENTO:</div><div class="line">LIBERAÇÃO: ${esc(fmtCoverDate(p.liberacaoData))}</div><div class="title">TRANSPORTE</div><div class="line">COLETA: ${esc(fmtCoverDate(p.coleta))}</div><div class="line">TERMINAL: ${esc(p.terminal || '')}</div><div class="line">FREE TIME: ${esc(p.freetime ? `${p.freetime} dias` : '')}</div><div class="title">CARIMBOS</div><div class="stamp-line">LIBERADO: ${released ? 'X' : ''}</div><div class="stamp-line">AVERBADO:</div></section><section><div class="title">CHECK LIST</div><div class="line">ANALISTA: ${esc(p.analista || '')}</div><div class="line">DRAFT: ${esc(fmtCoverDate(p.envio))}</div><div class="line">VGM: ${deliveryVgm ? 'X' : ''}</div><div class="line">EMISSÃO DUE: ${esc(p.due ? fmtCoverDate(p.dueEmissao) : 'RUC MANUAL')}</div><div class="line">VENCIMENTO: ${esc(dueExpiry)}</div><div class="line">ISF/LACEY: ${esc(p.isfLacey || 'Não')}</div><div class="line">OVAÇÃO:</div><div class="title">CARIMBOS</div><div class="stamp-line">EMBARCADO:</div><div class="stamp-line">FECHADO:</div></section><section class="options"><div class="options-group"><strong class="options-title">TIPO DE BL:</strong><div class="option-row bl-row"><div>${typeBl.map(([label,value]) => mark(label, p.tipoBL === value)).join('')}</div><div class="inline-checks"><span>BL MASTER <i></i></span><span>HBL <i></i></span><span>BL FRETADO <i></i></span></div></div></div><div class="options-group"><strong class="options-title">FRETE:</strong><div class="option-row freight-row"><div>${freights.map(([label,value]) => mark(label, p.tipoFrete === value)).join('')}</div><div class="inline-checks"><strong class="certificate-title">CO:</strong><span>ACII <i></i></span><span>FIEP <i></i></span><span>MERCOSUL <i></i></span></div></div></div><strong class="mapa-label">MAPA ( ${hasMapa ? 'X' : ''} )</strong><br><br><strong>OBS:</strong></section></section><section class="info">${cell('BOOKING:',p.booking,'booking')}${cell('Nº DE BL:','', 'bl')}${cell('EXPORTADOR:',exporterName,'exporter')}${cell('FATURA:',p.fatura,'invoice')}${cell('CNPJ:',client.cnpj,'cnpj')}${cell('IMPORTADOR:',p.importador,'importer')}${cell('VALOR:',cargoValue,'value')}${cell('NAVIO:',p.navio,'vessel')}${cell('INCOTERM:',p.incoterm,'incoterm')}${cell('AGÊNCIA:',p.agencia,'agency')}${cell('DUE:',p.due,'due')}${cell('ARMADOR:',p.armador,'carrier')}${cell('RUC:',p.ruc,'ruc')}</section><div class="bar">MERCADORIAS A SEREM EMBARCADAS</div><section class="cargo">${cell('QUANTIDADE (PACOTES)',p.volumes)}${cell('M/3',p.metragem)}${cell('DESTINO',p.destino)}${cell('PESO LÍQUIDO',p.pesoLiquido ? `${p.pesoLiquido} kg` : '')}${cell('PESO BRUTO',p.pesoBruto ? `${p.pesoBruto} kg` : '')}${cell('CONTAINER(S)',containerSummary)}</section><table class="containers"><thead><tr><th>CONTAINER</th><th>TARA</th><th>LACRE</th><th>NOTA FISCAL</th>${hasMapa ? '<th>NOVO LACRE</th>' : ''}</tr></thead><tbody>${rows}</tbody></table><div class="foot">Capa gerada em ${new Date().toLocaleString('pt-BR')}</div></main></body></html>`;
         el('previewTitle').textContent = 'Prévia da capa do processo';
-        el('pdfFrame').srcdoc = html;
+        el('pdfFrame').srcdoc = securePrintHtml(html);
         el('previewDialog').showModal();
       }
       function printCoverFromDocumentModel(p) {
@@ -998,6 +949,7 @@
           const doc = frame.contentDocument;
           if (!doc) return;
           const style = doc.createElement('style');
+          style.nonce = cspNonce;
           style.textContent = `
             .title,.bar,.containers th,.options-title,.certificate-title,.process-data-title{background:#e8e8e8!important;color:#000!important}
             *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:11px!important}.title,.bar,.process-data-title{font-size:12px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
