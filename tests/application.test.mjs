@@ -55,6 +55,18 @@ test('lançamento novo é idempotente contra clique duplo, timeout ou reenvio', 
   assert.match(migration, /processes_idempotency_key_unique_idx/);
 });
 
+test('embarque LCL oculta contêineres e mantém os dados consolidados da carga', async () => {
+  const server = await read('src/server.js');
+  const html = await readInterface();
+  const css = await read('public/assets/experience.css');
+  assert.match(html, /el\('containerFields'\)\.hidden = isLcl/);
+  assert.match(html, /querySelectorAll\('input,select'\)\.forEach\(input => \{ input\.disabled = isLcl; \}\)/);
+  assert.match(css, /\.container-fields\[hidden\]\{display:none!important\}/);
+  assert.match(server, /const containerQuantity = shipmentType === 'LCL' \? null/);
+  assert.match(server, /result\.containerDetails = shipmentType === 'LCL' \? \[\]/);
+  for (const field of ['name="metragem"', 'name="pesoLiquido"', 'name="pesoBruto"', 'name="volumes"']) assert.ok(html.includes(field));
+});
+
 test('novo lançamento não reaproveita o ID de um processo aberto anteriormente', async () => {
   const html = await readInterface();
   assert.match(html, /editingProcessId = null;/);
@@ -84,6 +96,10 @@ test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mí
   assert.match(server, /\{ rucManual = false, dueOnly = false \}/);
   assert.match(html, /Apenas DU-E/);
   assert.match(html, /syncDueOnlyLaunchFields/);
+  assert.match(html, /const dueOnlyFieldNames = \['importador', 'ruc', 'tipoEmbarque'/);
+  assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'origem'[^\]]*\]/);
+  assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'destino'[^\]]*\]/);
+  assert.match(server, /originPort: cleanText\(raw\.originPort, 120, 'Porto de origem', \{ required: true \}\), destinationPort: cleanText\(raw\.destinationPort, 120, 'Porto de destino', \{ required: true \}\)/);
   assert.match(html, /containerType:dueOnly \? 'NÃO INFORMADO'/);
   assert.match(migration, /ALTER COLUMN deadline DROP NOT NULL/);
 });

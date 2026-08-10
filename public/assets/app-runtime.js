@@ -267,7 +267,9 @@
         el('clientForm').querySelector('input[name="rucManual"]').closest('label').insertAdjacentElement('afterend', label);
         return label.querySelector('input');
       })();
-      const dueOnlyFieldNames = ['importador', 'ruc', 'origem', 'destino', 'tipoEmbarque', 'armador', 'agencia', 'prazo', 'envio', 'coleta', 'terminal', 'freetime', 'incoterm', 'tipoBL', 'tipoFrete', 'vistoriaMapa', 'isfLacey', 'metragem', 'pesoLiquido', 'pesoBruto', 'volumes', 'valor', 'moeda'];
+      // Em lançamentos "Apenas DU-E", origem e destino continuam visíveis e
+      // obrigatórios. Somente os demais campos operacionais são simplificados.
+      const dueOnlyFieldNames = ['importador', 'ruc', 'tipoEmbarque', 'armador', 'agencia', 'prazo', 'envio', 'coleta', 'terminal', 'freetime', 'incoterm', 'tipoBL', 'tipoFrete', 'vistoriaMapa', 'isfLacey', 'metragem', 'pesoLiquido', 'pesoBruto', 'volumes', 'valor', 'moeda'];
       const syncDueOnlyLaunchFields = () => {
         const selected = clients.find(c => c.id === form.elements.exportador.value);
         const dueOnly = selected?.dueOnly === true;
