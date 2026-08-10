@@ -61,6 +61,7 @@ test('embarque LCL oculta contêineres e mantém os dados consolidados da carga'
   const css = await read('public/assets/experience.css');
   assert.match(html, /el\('containerFields'\)\.hidden = isLcl/);
   assert.match(html, /querySelectorAll\('input,select'\)\.forEach\(input => \{ input\.disabled = isLcl; \}\)/);
+  assert.match(html, /\['qtdContainers', 'tipoContainer', 'containers'\]\.includes\(name\)\) return byId\('containerFields'\)/);
   assert.match(css, /\.container-fields\[hidden\]\{display:none!important\}/);
   assert.match(server, /const containerQuantity = shipmentType === 'LCL' \? null/);
   assert.match(server, /result\.containerDetails = shipmentType === 'LCL' \? \[\]/);

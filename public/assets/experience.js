@@ -60,7 +60,9 @@
     const findField = name => {
       const input = form.elements[name];
       if (!input) return null;
-      if (name === 'containers') return byId('containerFields');
+      // Quantidade, tipo e dados individuais formam uma única unidade. Manter
+      // esse agrupamento permite ocultar toda a área quando o embarque for LCL.
+      if (['qtdContainers', 'tipoContainer', 'containers'].includes(name)) return byId('containerFields');
       return input.closest('.field');
     };
     flow.forEach(([, names], index) => names.forEach(name => {
