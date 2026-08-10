@@ -930,10 +930,10 @@
         const exporterName = client.nome || p.exportador || '';
         const containers = containerParts(p.containers), tares = containerParts(p.tara), seals = containerParts(p.lacre), notes = containerParts(p.notasFiscais), newSeals = containerParts(p.lacreNovo);
         const hasMapa = p.vistoriaMapa === 'Sim';
-        // Reserva o máximo de linhas úteis que cabe na folha A4 sem reduzir os
-        // demais campos da capa. A altura é ajustada logo abaixo para manter a
-        // grade inteira dentro da área de impressão.
-        const rowCount = Math.max(12, containers.length, tares.length, seals.length, notes.length, newSeals.length);
+        // Dez linhas permitem aumentar em 50% a fonte da grade sem alterar os
+        // demais campos da capa. Acima disso, altura e fonte recuam de forma
+        // progressiva para que até 15 contêineres continuem legíveis na A4.
+        const rowCount = Math.max(10, containers.length, tares.length, seals.length, notes.length, newSeals.length);
         const fmtCoverDate = value => fmtDate(value || '').replace(/\s\d{2}:\d{2}$/, '');
         const deliveryVgm = ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus);
         const released = p.liberacaoStatus === 'Sim' || p.canal === 'Verde';
@@ -954,6 +954,9 @@
         el('previewDialog').showModal();
       }
       function printCoverFromDocumentModel(p) {
+        const printedContainerCount = Math.max(10, ...['containers','tara','lacre','notasFiscais','lacreNovo'].map(field => containerParts(p[field]).length));
+        const printedContainerRowHeight = Math.max(3.2, Math.min(5, 50 / printedContainerCount));
+        const printedContainerFontSize = Math.max(10.5, Math.min(18, printedContainerRowHeight * 3.6));
         const frame = el('pdfFrame');
         frame.addEventListener('load', () => {
           const doc = frame.contentDocument;
@@ -962,12 +965,12 @@
           style.nonce = cspNonce;
           style.textContent = `
             .title,.bar,.containers th,.options-title,.certificate-title,.process-data-title{background:#e8e8e8!important;color:#000!important}
-            *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:13.2px!important}.port{font-size:20.4px!important}.head h1{font-size:16.8px!important}.process{font-size:12px!important}.process span{font-size:10.8px!important}.title,.bar,.process-data-title{font-size:14.4px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
+            *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:13.2px!important}.port{height:7mm!important;padding:.45mm 1mm!important;font-size:20.4px!important}.head h1{font-size:16.8px!important}.process{font-size:12px!important}.process span{font-size:10.8px!important}.title,.bar,.process-data-title{height:5.5mm!important;padding:.6mm 1mm!important;font-size:14.4px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
             .line,.stamp-line{font-size:13.2px!important}.options{font-size:12.48px!important}.inline-checks{font-size:11.76px!important}.mapa-label{font-size:20.4px!important}
             .field{padding:1.6mm 2mm!important}.field b{font-size:11.76px!important}.field span{font-size:13.68px!important;line-height:1.12!important}.booking,.bl{padding:.45mm 2mm!important}.booking b,.bl b,.booking span,.bl span{line-height:1!important}.booking span,.bl span{margin-top:0!important}.foot{font-size:8.4px!important}
             .info{grid-template-rows:9mm repeat(5,10mm)!important}.cargo .field{height:12mm!important}
-            .containers th{height:6mm!important;font-size:12.24px!important}.containers td{padding:.15mm 1.2mm!important;font-size:12px!important;line-height:1!important}
-            .workflow{height:97mm!important}.workflow .stamp-line{height:17mm!important;padding:2mm!important;font-size:11px!important}
+            .containers th{height:5.2mm!important;padding:.1mm 1mm!important;font-size:18.36px!important;line-height:1!important}.containers td{height:${printedContainerRowHeight.toFixed(2)}mm!important;padding:.05mm 1.2mm!important;font-size:${printedContainerFontSize.toFixed(2)}px!important;line-height:1!important}
+            .workflow{height:99mm!important}.workflow section:first-child .title[data-stamp-title]{margin-top:1.5mm!important}.workflow .stamp-line{height:19.5mm!important;padding:2mm!important;font-size:11px!important}
             .sheet{border:1px solid #000!important}.head{border-top:1px solid #000!important;border-bottom:1px solid #000!important}.head>div,.head h1{border-right:1px solid #000!important}
             .workflow{border-bottom:1px solid #000!important}.workflow section{border-right:1px solid #000!important}.title,.line,.stamp-line,.field,.process-data-title{border-color:#000!important;border-width:1px!important}
             .workflow{grid-template-columns:31% 34% 35%!important}.info{grid-template-columns:40% 22% 38%!important}.cargo{grid-template-columns:31% 34% 35%!important}
@@ -976,8 +979,8 @@
             .workflow .title[data-stamp-title]{border-bottom:0!important}.stamps-unified{border-top:0!important}
             .options-group{margin:0 0 1.3mm!important}.options-title{display:block!important;margin:0 0 .8mm!important;padding:.45mm .7mm!important}.bl-row .inline-checks{margin-top:0!important}.options .mark{justify-content:flex-start!important}.freight-row .inline-checks{grid-template-columns:1fr!important}
             .workflow{position:relative}.workflow .title[data-stamp-title]{color:transparent!important;background:#fff!important}
-            .stamps-unified{position:absolute;z-index:3;left:0;top:56mm;width:65%;height:7mm;padding:1.2mm;background:#e8e8e8;border-top:1px solid #000;border-bottom:1px solid #000;text-align:center;font:bold 14.4px "Times New Roman",Times,serif;letter-spacing:.25px}
-            .process-data-title{height:7mm;padding:1.25mm 2mm;border-bottom:1px solid #000;font:bold 14.4px "Times New Roman",Times,serif}
+            .stamps-unified{position:absolute;z-index:3;left:0;top:54.5mm;width:65%;height:5.5mm;padding:.6mm 1mm;background:#e8e8e8;border-top:1px solid #000;border-bottom:1px solid #000;text-align:center;font:bold 14.4px "Times New Roman",Times,serif;letter-spacing:.25px}
+            .process-data-title{height:5.5mm!important;padding:.6mm 1mm!important;border-bottom:1px solid #000;font:bold 14.4px "Times New Roman",Times,serif}
           `;
           doc.head.append(style);
           const workflow = doc.querySelector('.workflow');
