@@ -206,6 +206,9 @@ test('interface associa labels, nomeia controles e permite abrir processos pelo 
   const accessibility = await read('public/assets/accessibility.js');
   const css = await read('public/assets/gport.css');
   assert.match(accessibility, /label\.htmlFor = control\.id/);
+  const html = await read('public/index.html');
+  assert.match(html, /role="group" aria-labelledby="visibleColumnsLabel"/);
+  assert.doesNotMatch(html, /<label>Colunas visíveis<\/label>/);
   const runtime = await read('public/assets/app-runtime.js');
   assert.match(runtime, /label\.htmlFor = 'clientDueOnly'/);
   assert.match(runtime, /id="clientDueOnly" name="dueOnly"/);
