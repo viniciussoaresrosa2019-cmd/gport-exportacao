@@ -436,9 +436,11 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /searchParams\.set\('client', processClientFilter\)/);
   assert.match(html, /searchParams\.set\('clientName', selectedClient\.nome\)/);
   assert.match(html, /function matchesClientFilter\(process\)/);
+  assert.match(html, /if \(clientResult\.status === 'fulfilled'\) render\(\)/);
   assert.match(html, /class="client-group"/);
   assert.match(css, /#processesPage \.table-wrap thead th\{background:#155b91;color:#fff/);
   assert.match(css, /\.client-group td\{[^}]*background:#fff!important;color:#155b91/);
+  assert.match(css, /#rows tr\.clickable td\{background:#fff!important\}/);
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
 });
 

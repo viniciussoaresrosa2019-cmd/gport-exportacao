@@ -462,6 +462,10 @@
             if (assigneeResult.status === 'fulfilled') availableAssignees = assigneeResult.value;
             if (clientResult.status === 'fulfilled' && assigneeResult.status === 'fulfilled') referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
             renderClients();
+            // Os filtros por exportador dependem da lista de clientes. Como essa
+            // referência é carregada em segundo plano, redesenha a planilha assim
+            // que ela chegar para exibir todos os botões sem exigir recarregamento.
+            if (clientResult.status === 'fulfilled') render();
           }).finally(() => { referenceDataLoadPromise = null; });
         }
       }
