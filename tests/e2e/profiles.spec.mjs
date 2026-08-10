@@ -20,16 +20,7 @@ for (const profile of profiles) {
       await page.locator('#loginForm button[type="submit"]').click();
       expect((await loginResponse).status()).toBe(200);
 
-      // A aplicação sempre inicia no painel operacional após o login.
-      await expect(page.getByRole('heading', { name: 'Painel inicial' })).toBeVisible();
-      await expect(page.getByText(new RegExp(`Painel de ${profile.name}`, 'i'))).toBeVisible();
-
-      if ((page.viewportSize()?.width || 1024) > 850) {
-        await page.locator('#processNav').click();
-      } else {
-        await page.locator('#mobileNav').getByRole('button', { name: /Processos/ }).click();
-      }
-
+      // A aplicação sempre inicia diretamente na planilha de processos.
       await expect(page.getByRole('heading', { name: 'Planilha de processos' })).toBeVisible();
       await expect(page.locator('#rows')).not.toHaveAttribute('aria-busy', 'true');
 

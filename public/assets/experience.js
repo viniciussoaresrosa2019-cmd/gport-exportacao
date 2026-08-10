@@ -144,85 +144,11 @@
     if (!nav.isConnected) document.body.appendChild(nav);
   };
 
-  const api = async (url, options = {}) => {
-    const headers = { ...(options.headers || {}) };
-    if (['POST', 'PATCH', 'DELETE'].includes(options.method)) {
-      const csrf = document.cookie.split('; ').find(item => item.startsWith('gport_csrf='))?.split('=').slice(1).join('');
-      if (csrf) headers['X-CSRF-Token'] = decodeURIComponent(csrf);
-    }
-    const response = await fetch(url, { credentials:'same-origin', ...options, headers });
-    if (!response.ok) throw new Error('request-failed');
-    return response.status === 204 ? null : response.json();
-  };
-  let dashboardLoaded = false;
-  const dashboard = () => byId('dashboardPage');
-  const formatDate = value => value ? new Date(value).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : 'Sem prazo';
-  const makeDashboard = () => {
-    if (dashboard()) return;
-    const page = document.createElement('section');
-    page.id = 'dashboardPage'; page.className = 'dashboard-page'; page.hidden = true;
-    page.innerHTML = `<div class="top"><div><p class="eyebrow">Visão operacional</p><h1>Painel inicial</h1></div><button id="dashboardRefresh" type="button" class="btn secondary">Atualizar</button></div><p class="intro" id="dashboardIntro">Resumo das pendências mais relevantes para o seu perfil.</p><div id="dashboardKpis" class="dashboard-kpis" aria-busy="true"></div><div class="dashboard-grid"><article class="dashboard-card"><h2>Processos recentes</h2><p>Os últimos processos atualizados na sua visão.</p><div id="dashboardRecent" class="dashboard-list"></div></article><article class="dashboard-card"><h2>Status e atalhos</h2><p>Use os atalhos para continuar a operação.</p><div id="dashboardChannels" class="dashboard-list"></div><div class="dashboard-shortcuts"><button class="btn" type="button" data-dashboard-action="new">Novo processo</button><button class="btn secondary" type="button" data-dashboard-action="processes">Ver processos</button></div></article></div>`;
-    document.querySelector('main')?.prepend(page);
-    page.querySelector('#dashboardRefresh').onclick = loadDashboard;
-    page.querySelectorAll('[data-dashboard-action]').forEach(button => button.onclick = () => {
-      if (button.dataset.dashboardAction === 'new') byId('newBtn')?.click(); else byId('processNav')?.click();
-    });
-    const sideNav = document.querySelector('.side nav');
-    if (sideNav && !byId('dashboardNav')) {
-      const link = document.createElement('a'); link.id='dashboardNav'; link.href='#painel'; link.textContent='◫   Painel inicial';
-      link.addEventListener('click', event => { event.preventDefault(); showDashboard(); }); sideNav.prepend(link);
-    }
-  };
-  const loadDashboard = async () => {
-    makeDashboard();
-    const page = dashboard(); if (!page) return;
-    const kpis = byId('dashboardKpis'); kpis.setAttribute('aria-busy','true');
-    kpis.innerHTML = '<article class="dashboard-kpi"><span>Atualizando…</span><strong>—</strong></article>'.repeat(4);
-    try {
-      const payload = await api('/api/dashboard');
-      const summary = payload.summary || {};
-      const roleNames = { admin:'Administrador', analyst:'Analista', vgm:'VGM', liberacao:'Liberação', financeiro:'Financeiro' };
-      byId('dashboardIntro').textContent = `Painel de ${roleNames[payload.role] || 'operação'} · dados carregados sob suas permissões.`;
-      const cardSets = {
-        admin: [['Processos na visão',summary.total || 0],['Prazos hoje',summary.due_today || 0],['VGM pendentes',summary.vgm_pending || 0],['Liberações pendentes',summary.release_pending || 0]],
-        analyst: [['Meus processos',summary.total || 0],['Prazos hoje',summary.due_today || 0],['VGM pendentes',summary.vgm_pending || 0],['Liberações pendentes',summary.release_pending || 0]],
-        vgm: [['VGM pendentes',summary.vgm_pending || 0],['Prazos hoje',summary.due_today || 0],['Próximos 7 dias',summary.due_next_7_days || 0],['Processos na visão',summary.total || 0]],
-        liberacao: [['Liberações pendentes',summary.release_pending || 0],['Prazos vencidos',summary.overdue || 0],['Prazos hoje',summary.due_today || 0],['Processos na visão',summary.total || 0]]
-      };
-      const cards = cardSets[payload.role] || cardSets.analyst;
-      kpis.innerHTML = cards.map(([label, value]) => `<article class="dashboard-kpi"><span>${label}</span><strong>${value}</strong></article>`).join('');
-      byId('dashboardRecent').replaceChildren(...(payload.recent || []).map(item => {
-        const row = document.createElement('button'); row.type='button'; row.className='dashboard-row';
-        row.innerHTML = `<strong></strong><span></span>`; row.querySelector('strong').textContent = item.booking || 'Sem booking'; row.querySelector('span').textContent = formatDate(item.deadline);
-        row.onclick = () => { byId('processNav')?.click(); window.setTimeout(() => document.querySelector(`[data-id="${CSS.escape(item.id)}"]`)?.click(), 120); };
-        return row;
-      }));
-      if (!(payload.recent || []).length) byId('dashboardRecent').innerHTML = '<p class="notification-empty">Nenhum processo recente.</p>';
-      byId('dashboardChannels').replaceChildren(...(payload.channels || []).map(item => {
-        const row = document.createElement('div'); row.className='dashboard-row'; row.innerHTML='<strong></strong><span></span>'; row.querySelector('strong').textContent=item.name; row.querySelector('span').textContent=`${item.total} processo(s)`; return row;
-      }));
-      if (!(payload.channels || []).length) byId('dashboardChannels').innerHTML = '<p class="notification-empty">Sem canais classificados.</p>';
-      dashboardLoaded = true;
-    } catch { kpis.innerHTML = '<article class="dashboard-kpi"><span>Não foi possível carregar o painel agora.</span><strong>—</strong></article>'; }
-    finally { kpis.removeAttribute('aria-busy'); }
-  };
-  const showDashboard = () => {
-    makeDashboard();
-    const page = dashboard(); if (!page) return;
-    document.querySelectorAll('main > section').forEach(section => { section.hidden = section !== page; });
-    loadDashboard();
-  };
   const observer = new MutationObserver(labelResponsiveTables);
   document.addEventListener('DOMContentLoaded', () => {
     localStorage.removeItem('gport:process-draft:v2');
-    enhanceProcessForm(); createMobileNav(); makeDashboard(); labelResponsiveTables();
-    const loginDialog = byId('loginDialog');
-    if (loginDialog) new MutationObserver(() => {
-      if (!loginDialog.open && !dashboardLoaded && byId('currentUserName')?.textContent !== 'Aguardando login') { showDashboard(); }
-    }).observe(loginDialog, { attributes:true, attributeFilter:['open'] });
-    byId('processNav')?.addEventListener('click', () => { if (dashboard()) dashboard().hidden = true; });
+    enhanceProcessForm(); createMobileNav(); labelResponsiveTables();
     window.addEventListener('gport:role-tabs-updated', createMobileNav);
-    window.addEventListener('gport:process-changed', loadDashboard);
     observer.observe(document.body, { childList:true, subtree:true });
   });
 })();

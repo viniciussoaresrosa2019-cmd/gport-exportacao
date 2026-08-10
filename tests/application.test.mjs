@@ -228,14 +228,15 @@ test('CSP da página usa nonce e não depende de unsafe-inline', async () => {
   assert.match(runtime, /style\.nonce = cspNonce/);
 });
 
-test('login sempre abre a página inicial sem preferência de redirecionamento', async () => {
+test('login sempre abre Processos sem painel ou preferência de redirecionamento', async () => {
   const html = await read('public/index.html');
   const legacy = await read('public/assets/legacy-ui.js');
   const experience = await read('public/assets/experience.js');
   assert.doesNotMatch(html, /name="startPage"|Página após login/);
   assert.doesNotMatch(legacy, /savedAccessibility\?\.startPage|startPage:v\.startPage|startPage:'processos'/);
   assert.match(legacy, /delete savedAccessibility\.startPage/);
-  assert.match(experience, /showDashboard\(\);/);
+  assert.match(html, /<section id="processesPage">/);
+  assert.doesNotMatch(experience, /showDashboard\(\);|Painel inicial/);
 });
 
 test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
@@ -326,7 +327,7 @@ test('atualização em tempo real respeita a autorização de leitura', async ()
   assert.match(html, /data = before; render\(\); renderRelease\(\); throw error;/);
 });
 
-test('painel operacional não carrega a lista inteira e a interface de notificações permanece desativada', async () => {
+test('painel inicial e notificações permanecem removidos da interface operacional', async () => {
   const index = await read('public/index.html');
   const server = await read('src/server.js');
   const legacy = await read('public/assets/legacy-ui.js');
@@ -338,8 +339,7 @@ test('painel operacional não carrega a lista inteira e a interface de notifica�
   assert.match(server, /app\.patch\('\/api\/notifications\/:id\/read', authenticate/);
   assert.match(server, /CREATE TABLE IF NOT EXISTS user_notifications/);
   assert.match(server, /UNIQUE\(user_id,dedupe_key\)/);
-  assert.match(experience, /loadDashboard/);
-  assert.match(experience, /gport:process-changed/);
+  assert.doesNotMatch(experience, /Painel inicial|makeDashboard|loadDashboard|showDashboard/);
   assert.match(css, /\.dashboard-kpis/);
   assert.doesNotMatch(index, /deadlineAlerts|Planilha e alertas|Alertar sobre prazos próximos/);
   assert.match(legacy, /delete savedAccessibility\.deadlineAlerts/);
@@ -438,7 +438,8 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /function matchesClientFilter\(process\)/);
   assert.match(html, /if \(clientResult\.status === 'fulfilled'\) render\(\)/);
   assert.match(html, /class="client-group"/);
-  assert.match(css, /#processesPage \.table-wrap thead th\{background:#155b91;color:#fff/);
+  assert.match(css, /#processesPage \.table-wrap thead th\{background:#fff;color:#155b91/);
+  assert.match(css, /\.process-client-filters \.btn\{[^}]*text-transform:uppercase/);
   assert.match(css, /\.client-group td\{[^}]*background:#fff!important;color:#155b91/);
   assert.match(css, /#rows tr\.clickable td\{background:#fff!important\}/);
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
