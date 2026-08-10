@@ -961,7 +961,7 @@
             .title,.bar,.containers th,.options-title,.certificate-title,.process-data-title{background:#e8e8e8!important;color:#000!important}
             *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:13.2px!important}.port{font-size:20.4px!important}.head h1{font-size:16.8px!important}.process{font-size:12px!important}.process span{font-size:10.8px!important}.title,.bar,.process-data-title{font-size:14.4px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
             .line,.stamp-line{font-size:13.2px!important}.options{font-size:12.48px!important}.inline-checks{font-size:11.76px!important}.mapa-label{font-size:20.4px!important}
-            .field{padding:1.6mm 2mm!important}.field b{font-size:11.76px!important}.field span{font-size:13.68px!important;line-height:1.12!important}.foot{font-size:8.4px!important}
+            .field{padding:1.6mm 2mm!important}.field b{font-size:11.76px!important}.field span{font-size:13.68px!important;line-height:1.12!important}.booking,.bl{padding:.45mm 2mm!important}.booking b,.bl b,.booking span,.bl span{line-height:1!important}.booking span,.bl span{margin-top:0!important}.foot{font-size:8.4px!important}
             .info{grid-template-rows:9mm repeat(5,10mm)!important}.cargo .field{height:12mm!important}
             .containers th{height:6mm!important;font-size:12.24px!important}.containers td{font-size:12px!important}
             .workflow{height:91mm!important}.workflow .stamp-line{height:14mm!important;padding:2mm!important;font-size:11px!important}
