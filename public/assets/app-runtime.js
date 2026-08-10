@@ -959,11 +959,11 @@
           style.nonce = cspNonce;
           style.textContent = `
             .title,.bar,.containers th,.options-title,.certificate-title,.process-data-title{background:#e8e8e8!important;color:#000!important}
-            *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:11px!important}.title,.bar,.process-data-title{font-size:12px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
-            .line,.stamp-line{font-size:11px!important}.options{font-size:10.4px!important}.inline-checks{font-size:9.8px!important}
-            .field{padding:1.6mm 2mm!important}.field b{font-size:9.8px!important}.field span{font-size:11.4px!important;line-height:1.15!important}
+            *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}body{font-size:13.2px!important}.port{font-size:20.4px!important}.head h1{font-size:16.8px!important}.process{font-size:12px!important}.process span{font-size:10.8px!important}.title,.bar,.process-data-title{font-size:14.4px!important;font-weight:bold!important;text-align:center!important;letter-spacing:.25px}
+            .line,.stamp-line{font-size:13.2px!important}.options{font-size:12.48px!important}.inline-checks{font-size:11.76px!important}.mapa-label{font-size:20.4px!important}
+            .field{padding:1.6mm 2mm!important}.field b{font-size:11.76px!important}.field span{font-size:13.68px!important;line-height:1.12!important}.foot{font-size:8.4px!important}
             .info{grid-template-rows:9mm repeat(5,10mm)!important}.cargo .field{height:12mm!important}
-            .containers th{height:6mm!important;font-size:10.2px!important}.containers td{font-size:10px!important}
+            .containers th{height:6mm!important;font-size:12.24px!important}.containers td{font-size:12px!important}
             .workflow{height:91mm!important}.workflow .stamp-line{height:14mm!important;padding:2mm!important;font-size:11px!important}
             .sheet{border:1px solid #000!important}.head{border-top:1px solid #000!important;border-bottom:1px solid #000!important}.head>div,.head h1{border-right:1px solid #000!important}
             .workflow{border-bottom:1px solid #000!important}.workflow section{border-right:1px solid #000!important}.title,.line,.stamp-line,.field,.process-data-title{border-color:#000!important;border-width:1px!important}
@@ -973,8 +973,8 @@
             .workflow .title[data-stamp-title]{border-bottom:0!important}.stamps-unified{border-top:0!important}
             .options-group{margin:0 0 1.3mm!important}.options-title{display:block!important;margin:0 0 .8mm!important;padding:.45mm .7mm!important}.bl-row .inline-checks{margin-top:0!important}.options .mark{justify-content:flex-start!important}.freight-row .inline-checks{grid-template-columns:1fr!important}
             .workflow{position:relative}.workflow .title[data-stamp-title]{color:transparent!important;background:#fff!important}
-            .stamps-unified{position:absolute;z-index:3;left:0;top:56mm;width:65%;height:7mm;padding:1.45mm;background:#e8e8e8;border-top:1px solid #000;border-bottom:1px solid #000;text-align:center;font:bold 12px "Times New Roman",Times,serif;letter-spacing:.25px}
-            .process-data-title{height:7mm;padding:1.55mm 2mm;border-bottom:1px solid #000;font:bold 12px "Times New Roman",Times,serif}
+            .stamps-unified{position:absolute;z-index:3;left:0;top:56mm;width:65%;height:7mm;padding:1.2mm;background:#e8e8e8;border-top:1px solid #000;border-bottom:1px solid #000;text-align:center;font:bold 14.4px "Times New Roman",Times,serif;letter-spacing:.25px}
+            .process-data-title{height:7mm;padding:1.25mm 2mm;border-bottom:1px solid #000;font:bold 14.4px "Times New Roman",Times,serif}
           `;
           doc.head.append(style);
           const workflow = doc.querySelector('.workflow');
