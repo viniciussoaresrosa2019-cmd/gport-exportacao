@@ -35,8 +35,8 @@
     // O formulário antigo foi mantido para preservar todos os nomes de campo e
     // validações. Esta camada só reorganiza seus elementos em seis etapas reais.
     const flow = [
-      ['Processo', ['booking', 'fatura', 'analista', 'due', 'dueEmissao', 'ruc']],
       ['Exportador', ['exportador', 'exportadorCnpj', 'importador']],
+      ['Processo', ['booking', 'fatura', 'analista', 'due', 'dueEmissao', 'ruc']],
       ['Rota', ['origem', 'destino', 'tipoEmbarque', 'navio', 'armador', 'agencia', 'prazo', 'envio', 'coleta', 'terminal', 'freetime', 'incoterm']],
       ['Documentos', ['tipoBL', 'tipoFrete', 'vistoriaMapa', 'isfLacey']],
       ['Carga', ['qtdContainers', 'tipoContainer', 'containers', 'metragem', 'pesoLiquido', 'pesoBruto', 'volumes', 'valor', 'moeda']],
@@ -88,7 +88,6 @@
       const summary = byId('processReviewSummary'); if (!summary) return;
       summary.replaceChildren(...pairs.map(([label, name]) => { const group=document.createElement('div'); const term=document.createElement('dt'); const value=document.createElement('dd'); term.textContent=label; value.textContent=reviewValue(name); group.append(term,value); return group; }));
     };
-    form.addEventListener('gport:review-update', updateReview);
     const updateFlow = () => {
       let invalid = 0;
       steps.forEach((section, index) => {
@@ -100,6 +99,18 @@
       const status = byId('processFlowStatus'); if (status) status.textContent = quickMode ? `${flow.length} seções visíveis · ${invalid} pendência(s)` : `Etapa ${activeStep + 1} de ${flow.length} · ${invalid} pendência(s)`;
       updateReview();
     };
+    form.addEventListener('gport:review-update', updateReview);
+    form.addEventListener('gport:process-form-opened', event => {
+      // Todo lançamento começa pelo exportador, pois as regras de DU-E, RUC e
+      // formulário reduzido dependem do cadastro selecionado.
+      activeStep = 0;
+      quickMode = false;
+      const modeButton = progress.querySelector('.form-flow-mode');
+      modeButton.setAttribute('aria-pressed', 'false');
+      modeButton.textContent = 'Modo rápido';
+      updateFlow();
+      if (event.detail?.mode === 'create') requestAnimationFrame(() => form.elements.exportador.focus({ preventScroll:true }));
+    });
     const validateStep = index => {
       const invalid = sectionInputs(steps[index]).find(input => input.required && !input.checkValidity());
       if (!invalid) return true;

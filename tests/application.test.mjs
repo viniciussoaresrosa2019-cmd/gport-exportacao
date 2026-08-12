@@ -95,6 +95,17 @@ test('novo lançamento não reaproveita o ID de um processo aberto anteriormente
   assert.match(html, /if \(!processId\) values\.id = '';/);
 });
 
+test('novo lançamento limpa completamente os contêineres do processo anterior', async () => {
+  const runtime = await read('public/assets/app-runtime.js');
+  assert.match(runtime, /const resetNewProcessContainerState = \(\) =>/);
+  for (const field of ['qtdContainers', 'tipoContainer', 'containers', 'tara', 'lacre', 'lacreNovo', 'notasFiscais']) {
+    assert.match(runtime, new RegExp(`['"]${field}['"]`));
+  }
+  assert.match(runtime, /if \(input\.type === 'hidden'\) input\.defaultValue = '';/);
+  assert.match(runtime, /el\('containerDetails'\)\.replaceChildren\(\);/);
+  assert.match(runtime, /resetNewProcessContainerState\(\);/);
+});
+
 test('RUC manual dispensa DU-E somente para o exportador marcado', async () => {
   const server = await read('src/server.js');
   const html = await readInterface();
@@ -409,6 +420,10 @@ test('lançamento progressivo possui seis etapas e modo rápido sem oferecer ras
   const experience = await read('public/assets/experience.js');
   const css = await read('public/assets/experience.css');
   for (const title of ['Processo', 'Exportador', 'Rota', 'Documentos', 'Carga', 'Revisão']) assert.match(experience, new RegExp(`\\['${title}'`));
+  assert.ok(experience.indexOf("['Exportador'") < experience.indexOf("['Processo'"), 'Exportador deve ser a primeira etapa do lançamento');
+  assert.match(experience, /addEventListener\('gport:process-form-opened'/);
+  assert.match(experience, /activeStep = 0;/);
+  assert.match(experience, /form\.elements\.exportador\.focus/);
   assert.match(experience, /Modo rápido/);
   assert.match(experience, /localStorage\.removeItem\('gport:process-draft:v2'\)/);
   assert.doesNotMatch(experience, /installProcessDraft|draft-notice|data-draft-restore|localStorage\.setItem\('gport:process-draft/);
@@ -565,7 +580,10 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont�
   assert.match(html, /VENCIMENTO:/);
   assert.match(html, /<th>NOTA FISCAL<\/th>/);
   assert.match(html, /const exporterName = client\.nome \|\| p\.exportador \|\| ''/);
-  assert.match(html, /cell\('EXPORTADOR:',exporterName,'exporter'\)/);
+  assert.match(html, /const exporterClass = exporterName\.length > 90/);
+  assert.match(html, /cell\('EXPORTADOR:',exporterName,exporterClass\)/);
+  assert.match(html, /\.exporter-long span\{font-size:7\.5px!important\}/);
+  assert.match(html, /\.exporter-very-long span\{font-size:6\.5px!important\}/);
   assert.match(html, /NOVO LACRE/);
 });
 
