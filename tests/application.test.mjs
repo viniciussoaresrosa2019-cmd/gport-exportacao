@@ -43,6 +43,24 @@ test('lançamento exige campos operacionais e dados individuais completos do con
   }
 });
 
+test('deadline de draft exige horário e preserva dia e mês na capa', async () => {
+  const index = await read('public/index.html');
+  const runtime = await read('public/assets/app-runtime.js');
+  const server = await read('src/server.js');
+  const migration = await read('database/add-deadline-time.sql');
+  assert.match(index, /name="prazo" placeholder="dd\/mm hh:mm"[^>]*maxlength="11"[^>]*required/);
+  assert.match(runtime, /attachDateMask\('prazo', true\)/);
+  assert.match(runtime, /dateForDatabase\(p\.prazo, true\)/);
+  assert.match(runtime, /prazo:dateForField\(p\.deadline, true\)/);
+  assert.match(runtime, /DRAFT: \$\{esc\(fmtCoverDate\(p\.prazo, true\)\)\}/);
+  assert.match(runtime, /const brazilian = raw\.match/);
+  assert.match(await read('public/assets/legacy-ui.js'), /fmtDate\(p\.prazo,true\)/);
+  assert.match(server, /const cleanRequiredDateTime = \(value, field\) =>/);
+  assert.match(server, /deadline: dueOnly \? null : cleanRequiredDateTime\(raw\.deadline, 'Deadline de draft'\)/);
+  assert.match(server, /ALTER COLUMN deadline TYPE TIMESTAMP WITHOUT TIME ZONE USING deadline::timestamp/);
+  assert.match(migration, /ALTER COLUMN deadline TYPE TIMESTAMP WITHOUT TIME ZONE/);
+});
+
 test('lançamento novo é idempotente contra clique duplo, timeout ou reenvio', async () => {
   const server = await read('src/server.js');
   const html = await readInterface();

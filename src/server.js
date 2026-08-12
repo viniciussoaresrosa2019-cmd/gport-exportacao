@@ -411,6 +411,13 @@ const cleanRequiredDate = (value, field) => {
   if (!date) throw Object.assign(new Error(`${field} é obrigatória.`), { status: 400 });
   return date;
 };
+const cleanRequiredDateTime = (value, field) => {
+  const date = cleanRequiredDate(value, field);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(date)) {
+    throw Object.assign(new Error(`${field} deve incluir data e horário.`), { status: 400 });
+  }
+  return date;
+};
 const cleanCnpj = value => {
   const raw = cleanText(value, 40, 'CNPJ');
   if (!raw) return null;
@@ -513,7 +520,7 @@ const validatedProcess = (raw, { rucManual = false, dueOnly = false } = {}) => {
     dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: !rucManual }), dueIssueDate: (rucManual || dueOnly) ? cleanOptionalDate(raw.dueIssueDate, 'Data da DUE') : cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: !dueOnly }),
     originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: true }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: true }),
     vessel: cleanText(raw.vessel, 160, 'Navio', { required: true }), agency: cleanText(raw.agency, 160, 'Agência', { required: !dueOnly }), carrier: cleanText(raw.carrier, 160, 'Armador', { required: !dueOnly }),
-    deadline: dueOnly ? null : cleanRequiredDate(raw.deadline, 'Deadline de draft'), shippingDate: dueOnly ? null : cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: dueOnly ? null : cleanRequiredDate(raw.containerCollectionDate, 'Data da coleta'),
+    deadline: dueOnly ? null : cleanRequiredDateTime(raw.deadline, 'Deadline de draft'), shippingDate: dueOnly ? null : cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: dueOnly ? null : cleanRequiredDate(raw.containerCollectionDate, 'Data da coleta'),
     collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal da coleta', { required: !dueOnly }), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true, required: !dueOnly }), incoterm, shipmentType,
     blType: cleanText(raw.blType, 80, 'Tipo de BL', { required: !dueOnly }), freightType: cleanText(raw.freightType, 80, 'Tipo de frete', { required: !dueOnly }), mapaInspection, isfLacey, containerQuantity,
     containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType || (dueOnly ? 'NÃO INFORMADO' : ''), 80, 'Tipo de contêiner', { required: true }), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica', { required: !dueOnly }),
@@ -699,7 +706,7 @@ const processSearchFields = {
   todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
   booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
   origem: 'p.origin_port', destino: 'p.destination_port', porto: "CONCAT_WS(' ',p.origin_port,p.destination_port)", navio: 'p.vessel', analista: 'u.username',
-  prazo: "TO_CHAR(p.deadline,'DD/MM')", envio: "TO_CHAR(p.shipping_date,'DD/MM')", coleta: "TO_CHAR(p.container_collection_date,'DD/MM')",
+  prazo: "TO_CHAR(p.deadline,'DD/MM HH24:MI')", envio: "TO_CHAR(p.shipping_date,'DD/MM')", coleta: "TO_CHAR(p.container_collection_date,'DD/MM')",
   agencia: 'p.agency', armador: 'p.carrier', tipoembarque: 'p.shipment_type', tipobl: 'p.bl_type', tipofrete: 'p.freight_type',
   vistoriomapa: "CASE WHEN p.mapa_inspection THEN 'Sim' ELSE 'Não' END", incoterm: 'p.incoterm', containers: "p.container_details::text",
   qtdcontainers: 'p.container_quantity::text', tipocontainer: 'p.container_type', terminal: 'p.collection_terminal', freetime: 'p.free_time_days::text',
@@ -1001,7 +1008,8 @@ const ensureProcessFields = async () => {
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS vessel VARCHAR(160)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS agency VARCHAR(160)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS carrier VARCHAR(160)');
-  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS deadline DATE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS deadline TIMESTAMP WITHOUT TIME ZONE');
+  await query('ALTER TABLE processes ALTER COLUMN deadline TYPE TIMESTAMP WITHOUT TIME ZONE USING deadline::timestamp');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS shipping_date DATE');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS container_collection_date DATE');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS collection_terminal VARCHAR(160)');
