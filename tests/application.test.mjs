@@ -118,6 +118,24 @@ test('RUC manual dispensa DU-E somente para o exportador marcado', async () => {
   assert.match(html, /data-due-label/);
 });
 
+test('cadastro do exportador controla Sim ou Não no campo Ovação da capa', async () => {
+  const server = await read('src/server.js');
+  const index = await read('public/index.html');
+  const runtime = await read('public/assets/app-runtime.js');
+  const migration = await read('database/migrations/2026-08-12-client-ovacao.sql');
+  assert.match(index, /id="clientOvacao" name="ovacao" type="checkbox"/);
+  assert.match(index, /class="client-options-row"/);
+  assert.match(await read('public/assets/experience.css'), /\.client-options-row\{grid-column:1\/-1;display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(server, /ovacao: body\.ovacao === true/);
+  assert.match(server, /ADD COLUMN IF NOT EXISTS ovacao BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(server, /COALESCE\(c\.ovacao,false\) AS client_ovacao/);
+  assert.match(runtime, /ovacao: c\.ovacao === true/);
+  assert.match(runtime, /ovacao:v\.ovacao === 'on'/);
+  assert.match(runtime, /const ovacao = \(client\.ovacao \?\? p\.ovacao\) === true \? 'Sim' : 'Não'/);
+  assert.match(runtime, /OVAÇÃO: \$\{ovacao\}/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS ovacao BOOLEAN NOT NULL DEFAULT FALSE/);
+});
+
 test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mínimo', async () => {
   const server = await read('src/server.js');
   const html = await readInterface();
