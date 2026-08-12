@@ -236,6 +236,14 @@ test('interface associa labels, nomeia controles e permite abrir processos pelo 
   assert.match(css, /\.clickable:focus-visible/);
 });
 
+test('indicadores de VGM mantêm quadrado acima do texto em todos os estados', async () => {
+  const css = await read('public/assets/gport.css');
+  assert.match(css, /\.indicator-cell\{min-width:108px;white-space:nowrap\}/);
+  assert.match(css, /#rows td\.indicator-cell:nth-child\(6\)\{min-width:118px;text-align:center!important\}/);
+  assert.match(css, /#rows td\.indicator-cell:nth-child\(6\) \.indicator\{display:block;margin:0 auto 5px!important\}/);
+  assert.match(css, /#rows td\.indicator-cell:nth-child\(6\) \.status-text\{display:block;margin-left:0\}/);
+});
+
 test('CSP da página usa nonce e não depende de unsafe-inline', async () => {
   const server = await read('src/server.js');
   const runtime = await read('public/assets/app-runtime.js');
