@@ -30,7 +30,11 @@ if (!jwtSecret || jwtSecret.length < 32) throw new Error('Defina um JWT_SECRET f
 const isProduction = process.env.NODE_ENV === 'production';
 const sessionCookie = 'gport_session';
 const csrfCookie = 'gport_csrf';
-const sessionMaxAge = 4 * 60 * 60 * 1000;
+// A sessão acompanha uma jornada de trabalho, mas nunca se torna permanente.
+// Cada validação em /api/me renova este prazo; após o limite sem conseguir
+// validar a sessão, o usuário precisa entrar novamente.
+const sessionHours = Math.min(24, Math.max(1, Number.parseInt(process.env.SESSION_MAX_AGE_HOURS || '8', 10) || 8));
+const sessionMaxAge = sessionHours * 60 * 60 * 1000;
 const supportedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean);
 const turnstileSiteKey = String(process.env.TURNSTILE_SITE_KEY || '').trim();
 const turnstileSecretKey = String(process.env.TURNSTILE_SECRET_KEY || '').trim();
@@ -116,13 +120,12 @@ const secureEqual = (left, right) => {
   const a = Buffer.from(left), b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
 };
-const tokenFor = (user, csrfToken) => jwt.sign({ sub: user.id, username: user.username, role: user.role, ver: user.token_version || 0, csrf: csrfToken }, jwtSecret, { expiresIn: '4h', issuer: 'gport-export', audience: 'gport-web' });
+const tokenFor = (user, csrfToken) => jwt.sign({ sub: user.id, username: user.username, role: user.role, ver: user.token_version || 0, csrf: csrfToken }, jwtSecret, { expiresIn: Math.floor(sessionMaxAge / 1000), issuer: 'gport-export', audience: 'gport-web' });
 const publicUser = user => ({ id: user.id, username: user.username, role: user.role, active: user.active, createdAt: user.created_at });
 const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao'];
 const isStrongPassword = password => typeof password === 'string' && password.length >= 12 && password.length <= 200 && /[A-Za-z]/.test(password) && /\d/.test(password);
 const validId = value => typeof value === 'string' && uuidPattern.test(value);
-const setSession = (res, user) => {
-  const csrfToken = randomBytes(32).toString('base64url');
+const setSession = (res, user, csrfToken = randomBytes(32).toString('base64url')) => {
   res.cookie(sessionCookie, tokenFor(user, csrfToken), cookieOptions(true));
   res.cookie(csrfCookie, csrfToken, cookieOptions(false));
 };
@@ -230,7 +233,7 @@ function authenticate(req, res, next) {
       if (!user?.active || user.token_version !== claims.ver) return res.status(401).json({ error: 'Usuário inativo ou sessão expirada.' });
       // O cargo vem do banco, não apenas do token antigo. Assim exclusões e
       // mudanças de função passam a valer imediatamente.
-      req.user = { sub: user.id, username: user.username, role: user.role };
+      req.user = { sub: user.id, username: user.username, role: user.role, csrfToken: claims.csrf };
       next();
     })
     .catch(next);
@@ -319,8 +322,11 @@ app.post('/api/auth/logout', authenticate, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/me', authenticate, asyncRoute(async (req, res) => {
-  const user = (await query('SELECT id,username,role,active,created_at FROM users WHERE id=$1', [req.user.sub])).rows[0];
+  const user = (await query('SELECT id,username,role,active,created_at,token_version FROM users WHERE id=$1', [req.user.sub])).rows[0];
   if (!user?.active) return res.status(401).json({ error: 'Usuário inativo.' });
+  // Expiração deslizante: uma aba realmente em uso renova a sessão sem trocar
+  // o CSRF em andamento e sem obrigar o usuário a atualizar a página.
+  setSession(res, user, req.user.csrfToken);
   res.json({ user: publicUser(user) });
 }));
 

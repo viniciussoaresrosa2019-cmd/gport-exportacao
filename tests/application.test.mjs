@@ -90,7 +90,8 @@ test('novo lançamento não reaproveita o ID de um processo aberto anteriormente
   const html = await readInterface();
   assert.match(html, /editingProcessId = null;/);
   assert.match(html, /form\.elements\.id\.value = '';/);
-  assert.match(html, /el\('newBtn'\)\.onclick = \(\) => open\(null\);/);
+  assert.match(html, /el\('newBtn'\)\.onclick = async \(\) =>/);
+  assert.match(html, /ensureSessionActive\(\{ force:true \}\)/);
   assert.match(html, /const processIdFromForm = \(\) => String\(editingProcessId \|\| ''\)\.trim\(\);/);
   assert.match(html, /if \(!processId\) values\.id = '';/);
 });
@@ -643,4 +644,20 @@ test('roteiro de medição de homologação é passivo e não transmite credenci
   assert.match(script, /api\/health/);
   assert.match(script, /experience\.js/);
   assert.doesNotMatch(script, /-Headers|Authorization\s*=|WebSession|Credential|Password\s*=/i);
+});
+
+test('sessão ativa é renovada e expiração permite novo login sem recarregar o formulário', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const env = await read('.env.example');
+  assert.match(server, /SESSION_MAX_AGE_HOURS \|\| '8'/);
+  assert.match(server, /setSession\(res, user, req\.user\.csrfToken\)/);
+  assert.match(server, /csrfToken: claims\.csrf/);
+  assert.match(env, /SESSION_MAX_AGE_HOURS=8/);
+  assert.match(runtime, /const ensureSessionActive = async/);
+  assert.match(runtime, /document\.addEventListener\('visibilitychange'/);
+  assert.match(runtime, /setInterval\(\(\) => \{/);
+  assert.match(runtime, /response\.status === 401/);
+  assert.match(runtime, /os dados preenchidos foram mantidos/);
+  assert.doesNotMatch(runtime, /requireSessionLogin[\s\S]{0,700}location\.reload/);
 });

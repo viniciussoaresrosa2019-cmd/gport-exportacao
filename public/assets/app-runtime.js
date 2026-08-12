@@ -20,6 +20,10 @@
       let availableAssignees = [];
       let realtimeSource = null;
       let realtimeRefreshTimer = null;
+      let sessionRecoveryRequired = false;
+      let sessionCheckPromise = null;
+      let lastSessionCheckAt = 0;
+      const sessionCheckIntervalMs = 15 * 60 * 1000;
       // Clientes e responsáveis quase não mudam durante uma sessão. Mantê-los
       // em memória evita duas requisições extras a cada busca, paginação ou
       // atualização da planilha. O cache não persiste no navegador e expira
@@ -205,6 +209,17 @@
       const renderFinancial = () => {
         el('financialList').innerHTML = data.length ? `<table class="data-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR</th><th>FATURA</th><th>VALOR</th><th>MOEDA</th><th>STATUS</th></tr></thead><tbody>${data.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}</td><td>${esc(p.fatura || '—')}</td><td>${esc(money(p))}</td><td>${esc(p.moeda || 'USD')}</td><td>${esc(p.status || '—')}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo cadastrado.</div>';
       };
+      const requireSessionLogin = () => {
+        if (sessionRecoveryRequired) return;
+        sessionRecoveryRequired = true;
+        currentUser = null;
+        realtimeSource?.close(); realtimeSource = null;
+        const message = 'Sua sessão expirou. Entre novamente para continuar; os dados preenchidos foram mantidos.';
+        el('loginError').textContent = message;
+        el('loginError').hidden = false;
+        if (!el('loginDialog').open) el('loginDialog').showModal();
+        toast.warning('Sessão expirada. Entre novamente para continuar sem perder o formulário.');
+      };
       const request = async (url, options = {}) => {
         const response = await fetch(url, {
           ...options,
@@ -212,8 +227,33 @@
           headers: { 'Content-Type': 'application/json', ...(['POST','PATCH','DELETE'].includes(options.method || 'GET') ? { 'X-CSRF-Token': csrfToken() } : {}), ...(options.headers || {}) }
         });
         const body = response.status === 204 ? null : await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error || 'Não foi possível concluir a operação.');
+        if (!response.ok) {
+          const error = new Error(body.error || 'Não foi possível concluir a operação.');
+          error.status = response.status;
+          if (response.status === 401 && currentUser && !String(url).startsWith('/api/auth/')) requireSessionLogin();
+          throw error;
+        }
         return body;
+      };
+      const ensureSessionActive = async ({ force = false } = {}) => {
+        if (!currentUser) return false;
+        if (!force && Date.now() - lastSessionCheckAt < sessionCheckIntervalMs) return true;
+        if (sessionCheckPromise) return sessionCheckPromise;
+        sessionCheckPromise = request('/api/me')
+          .then(result => {
+            currentUser = result.user;
+            lastSessionCheckAt = Date.now();
+            sessionRecoveryRequired = false;
+            return true;
+          })
+          .catch(error => {
+            // Uma falha momentânea de rede não apaga a sessão local nem o
+            // formulário. Somente um 401 confirmado solicita novo login.
+            if (error.status !== 401) return true;
+            return false;
+          })
+          .finally(() => { sessionCheckPromise = null; });
+        return sessionCheckPromise;
       };
       const value = (v) => v === null || v === undefined ? '' : v;
       const containerParts = (v) => String(v || '').split('/').map(x => x.trim()).filter(Boolean);
@@ -409,7 +449,9 @@
       };
       // Garante que o botão sempre use a abertura reforçada acima, mesmo se
       // outro script tiver registrado um manipulador anterior.
-      el('newBtn').onclick = () => open(null);
+      el('newBtn').onclick = async () => {
+        if (await ensureSessionActive({ force:true })) open(null);
+      };
       let processPagination = { offset:0, limit:50, hasMore:false, total:0 };
       const updateLoadMoreButton = () => {
         let button = el('loadMoreProcesses');
@@ -610,8 +652,18 @@
         };
       };
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && realtimeFallbackTimer) refreshByFallback();
+        if (document.hidden) return;
+        void ensureSessionActive({ force:true }).then(active => {
+          if (!active) return;
+          connectRealtime();
+          if (realtimeFallbackTimer) refreshByFallback();
+        });
       });
+      // Enquanto a aplicação está visível, renova a sessão sem gerar polling de
+      // processos. Abas em segundo plano continuam sujeitas ao limite seguro.
+      setInterval(() => {
+        if (currentUser && !document.hidden) void ensureSessionActive({ force:true });
+      }, sessionCheckIntervalMs);
       // A pesquisa principal é realizada no servidor para não carregar toda a
       // base no navegador. O renderizador legado continua recebendo somente a
       // página já filtrada.
@@ -641,6 +693,7 @@
         if (turnstileSiteKey) credentials.turnstileToken = turnstileToken;
         const result = await request('/api/auth/login', { method:'POST', body:JSON.stringify(credentials) });
         currentUser = result.user;
+        sessionRecoveryRequired = false; lastSessionCheckAt = Date.now();
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = currentUser.role !== 'admin';
         applyRoleTabs();
@@ -652,7 +705,7 @@
       }
       async function restoreSession() {
         try {
-          const result = await request('/api/me'); currentUser = result.user;
+          const result = await request('/api/me'); currentUser = result.user; lastSessionCheckAt = Date.now();
           el('currentUserName').textContent = currentUser.username;
           el('usersNav').hidden = currentUser.role !== 'admin';
           applyRoleTabs();
