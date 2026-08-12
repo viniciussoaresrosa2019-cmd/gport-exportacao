@@ -580,10 +580,10 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont√
   assert.match(html, /VENCIMENTO:/);
   assert.match(html, /<th>NOTA FISCAL<\/th>/);
   assert.match(html, /const exporterName = client\.nome \|\| p\.exportador \|\| ''/);
-  assert.match(html, /const exporterClass = exporterName\.length > 90/);
-  assert.match(html, /cell\('EXPORTADOR:',exporterName,exporterClass\)/);
-  assert.match(html, /\.exporter-long span\{font-size:7\.5px!important\}/);
-  assert.match(html, /\.exporter-very-long span\{font-size:6\.5px!important\}/);
+  assert.match(html, /cell\('EXPORTADOR:',exporterName,'exporter'\)/);
+  assert.match(html, /\.exporter\{display:flex!important/);
+  assert.match(html, /-webkit-line-clamp:2!important/);
+  assert.doesNotMatch(html, /exporter-very-long|exporter-long/);
   assert.match(html, /NOVO LACRE/);
 });
 
