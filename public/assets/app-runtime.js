@@ -107,7 +107,12 @@
         el('vgmList').innerHTML = vgmProcesses.length ? `<table class="data-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>ROTA</th><th>VGM ENVIADO?</th><th>DATA DO ENVIO</th><th>ENVIADO PARA</th><th>PROCESSO FÍSICO COM</th></tr></thead><tbody>${vgmProcesses.map(p => `<tr class="${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(route(p))}</td><td><select data-vgm-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td>${esc(p.dataEnvioVgm || '—')}</td><td><input data-vgm-sent-to="${p.id}" value="${esc(p.vgmEnviadoPara || '')}" ${canEdit ? '' : 'readonly'}></td><td><select data-vgm-analyst="${p.id}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo cadastrado.</div>';
         if (canEdit) {
           el('vgmList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
-          el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => input.addEventListener('input', () => scheduleAutoSave(`vgm-${input.dataset.vgmSentTo}`, () => saveVgmRow(input.dataset.vgmSentTo))));
+          el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => {
+            // Salvar a cada tecla reconstruía a tabela e interrompia a
+            // digitação. Grave somente quando o usuário concluir o campo.
+            input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmSentTo); } catch (error) { toast.error(error.message); renderVgm(); } });
+            input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
+          });
         }
       };
       const renderVgmReport = () => {
@@ -503,7 +508,10 @@
       };
       const renderAffectedViews = () => {
         render(); updateLoadMoreButton();
-        if (!el('vgmPage').hidden) renderVgm();
+        // Não substitua o input enquanto alguém está digitando. O evento será
+        // refletido quando a edição for concluída ou na próxima sincronização.
+        const editingVgmDestination = document.activeElement?.matches?.('[data-vgm-sent-to]');
+        if (!el('vgmPage').hidden && !editingVgmDestination) renderVgm();
         if (!el('releasePage').hidden) renderRelease();
         if (!el('followupPage').hidden) renderFollowup();
       };
