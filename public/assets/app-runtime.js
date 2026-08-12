@@ -61,11 +61,43 @@
         el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.add('active'); el('reportsNav').classList.remove('active');
         renderFollowup();
       };
+      const formatStorageSize = bytes => {
+        const value = Number(bytes || 0);
+        if (value < 1024 * 1024) return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits:1 }).format(value / 1024)} KB`;
+        return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits:1 }).format(value / (1024 * 1024))} MB`;
+      };
+      const loadDatabaseUsage = async () => {
+        const card = el('databaseUsageCard');
+        card.dataset.level = 'loading';
+        el('databaseUsagePercent').textContent = 'Carregando…';
+        try {
+          const usage = await request('/api/reports/database-usage');
+          const percent = Math.max(0, Number(usage.usagePercent || 0));
+          const progressPercent = Math.min(100, percent);
+          const level = percent >= 95 ? 'critical' : percent >= 85 ? 'high' : percent >= 70 ? 'attention' : 'normal';
+          const status = { normal:'Uso normal', attention:'Atenção', high:'Próximo do limite', critical:'Limite crítico' }[level];
+          card.dataset.level = level;
+          el('databaseUsagePercent').textContent = `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits:1 }).format(percent)}% utilizado`;
+          el('databaseUsageAmount').textContent = `${formatStorageSize(usage.usedBytes)} de ${formatStorageSize(usage.capacityBytes)} · ${formatStorageSize(usage.availableBytes)} disponíveis`;
+          el('databaseUsageStatus').textContent = status;
+          el('databaseUsageBar').style.width = `${progressPercent}%`;
+          const progress = el('databaseUsageProgress');
+          progress.setAttribute('aria-valuenow', String(progressPercent));
+          progress.setAttribute('aria-valuetext', `${percent}% utilizado, ${status.toLowerCase()}`);
+          el('databaseUsageMeasuredAt').textContent = `Atualizado em ${new Date(usage.measuredAt).toLocaleString('pt-BR')}. O valor fica em cache por até 10 minutos.`;
+        } catch (error) {
+          card.dataset.level = 'error';
+          el('databaseUsagePercent').textContent = 'Indisponível';
+          el('databaseUsageAmount').textContent = 'Não foi possível medir o banco agora.';
+          el('databaseUsageStatus').textContent = 'Tente novamente mais tarde';
+          el('databaseUsageMeasuredAt').textContent = 'Os demais relatórios continuam disponíveis.';
+        }
+      };
       const showReportsPage = () => {
         if (currentUser?.role !== 'admin') { toast.warning('Apenas administradores podem acessar os relatórios.'); return; }
         el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = false;
         el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.add('active');
-        const now = new Date(); if (!el('reportMonth').value) el('reportMonth').value = now.toISOString().slice(0,7); if (!el('reportYear').value) el('reportYear').value = now.getFullYear(); syncReportView();
+        const now = new Date(); if (!el('reportMonth').value) el('reportMonth').value = now.toISOString().slice(0,7); if (!el('reportYear').value) el('reportYear').value = now.getFullYear(); syncReportView(); void loadDatabaseUsage();
       };
       window.showProcessesPage = showProcessesPage;
       window.showReportsPage = showReportsPage;

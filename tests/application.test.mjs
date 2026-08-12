@@ -125,7 +125,7 @@ test('cadastro do exportador controla Sim ou Não no campo Ovação da capa', as
   const migration = await read('database/migrations/2026-08-12-client-ovacao.sql');
   assert.match(index, /id="clientOvacao" name="ovacao" type="checkbox"/);
   assert.match(index, /class="client-options-row"/);
-  assert.match(await read('public/assets/experience.css'), /\.client-options-row\{grid-column:1\/-1;display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(await read('public/assets/experience.css'), /\.client-options-row\{grid-column:span 2;display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(server, /ovacao: body\.ovacao === true/);
   assert.match(server, /ADD COLUMN IF NOT EXISTS ovacao BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(server, /COALESCE\(c\.ovacao,false\) AS client_ovacao/);
@@ -654,6 +654,23 @@ test('observabilidade agrega somente métricas técnicas e protege o endpoint pa
   assert.match(server, /averageMs/);
   assert.match(server, /OBSERVABILITY_SLOW_REQUEST_MS/);
   assert.match(env, /OBSERVABILITY_SLOW_REQUEST_MS=1000/);
+});
+
+test('relatórios mostram uso real do PostgreSQL sem expor credenciais', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const html = await read('public/index.html');
+  const env = await read('.env.example');
+  assert.match(server, /app\.get\('\/api\/reports\/database-usage', authenticate, adminOnly/);
+  assert.match(server, /pg_database_size\(current_database\(\)\)/);
+  assert.match(server, /databaseUsageCacheMs = 10 \* 60 \* 1000/);
+  assert.match(server, /availableBytes: Math\.max\(0, databaseCapacityBytes - usedBytes\)/);
+  assert.doesNotMatch(server, /database-usage[\s\S]{0,1000}DATABASE_URL/);
+  assert.match(env, /DATABASE_CAPACITY_MB=500/);
+  assert.match(html, /id="databaseUsageProgress"[\s\S]*role="progressbar"/);
+  assert.match(runtime, /request\('\/api\/reports\/database-usage'\)/);
+  assert.match(runtime, /void loadDatabaseUsage\(\)/);
+  assert.match(runtime, /Próximo do limite/);
 });
 
 test('roteiro de medição de homologação é passivo e não transmite credenciais', async () => {

@@ -15,6 +15,12 @@ const port = Number(process.env.PORT || 3000);
 // endpoint administrativo caso seja configurado posteriormente.
 const slowRequestMs = Math.max(100, Number(process.env.OBSERVABILITY_SLOW_REQUEST_MS || 1000));
 const observability = { startedAt: new Date().toISOString(), total: 0, errors: 0, slow: 0, routes: new Map() };
+const configuredDatabaseCapacityMb = Number(process.env.DATABASE_CAPACITY_MB || 500);
+const databaseCapacityBytes = (Number.isFinite(configuredDatabaseCapacityMb) && configuredDatabaseCapacityMb > 0
+  ? configuredDatabaseCapacityMb
+  : 500) * 1024 * 1024;
+const databaseUsageCache = { expiresAt: 0, value: null };
+const databaseUsageCacheMs = 10 * 60 * 1000;
 const metricRoute = request => String(request.route?.path || request.path || 'unknown')
   .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:id');
 const recordApiMetric = (request, status, durationMs) => {
@@ -442,7 +448,7 @@ const validatedClient = body => ({
   contact: upperText(cleanText(body.contact, 120, 'Contato')), phone: cleanText(body.phone, 50, 'Telefone'),
   // E-mail não é convertido: embora normalmente não diferencie maiúsculas,
   // preservamos o formato informado para compatibilidade com provedores.
-  email: cleanText(body.email, 160, 'E-mail'), country: upperText(cleanText(body.country, 80, 'País')), address: upperText(cleanText(body.address, 500, 'Endereço')), rucManual: body.rucManual === true, dueOnly: body.dueOnly === true
+  email: cleanText(body.email, 160, 'E-mail'), country: upperText(cleanText(body.country, 80, 'País')), address: upperText(cleanText(body.address, 500, 'Endereço')), rucManual: body.rucManual === true, dueOnly: body.dueOnly === true, ovacao: body.ovacao === true
 });
 app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req, res) => {
   const c = validatedClient(req.body);
@@ -453,12 +459,12 @@ app.post('/api/clients', authenticate, clientCreatorOnly, asyncRoute(async (req,
   if (c.rucManual && c.dueOnly) return res.status(400).json({ error: 'RUC manual e Apenas DU-E não podem ser usados juntos.' });
   if (existing) {
     if (existing.active) return res.status(409).json({ error: 'Este exportador já está cadastrado.' });
-    const restored = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,ruc_manual=$8,due_only=$9,active=true WHERE id=$10 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, existing.id]);
+    const restored = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,ruc_manual=$8,due_only=$9,ovacao=$10,active=true WHERE id=$11 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, c.ovacao, existing.id]);
     await audit(req.user.sub, 'client.reactivated', 'client', existing.id);
     publishReferenceChange('clients', 'reactivated');
     return res.status(200).json(restored.rows[0]);
   }
-  const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address,ruc_manual,due_only) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly]);
+  const result = await query('INSERT INTO clients(name,tax_id,contact,phone,email,country,address,ruc_manual,due_only,ovacao) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, c.ovacao]);
   await audit(req.user.sub, 'client.created', 'client', result.rows[0].id);
   publishReferenceChange('clients', 'created');
   res.status(201).json(result.rows[0]);
@@ -467,7 +473,7 @@ app.patch('/api/clients/:id', authenticate, clientManagerOnly, asyncRoute(async 
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de exportador inválido.' });
   const c = validatedClient(req.body);
   if (c.rucManual && c.dueOnly) return res.status(400).json({ error: 'RUC manual e Apenas DU-E não podem ser usados juntos.' });
-  const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,ruc_manual=$8,due_only=$9 WHERE id=$10 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, req.params.id]);
+  const result = await query('UPDATE clients SET name=$1,tax_id=$2,contact=$3,phone=$4,email=$5,country=$6,address=$7,ruc_manual=$8,due_only=$9,ovacao=$10 WHERE id=$11 RETURNING *', [c.name, c.taxId, c.contact, c.phone, c.email, c.country, c.address, c.rucManual, c.dueOnly, c.ovacao, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Exportador não encontrado.' });
   await audit(req.user.sub, 'client.updated', 'client', req.params.id);
   publishReferenceChange('clients', 'updated');
@@ -558,7 +564,7 @@ const processChanges = (previous, next) => Object.fromEntries(
 );
 // LEFT JOIN preserva a visualização de processos históricos mesmo se um
 // exportador ou usuário associado tiver sido desativado/removido no passado.
-const processSelect = `SELECT p.*,COALESCE(c.name, 'Exportador não cadastrado') AS exporter,COALESCE(u.username, 'Usuário removido') AS analyst FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id`;
+const processSelect = `SELECT p.*,COALESCE(c.name, 'Exportador não cadastrado') AS exporter,COALESCE(c.ovacao,false) AS client_ovacao,COALESCE(u.username, 'Usuário removido') AS analyst FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id`;
 const canReadAllProcesses = () => true;
 // Atualização em tempo quase real para a instância atual do serviço. Os
 // eventos carregam somente o tipo da mudança e o id do processo; os dados
@@ -607,6 +613,23 @@ app.get('/api/observability/metrics', authenticate, adminOnly, (_req, res) => {
   res.json({ startedAt: observability.startedAt, slowRequestMs, total: observability.total,
     errors: observability.errors, slow: observability.slow, routes });
 });
+app.get('/api/reports/database-usage', authenticate, adminOnly, asyncRoute(async (_req, res) => {
+  const now = Date.now();
+  if (databaseUsageCache.value && databaseUsageCache.expiresAt > now) return res.json(databaseUsageCache.value);
+  const result = await query('SELECT pg_database_size(current_database())::bigint AS used_bytes');
+  const usedBytes = Math.max(0, Number(result.rows[0]?.used_bytes || 0));
+  const usagePercent = Math.round((usedBytes / databaseCapacityBytes) * 1000) / 10;
+  const value = {
+    usedBytes,
+    capacityBytes: databaseCapacityBytes,
+    availableBytes: Math.max(0, databaseCapacityBytes - usedBytes),
+    usagePercent,
+    measuredAt: new Date().toISOString()
+  };
+  databaseUsageCache.value = value;
+  databaseUsageCache.expiresAt = now + databaseUsageCacheMs;
+  res.json(value);
+}));
 // Resumo operacional enxuto: evita que o painel inicial carregue a lista
 // inteira de processos. As regras de leitura continuam centralizadas na API.
 app.get('/api/dashboard', authenticate, asyncRoute(async (req, res) => {
@@ -997,6 +1020,7 @@ const ensureProcessFields = async () => {
   await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE');
   await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS ruc_manual BOOLEAN NOT NULL DEFAULT FALSE');
   await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS due_only BOOLEAN NOT NULL DEFAULT FALSE');
+  await query('ALTER TABLE clients ADD COLUMN IF NOT EXISTS ovacao BOOLEAN NOT NULL DEFAULT FALSE');
   // Exportadores "Apenas DU-E" não fornecem os dados operacionais completos.
   // A API preserva a validação completa para os demais exportadores.
   for (const column of ['importer', 'origin_port', 'destination_port', 'deadline']) {
