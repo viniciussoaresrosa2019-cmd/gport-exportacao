@@ -560,6 +560,9 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
 
 test('pesquisas atualizam automaticamente sem exigir clique no botão Filtrar', async () => {
   const html = await readInterface();
+  const index = await read('public/index.html');
+  assert.match(index, /<option value="booking" selected>BOOKING<\/option>/);
+  assert.match(html, /const sectionSearchOptions = '<option value="booking" selected>BOOKING<\/option>/);
   assert.match(html, /value\.oninput = scheduleAutomaticSearch/);
   assert.match(html, /field\.onchange = scheduleAutomaticSearch/);
   assert.match(html, /setTimeout\(runAutomaticSearch, 300\)/);

@@ -116,7 +116,7 @@
         window.dispatchEvent(new Event('gport:role-tabs-updated'));
       };
       const money = p => p.valor ? `${p.moeda || 'USD'} ${Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
-      const sectionSearchOptions = '<option value="" selected disabled>Selecione o dado</option><option value="booking">BOOKING</option><option value="fatura">FATURA</option><option value="due">DUE</option><option value="navio">NAVIO</option><option value="agencia">AGÊNCIA</option><option value="porto">PORTO</option><option value="importador">IMPORTADOR</option>';
+      const sectionSearchOptions = '<option value="booking" selected>BOOKING</option><option value="fatura">FATURA</option><option value="due">DUE</option><option value="navio">NAVIO</option><option value="agencia">AGÊNCIA</option><option value="porto">PORTO</option><option value="importador">IMPORTADOR</option>';
       const matchesSectionSearch = (process, filter) => {
         if (!filter) return true;
         const term = String(filter.value || '').trim().toLocaleLowerCase('pt-BR');
