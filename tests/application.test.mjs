@@ -293,10 +293,16 @@ test('indicadores de VGM usam o mesmo alinhamento horizontal da Liberação', as
 
 test('destino do VGM permite digitação contínua e salva somente ao concluir o campo', async () => {
   const runtime = await read('public/assets/app-runtime.js');
+  const server = await read('src/server.js');
   assert.doesNotMatch(runtime, /\[data-vgm-sent-to\][\s\S]{0,240}addEventListener\('input'/);
   assert.match(runtime, /\[data-vgm-sent-to\][\s\S]{0,420}addEventListener\('change'/);
   assert.match(runtime, /event\.key === 'Enter'[\s\S]{0,100}input\.blur\(\)/);
   assert.match(runtime, /editingVgmDestination = document\.activeElement\?\.matches\?\.\('\[data-vgm-sent-to\]'\)/);
+  assert.match(runtime, /data-vgm-release-schedule/);
+  assert.match(runtime, /data-vgm-release-deadline/);
+  assert.match(runtime, /Informe o deadline de agendamento no formato dd\/mm hh:mm/);
+  assert.match(server, /release_schedule=\$4/);
+  assert.match(server, /release_deadline=\$5/);
 });
 
 test('CSP da página usa nonce e não depende de unsafe-inline', async () => {

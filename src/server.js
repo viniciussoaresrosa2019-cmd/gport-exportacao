@@ -866,6 +866,8 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
   const vgmStatus = String(req.body.vgmStatus || 'Não');
   const physicalProcessAnalyst = String(req.body.physicalProcessAnalyst || '').trim() || null;
   const vgmSentTo = String(req.body.vgmSentTo || '').trim() || null;
+  const releaseSchedule = cleanOptionalDate(req.body.releaseSchedule, 'Deadline de agendamento');
+  const releaseDeadline = cleanOptionalDate(req.body.releaseDeadline, 'Deadline de liberação');
   if (!statuses.includes(vgmStatus)) return res.status(400).json({ error: 'Status de VGM inválido.' });
   if (vgmSentTo?.length > 160) return res.status(400).json({ error: 'O campo “Enviado para” deve ter no máximo 160 caracteres.' });
   const result = await query(
@@ -873,17 +875,19 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
         SET vgm_status=$1::varchar(30),
             physical_process_analyst=$2,
             vgm_sent_to=$3,
+            release_schedule=$4,
+            release_deadline=$5,
             vgm_sent_date=CASE
               WHEN $1::varchar(30) IN ('Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT') AND vgm_sent_date IS NULL THEN NOW()
               WHEN $1::varchar(30) NOT IN ('Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT') THEN NULL
               ELSE vgm_sent_date
             END
-      WHERE id=$4
+      WHERE id=$6
       RETURNING *`,
-    [vgmStatus, physicalProcessAnalyst, vgmSentTo, req.params.id]
+    [vgmStatus, physicalProcessAnalyst, vgmSentTo, releaseSchedule, releaseDeadline, req.params.id]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
-  await audit(req.user.sub, 'process.vgm_updated', 'process', req.params.id, { vgmStatus, physicalProcessAnalyst, vgmSentTo, vgmSentDate: result.rows[0].vgm_sent_date });
+  await audit(req.user.sub, 'process.vgm_updated', 'process', req.params.id, { vgmStatus, physicalProcessAnalyst, vgmSentTo, releaseSchedule, releaseDeadline, vgmSentDate: result.rows[0].vgm_sent_date });
   notifyProcessChange(result.rows[0], 'vgm-updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'vgm-updated');
   res.json(result.rows[0]);

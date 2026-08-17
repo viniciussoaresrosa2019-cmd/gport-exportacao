@@ -151,13 +151,18 @@
           const people = [...availableAssignees, ...(p.analistaFisico && !availableAssignees.some(a => a.username === p.analistaFisico) ? [{ username:p.analistaFisico, role:'' }] : [])];
           return `<option value="">Selecione</option>${people.map(person => `<option value="${esc(person.username)}" ${p.analistaFisico === person.username ? 'selected' : ''}>${esc(person.username)}</option>`).join('')}`;
         };
-        el('vgmList').innerHTML = vgmProcesses.length ? `<table class="data-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>ROTA</th><th>VGM ENVIADO?</th><th>DATA DO ENVIO</th><th>ENVIADO PARA</th><th>PROCESSO FÍSICO COM</th></tr></thead><tbody>${vgmProcesses.map(p => `<tr class="process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(route(p))}</td><td><select data-vgm-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td>${esc(p.dataEnvioVgm || '—')}</td><td><input data-vgm-sent-to="${p.id}" value="${esc(p.vgmEnviadoPara || '')}" ${canEdit ? '' : 'readonly'}></td><td><select data-vgm-analyst="${p.id}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo cadastrado.</div>';
+        el('vgmList').innerHTML = vgmProcesses.length ? `<table class="data-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>ROTA</th><th>VGM ENVIADO?</th><th>DATA DO ENVIO</th><th>ENVIADO PARA</th><th>PROCESSO FÍSICO COM</th><th>DEADLINE DE AGENDAMENTO</th><th>DEADLINE DE LIBERAÇÃO</th></tr></thead><tbody>${vgmProcesses.map(p => `<tr class="process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(route(p))}</td><td><select data-vgm-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td>${esc(p.dataEnvioVgm || '—')}</td><td><input data-vgm-sent-to="${p.id}" value="${esc(p.vgmEnviadoPara || '')}" ${canEdit ? '' : 'readonly'}></td><td><select data-vgm-analyst="${p.id}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></td><td><input data-vgm-release-schedule="${p.id}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><input data-vgm-release-deadline="${p.id}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Nenhum processo cadastrado.</div>';
         if (canEdit) {
           el('vgmList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
           el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => {
             // Salvar a cada tecla reconstruía a tabela e interrompia a
             // digitação. Grave somente quando o usuário concluir o campo.
             input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmSentTo); } catch (error) { toast.error(error.message); renderVgm(); } });
+            input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
+          });
+          el('vgmList').querySelectorAll('[data-vgm-release-schedule],[data-vgm-release-deadline]').forEach(input => {
+            input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); });
+            input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmReleaseSchedule || input.dataset.vgmReleaseDeadline); } catch (error) { toast.error(error.message); renderVgm(); } });
             input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); input.blur(); } });
           });
         }
@@ -954,13 +959,19 @@
         const status = el('vgmList').querySelector(`[data-vgm-status="${id}"]`)?.value;
         const vgmSentTo = el('vgmList').querySelector(`[data-vgm-sent-to="${id}"]`)?.value;
         const physicalProcessAnalyst = el('vgmList').querySelector(`[data-vgm-analyst="${id}"]`)?.value;
+        const scheduleValue = el('vgmList').querySelector(`[data-vgm-release-schedule="${id}"]`)?.value;
+        const deadlineValue = el('vgmList').querySelector(`[data-vgm-release-deadline="${id}"]`)?.value;
+        const releaseSchedule = dateForDatabase(scheduleValue, true);
+        const releaseDeadline = dateForDatabase(deadlineValue, true);
+        if (scheduleValue && !releaseSchedule) throw new Error('Informe o deadline de agendamento no formato dd/mm hh:mm.');
+        if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.');
         const before = data;
         // A tela responde imediatamente. Se o servidor recusar a alteração,
         // restauramos a lista exatamente como estava antes do envio.
-        data = data.map(item => item.id === id ? { ...item, vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '' } : item);
+        data = data.map(item => item.id === id ? { ...item, vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' } : item);
         render(); renderVgm();
         try {
-          const updated = await request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst }) });
+          const updated = await request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst, releaseSchedule, releaseDeadline }) });
           const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
           data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderVgm(); toast.success('Status de VGM atualizado.');
         } catch (error) {
