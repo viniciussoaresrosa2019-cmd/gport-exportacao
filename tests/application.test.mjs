@@ -501,6 +501,10 @@ test('relatório de VGM permite abrir os processos enviados em cada dia', async 
   assert.match(html, /VGMs enviados em \$\{esc\(selectedDay\.name\)\}/);
   assert.match(html, /clearVgmReportDay/);
   assert.match(html, /selectedDay\.processes\.map/);
+  assert.match(html, /class="process-status-row \$\{p\.canalLiberacao/);
+  assert.match(html, /releaseProcesses\.map\(p => `<tr class="process-status-row/);
+  assert.match(html, /followupProcesses\.map\(p => `<tr class="process-status-row/);
+  assert.match(await read('public/assets/gport.css'), /\.process-status-row\.process-channel-verde td:first-child\{box-shadow:inset 4px 0 #16a34a/);
 });
 
 test('liberação permite filtrar por porto e ordena pelo deadline crescente', async () => {
