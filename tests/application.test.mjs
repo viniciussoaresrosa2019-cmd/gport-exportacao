@@ -494,6 +494,15 @@ test('VGM em draft ou enviado pelo cliente conta como enviado em todas as telas'
   assert.match(html, /\['Sim','Enviado pelo Cliente','Enviando no DRAFT'\]\.includes\(p\.vgmStatus\)/);
 });
 
+test('relatório de VGM permite abrir os processos enviados em cada dia', async () => {
+  const html = await readInterface();
+  assert.match(html, /selectedVgmReportDay/);
+  assert.match(html, /data-vgm-report-day/);
+  assert.match(html, /VGMs enviados em \$\{esc\(selectedDay\.name\)\}/);
+  assert.match(html, /clearVgmReportDay/);
+  assert.match(html, /selectedDay\.processes\.map/);
+});
+
 test('liberação permite filtrar por porto e ordena pelo deadline crescente', async () => {
   const html = await readInterface();
   assert.match(html, /releasePortFilter='all'/);
@@ -516,6 +525,9 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(server, /ORDER BY c\.name ASC,p\.created_at DESC,p\.id DESC/);
   assert.match(html, /processClientFilter='all'/);
   assert.match(html, /processClientFilters/);
+  assert.match(html, /client-filter-popover/);
+  assert.match(html, /processClientFilterSearch/);
+  assert.match(html, /clientControls\.open=false/);
   assert.match(html, /data-process-client/);
   assert.match(html, /searchParams\.set\('client', processClientFilter\)/);
   assert.match(html, /searchParams\.set\('clientName', selectedClient\.nome\)/);
@@ -523,10 +535,20 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /if \(clientResult\.status === 'fulfilled'\) render\(\)/);
   assert.match(html, /class="client-group"/);
   assert.match(css, /#processesPage \.table-wrap thead th\{background:#fff;color:#155b91/);
-  assert.match(css, /\.process-client-filters \.btn\{[^}]*text-transform:uppercase/);
+  assert.match(css, /\.client-filter-options \.btn\{[^}]*text-transform:uppercase/);
   assert.match(css, /\.client-group td\{[^}]*background:#fff!important;color:#155b91/);
   assert.match(css, /#rows tr\.clickable td\{background:#fff!important\}/);
   assert.match(html, /String\(a\.exportador\|\|''\)\.localeCompare/);
+});
+
+test('pesquisas atualizam automaticamente sem exigir clique no botão Filtrar', async () => {
+  const html = await readInterface();
+  assert.match(html, /value\.oninput = scheduleAutomaticSearch/);
+  assert.match(html, /field\.onchange = scheduleAutomaticSearch/);
+  assert.match(html, /setTimeout\(runAutomaticSearch, 300\)/);
+  assert.match(html, /el\('search'\)\.oninput = scheduleServerProcessSearch/);
+  assert.match(html, /el\('searchField'\)\.onchange = scheduleServerProcessSearch/);
+  assert.match(html, /setTimeout\(\(\) => \{ void applyServerProcessSearch\(\); \}, 350\)/);
 });
 
 test('processos históricos não somem quando referências falham e qualquer usuário autenticado pode cadastrar exportador', async () => {

@@ -31,6 +31,7 @@
       const referenceDataCache = { expiresAt: 0 };
       const referenceDataTtlMs = 5 * 60 * 1000;
       let referenceDataLoadPromise = null;
+      let selectedVgmReportDay = null;
       const autoSaveTimers = new Map();
       const scheduleAutoSave = (key, task) => {
         clearTimeout(autoSaveTimers.get(key));
@@ -130,7 +131,17 @@
         const [field, value, apply, clear] = controls.querySelectorAll('select,input,button');
         if (filter) { field.value = filter.field; value.value = filter.value; }
         const submit = () => { if (!field.value) return toast.warning('Selecione qual dado deseja pesquisar.'); if (!value.value.trim()) return toast.warning('Informe o valor a pesquisar.'); onChange({ field:field.value, value:value.value.trim() }); };
-        apply.onclick = submit; clear.onclick = () => { onChange(null); }; value.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); submit(); } };
+        let automaticSearchTimer = null;
+        const runAutomaticSearch = () => {
+          const term = value.value.trim();
+          if (!term) { onChange(null); return; }
+          if (!field.value) return;
+          const caret = value.selectionStart;
+          onChange({ field:field.value, value:term });
+          requestAnimationFrame(() => { const nextInput = el(id)?.querySelector('input'); if (nextInput) { nextInput.focus(); nextInput.setSelectionRange(caret, caret); } });
+        };
+        const scheduleAutomaticSearch = () => { clearTimeout(automaticSearchTimer); automaticSearchTimer = setTimeout(runAutomaticSearch, 300); };
+        apply.onclick = submit; clear.onclick = () => { clearTimeout(automaticSearchTimer); onChange(null); }; value.oninput = scheduleAutomaticSearch; field.onchange = scheduleAutomaticSearch; value.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); clearTimeout(automaticSearchTimer); submit(); } };
       };
       const vgmStatuses = ['Enviado pelo Cliente', 'Enviando no DRAFT', 'Não', 'Sim'];
       const renderVgm = () => {
@@ -154,12 +165,17 @@
       const renderVgmReport = () => {
         const sent = data.filter(p => ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus) && p.dataEnvioVgmOrdenacao);
         const groups = new Map();
-        sent.forEach(p => { const key = p.dataEnvioVgmOrdenacao.slice(0, 10); const current = groups.get(key) || { key, name:p.dataEnvioVgm || '—', total:0 }; current.total += 1; groups.set(key, current); });
+        sent.forEach(p => { const key = p.dataEnvioVgmOrdenacao.slice(0, 10); const current = groups.get(key) || { key, name:p.dataEnvioVgm || '—', total:0, processes:[] }; current.total += 1; current.processes.push(p); groups.set(key, current); });
         const days = [...groups.values()].sort((a,b) => b.key.localeCompare(a.key));
         const max = Math.max(...days.map(d => d.total), 1);
+        if (selectedVgmReportDay && !groups.has(selectedVgmReportDay)) selectedVgmReportDay = null;
+        const selectedDay = selectedVgmReportDay ? groups.get(selectedVgmReportDay) : null;
         el('vgmReportTotal').textContent = sent.length; el('vgmReportDays').textContent = days.length;
-        el('vgmDailyChart').innerHTML = days.length ? days.map((d,i) => `<div class="bar-row"><span class="bar-rank">${i+1}</span><span class="bar-label">${esc(d.name)}</span><progress class="bar-progress bar-progress--vgm" max="${max}" value="${d.total}" aria-label="${esc(d.name)}: ${d.total} VGM(s)"></progress><span class="bar-value">${d.total}</span></div>`).join('') : '<div class="chart-empty">Nenhum VGM enviado com data registrada.</div>';
-        el('vgmDailyReport').innerHTML = days.length ? `<table class="report-table"><thead><tr><th>DATA DO ENVIO</th><th>VGMs ENVIADOS</th></tr></thead><tbody>${days.map(d => `<tr><td>${esc(d.name)}</td><td>${d.total}</td></tr>`).join('')}</tbody></table>` : '';
+        el('vgmDailyChart').innerHTML = days.length ? days.map((d,i) => `<button type="button" class="bar-row vgm-report-day ${selectedVgmReportDay === d.key ? 'active' : ''}" data-vgm-report-day="${esc(d.key)}" aria-pressed="${selectedVgmReportDay === d.key}" aria-label="Ver ${d.total} VGM(s) enviado(s) em ${esc(d.name)}"><span class="bar-rank">${i+1}</span><span class="bar-label">${esc(d.name)}</span><progress class="bar-progress bar-progress--vgm" max="${max}" value="${d.total}" aria-hidden="true"></progress><span class="bar-value">${d.total}</span></button>`).join('') : '<div class="chart-empty">Nenhum VGM enviado com data registrada.</div>';
+        el('vgmDailyReport').innerHTML = days.length ? `<table class="report-table vgm-report-table"><thead><tr><th>DATA DO ENVIO</th><th>VGMs ENVIADOS</th></tr></thead><tbody>${days.map(d => `<tr class="${selectedVgmReportDay === d.key ? 'active' : ''}"><td><button type="button" class="vgm-report-day-link" data-vgm-report-day="${esc(d.key)}" aria-pressed="${selectedVgmReportDay === d.key}">${esc(d.name)}</button></td><td>${d.total}</td></tr>`).join('')}</tbody></table>${selectedDay ? `<section class="vgm-day-details" aria-live="polite"><div class="vgm-day-details-head"><div><h3>VGMs enviados em ${esc(selectedDay.name)}</h3><p>${selectedDay.total} processo(s) encontrado(s).</p></div><button type="button" class="btn secondary" id="clearVgmReportDay">Mostrar todos os dias</button></div><div class="table-wrap"><table class="report-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR</th><th>ROTA</th><th>STATUS</th><th>ENVIADO PARA</th></tr></thead><tbody>${selectedDay.processes.map(p => `<tr><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}</td><td>${esc(route(p))}</td><td>${esc(p.vgmStatus || '—')}</td><td>${esc(p.vgmEnviadoPara || '—')}</td></tr>`).join('')}</tbody></table></div></section>` : ''}` : '';
+        const selectVgmDay = key => { selectedVgmReportDay = key; renderVgmReport(); };
+        document.querySelectorAll('[data-vgm-report-day]').forEach(button => button.onclick = () => selectVgmDay(button.dataset.vgmReportDay));
+        el('clearVgmReportDay')?.addEventListener('click', () => { selectedVgmReportDay = null; renderVgmReport(); });
       };
       const renderRelease = () => {
         const canEdit = ['admin', 'liberacao'].includes(currentUser?.role); const normalizePort = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); const deadlineOrder = p => { const stored = Date.parse(p.releaseDeadlineOrder || ''); if (Number.isFinite(stored)) return stored; const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/); if (!match) return Number.MAX_SAFE_INTEGER; const now = new Date(), date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4])); if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1); return date.getTime(); }; const filterSelect = el('releaseFilterSelect'); filterSelect.value = releaseFilter; filterSelect.onchange = () => { releaseFilter = filterSelect.value; renderRelease(); }; renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => { releaseSearchFilter = filter; renderRelease(); }); let portControls = el('releasePortFilters'); if (!portControls) { portControls = document.createElement('div'); portControls.id = 'releasePortFilters'; portControls.className = 'release-port-filters'; filterSelect.closest('.field').insertAdjacentElement('afterend', portControls); } const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos']; const knownPortMap = new Map(); [...standardPorts, ...data.map(p => String(p.origem || '').trim())].forEach(port => { const key=normalizePort(port); if(key&&!knownPortMap.has(key))knownPortMap.set(key,port); }); const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b,'pt-BR',{sensitivity:'base'})); portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`; portControls.querySelectorAll('[data-release-port]').forEach(button => button.onclick = () => { releasePortFilter = button.dataset.releasePort; renderRelease(); }); const releaseProcesses = (releaseFilter === 'released' ? data.filter(p => p.liberacaoStatus === 'Sim') : releaseFilter === 'pending' ? data.filter(p => p.liberacaoStatus !== 'Sim') : data).filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter)).filter(process => matchesSectionSearch(process, releaseSearchFilter)).slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR'));
@@ -699,16 +715,28 @@
       // A pesquisa principal é realizada no servidor para não carregar toda a
       // base no navegador. O renderizador legado continua recebendo somente a
       // página já filtrada.
-      el('filterBtn').onclick = async () => {
+      let processSearchTimer = null;
+      const applyServerProcessSearch = async ({ showValidation=false } = {}) => {
         const field = el('searchField').value, value = el('search').value.trim();
-        if (!field) return toast.warning('Selecione qual dado deseja pesquisar.');
-        if (!value) return toast.warning('Informe o valor a pesquisar.');
+        if (!field || !value) {
+          if (showValidation) return toast.warning(!field ? 'Selecione qual dado deseja pesquisar.' : 'Informe o valor a pesquisar.');
+          if (!value && serverProcessFilter) {
+            serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey);
+            try { await refreshData(); } catch (error) { toast.error(error.message); }
+          }
+          return;
+        }
         serverProcessFilter = { field, value }; processFilter = null; sessionStorage.setItem(processFilterSessionKey, JSON.stringify(serverProcessFilter));
         try { await refreshData(); const summary = el('filterSummary'); summary.hidden = false; summary.textContent = `${processPagination.total} processo(s) encontrado(s).`; }
         catch (error) { toast.error(error.message); }
       };
+      const scheduleServerProcessSearch = () => { clearTimeout(processSearchTimer); processSearchTimer = setTimeout(() => { void applyServerProcessSearch(); }, 350); };
+      el('filterBtn').onclick = () => { clearTimeout(processSearchTimer); return applyServerProcessSearch({ showValidation:true }); };
+      el('search').oninput = scheduleServerProcessSearch;
+      el('searchField').onchange = scheduleServerProcessSearch;
+      el('search').onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); clearTimeout(processSearchTimer); void applyServerProcessSearch({ showValidation:true }); } };
       el('clearFilterBtn').onclick = async () => {
-        serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey); el('search').value = ''; el('searchField').selectedIndex = 0;
+        clearTimeout(processSearchTimer); serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey); el('search').value = ''; el('searchField').selectedIndex = 0;
         try { await refreshData(); } catch (error) { toast.error(error.message); }
       };
       const turnstileWidget = el('turnstileWidget');
