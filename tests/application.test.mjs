@@ -523,8 +523,9 @@ test('relatório de VGM permite abrir os processos enviados em cada dia', async 
   assert.match(html, /class="vgm-report-day-card/);
   assert.match(html, /class="vgm-day-process process-status-row/);
   assert.match(html, /class="process-status-row \$\{p\.canalLiberacao/);
-  assert.match(html, /releaseProcesses\.map\(p => `<tr class="process-status-row/);
-  assert.match(html, /followupProcesses\.map\(p => `<tr class="process-status-row/);
+  assert.match(html, /const releaseGroups = new Map\(\)/);
+  assert.match(html, /class="release-port-group"/);
+  assert.match(html, /followupProcesses\.map\(p => `<article class="followup-card process-status-row/);
   assert.match(await read('public/assets/gport.css'), /\.process-status-row\.process-channel-verde td:first-child\{box-shadow:inset 4px 0 #16a34a/);
   assert.match(await read('public/assets/gport.css'), /\.vgm-report-panel\{display:grid;grid-template-columns/);
   assert.match(await read('public/assets/legacy-ui.js'), /class="report-rank-list" role="list"/);
@@ -542,6 +543,9 @@ test('liberação permite filtrar por porto e ordena pelo deadline crescente', a
   assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
   assert.match(html, /const knownPortMap = new Map\(\)/);
   assert.match(html, /if\(key&&!knownPortMap\.has\(key\)\)knownPortMap\.set\(key,port\)/);
+  assert.match(html, /releaseGroups\.get\(key\)\.processes\.push\(process\)/);
+  assert.match(await read('public/assets/gport.css'), /\.release-port-group\{overflow:hidden/);
+  assert.match(await read('public/assets/gport.css'), /\.followup-card\{display:grid/);
   assert.doesNotMatch(html, /new Set\(\[\.\.\.standardPorts/);
 });
 
