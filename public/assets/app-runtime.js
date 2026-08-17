@@ -473,6 +473,9 @@
         // antigos apareçam mesmo quando o banco já possui os dados corretos.
         el('containerDetails').innerHTML = '';
         nativeOpenProcess(p);
+        // A capa só pode ser emitida a partir de um processo persistido. O
+        // lançamento novo deve ser salvo antes de disponibilizar esta ação.
+        el('printBtn').hidden = !p;
         newProcessIdempotencyKey = p ? null : crypto.randomUUID();
         if (!p) {
           // Não reutilize nenhum identificador do último processo salvo. O

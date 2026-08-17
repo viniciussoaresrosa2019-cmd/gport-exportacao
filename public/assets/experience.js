@@ -93,6 +93,10 @@
       steps.forEach((section, index) => {
         const isActive = quickMode || index === activeStep;
         section.hidden = !isActive;
+        const controls = section.querySelector('.form-flow-controls');
+        // O modo rápido já deixa todas as seções abertas; a navegação entre
+        // etapas só é necessária no modo guiado.
+        if (controls) controls.hidden = quickMode;
         sectionInputs(section).forEach(input => { if (input.required && !input.checkValidity()) invalid += 1; });
       });
       progress.querySelectorAll('.form-progress__step').forEach((item, index) => item.classList.toggle('is-active', quickMode || index <= activeStep));

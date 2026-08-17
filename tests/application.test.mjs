@@ -458,6 +458,7 @@ test('interface progressiva mantém confirmações internas, skeleton e cartões
 test('lançamento progressivo possui seis etapas e modo rápido sem oferecer rascunho local', async () => {
   const html = await readInterface();
   const experience = await read('public/assets/experience.js');
+  const runtime = await read('public/assets/app-runtime.js');
   const css = await read('public/assets/experience.css');
   for (const title of ['Processo', 'Exportador', 'Rota', 'Documentos', 'Carga', 'Revisão']) assert.match(experience, new RegExp(`\\['${title}'`));
   assert.ok(experience.indexOf("['Exportador'") < experience.indexOf("['Processo'"), 'Exportador deve ser a primeira etapa do lançamento');
@@ -465,6 +466,9 @@ test('lançamento progressivo possui seis etapas e modo rápido sem oferecer ras
   assert.match(experience, /activeStep = 0;/);
   assert.match(experience, /form\.elements\.exportador\.focus/);
   assert.match(experience, /Modo rápido/);
+  assert.match(experience, /controls\.hidden = quickMode/);
+  assert.match(html, /id="printBtn" hidden/);
+  assert.match(runtime, /el\('printBtn'\)\.hidden = !p/);
   assert.match(experience, /localStorage\.removeItem\('gport:process-draft:v2'\)/);
   assert.doesNotMatch(experience, /installProcessDraft|draft-notice|data-draft-restore|localStorage\.setItem\('gport:process-draft/);
   assert.doesNotMatch(html, /gport:process-open|gport:process-saved/);
@@ -530,6 +534,9 @@ test('liberação permite filtrar por porto e ordena pelo deadline crescente', a
   assert.match(html, /releasePortFilters/);
   assert.match(html, /data-release-port/);
   assert.match(html, /deadlineOrder\(a\) - deadlineOrder\(b\)/);
+  assert.match(html, /const releaseLabels = \['BOOKING','EXPORTADOR \/ IMPORTADOR'/);
+  assert.match(html, /cell\.dataset\.label = releaseLabels\[index\]/);
+  assert.match(await read('public/assets/gport.css'), /\.release-table tbody tr\{display:grid;grid-template-columns:repeat\(4/);
   assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
   assert.match(html, /const knownPortMap = new Map\(\)/);
   assert.match(html, /if\(key&&!knownPortMap\.has\(key\)\)knownPortMap\.set\(key,port\)/);
