@@ -536,6 +536,11 @@
         render();
         renderClients();
         updateLoadMoreButton();
+        const summary = el('processListMeta');
+        if (summary) {
+          const total = Number(processPagination.total || data.length);
+          summary.textContent = `${total} processo${total === 1 ? '' : 's'} na visualização`;
+        }
       };
       const showProcessLoading = () => {
         const emptyState = el('empty');

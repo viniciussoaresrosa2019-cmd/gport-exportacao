@@ -90,6 +90,7 @@
     };
     const updateFlow = () => {
       let invalid = 0;
+      form.dataset.formFlowMode = quickMode ? 'quick' : 'steps';
       steps.forEach((section, index) => {
         const isActive = quickMode || index === activeStep;
         section.hidden = !isActive;

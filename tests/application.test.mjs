@@ -467,6 +467,8 @@ test('lançamento progressivo possui seis etapas e modo rápido sem oferecer ras
   assert.match(experience, /form\.elements\.exportador\.focus/);
   assert.match(experience, /Modo rápido/);
   assert.match(experience, /controls\.hidden = quickMode/);
+  assert.match(experience, /form\.dataset\.formFlowMode = quickMode \? 'quick' : 'steps'/);
+  assert.match(css, /#form\[data-form-flow-mode="quick"\] \.form-flow-controls\{display:none!important\}/);
   assert.match(html, /id="printBtn" hidden/);
   assert.match(runtime, /el\('printBtn'\)\.hidden = !p/);
   assert.match(experience, /localStorage\.removeItem\('gport:process-draft:v2'\)/);
