@@ -300,8 +300,13 @@ test('destino do VGM permite digitação contínua e salva somente ao concluir o
   assert.match(runtime, /editingVgmDestination = document\.activeElement\?\.matches\?\.\('\[data-vgm-sent-to\]'\)/);
   assert.match(runtime, /data-vgm-release-schedule/);
   assert.match(runtime, /data-vgm-release-deadline/);
-  assert.match(runtime, /class="data-table vgm-table"/);
+  assert.match(runtime, /class="vgm-board" role="list"/);
+  assert.match(runtime, /class="vgm-card process-status-row/);
+  assert.match(runtime, /<label for="vgm-status-\$\{key\}">STATUS VGM<\/label>/);
+  assert.match(runtime, /aria-label="Deadline de agendamento do booking/);
   assert.doesNotMatch(runtime, /<th>ROTA<\/th><th>VGM ENVIADO\?<\/th>/);
+  assert.match(await read('public/assets/gport.css'), /\.vgm-card\{display:grid;grid-template-columns/);
+  assert.match(await read('public/assets/gport.css'), /\.vgm-card-deadline\{padding-left:8px/);
   assert.match(runtime, /Informe o deadline de agendamento no formato dd\/mm hh:mm/);
   assert.match(server, /release_schedule=\$4/);
   assert.match(server, /release_deadline=\$5/);
