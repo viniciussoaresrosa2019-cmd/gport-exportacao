@@ -819,6 +819,9 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(runtime, /data-calendar-day/);
   assert.match(runtime, /Botão direito para excluir/);
   assert.match(runtime, /deleteCalendarPrelaunch/);
+  assert.match(runtime, /returnToCalendarAfterProcess/);
+  assert.match(runtime, /dialog\.addEventListener\('close'/);
+  assert.match(runtime, /openCalendar\(\{ returning:true \}\)/);
   assert.match(runtime, /const prelaunchForm = event\.currentTarget/);
   assert.match(runtime, /prelaunchForm\.reset\(\)/);
   assert.match(runtime, /const openWorkspace/);

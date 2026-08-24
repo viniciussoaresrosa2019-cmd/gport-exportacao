@@ -560,6 +560,7 @@
       const calendarDateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '';
       const calendarTimeLabel = value => String(value || '').match(/T(\d{2}):(\d{2})/)?.slice(1).join(':') || 'Sem horário';
       let selectedCalendarDay = '';
+      let returnToCalendarAfterProcess = false;
       const renderCalendar = async () => {
         const month = el('calendarMonth').value;
         if (!/^\d{4}-\d{2}$/.test(month)) return;
@@ -592,13 +593,14 @@
           el('calendarSummary').textContent = `${rows.length} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })}.`;
           const openCalendarProcess = async id => {
             const process = data.find(item => item.id === id);
-            if (process) { el('calendarDialog').close(); open(process); return; }
-            try { const item = toViewProcess(await request(`/api/processes/${id}`)); el('calendarDialog').close(); open(item); } catch (error) { toast.error(error.message); }
+            if (process) { returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(process); return; }
+            try { const item = toViewProcess(await request(`/api/processes/${id}`)); returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(item); }
+            catch (error) { toast.error(error.message); }
           };
           const openCalendarPrelaunch = id => {
             const prelaunch = prelaunches.find(item => item.id === id);
             if (!prelaunch) return;
-            el('calendarDialog').close(); open(null);
+            returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(null);
             form.elements.exportador.value = prelaunch.client_id;
             renderClientOptions(); form.elements.exportador.value = prelaunch.client_id;
             form.elements.booking.value = prelaunch.booking || '';
@@ -638,9 +640,20 @@
           else el('calendarDayDetails').hidden = true;
         } catch (error) { el('calendarSummary').textContent = 'Não foi possível carregar o calendário agora.'; toast.error(error.message); }
       };
-      const openCalendar = () => { const now = new Date(); if (!el('calendarMonth').value) el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; el('calendarDialog').showModal(); void renderCalendar(); };
+      const openCalendar = ({ returning=false } = {}) => {
+        const now = new Date();
+        if (!el('calendarMonth').value) el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        if (!returning) { el('prelaunchForm').reset(); el('prelaunchForm').hidden = true; }
+        if (!el('calendarDialog').open) el('calendarDialog').showModal();
+        void renderCalendar();
+      };
       el('calendarBtn').onclick = openCalendar;
       el('closeCalendarBtn').onclick = () => el('calendarDialog').close();
+      dialog.addEventListener('close', () => {
+        if (!returnToCalendarAfterProcess) return;
+        returnToCalendarAfterProcess = false;
+        window.setTimeout(() => openCalendar({ returning:true }), 0);
+      });
       el('calendarMonth').onchange = () => void renderCalendar();
       el('calendarTodayBtn').onclick = () => { const now = new Date(); el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; void renderCalendar(); };
       const openPrelaunchForm = () => {
