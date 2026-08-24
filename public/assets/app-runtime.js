@@ -581,7 +581,7 @@
           }));
           prelaunches.forEach(prelaunch => {
             const key = String(prelaunch.deadline || '').slice(0, 10);
-            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process:prelaunch, label:'Pré-lançamento', type:'prelaunch', when:prelaunch.deadline });
+            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process:prelaunch, label:prelaunch.exporter || 'Exportador não informado', type:'prelaunch', when:prelaunch.deadline });
           });
           const firstWeekday = (from.getDay() + 6) % 7;
           const days = Array.from({ length:firstWeekday }, () => '<div class="calendar-day is-empty" aria-hidden="true"></div>');
@@ -615,7 +615,7 @@
             el('calendarDialog').close();
             const accepted = await confirmAction('Excluir pré-lançamento', `Excluir o pré-lançamento ${prelaunch.booking}? Nenhum processo definitivo será excluído.`);
             if (!accepted) { openCalendar(); return; }
-            try { await request(`/api/prelaunches/${id}`, { method:'DELETE' }); toast.success('Pré-lançamento excluído.'); }
+            try { await request(`/api/prelaunches/${id}`, { method:'DELETE' }); toast.success('Pré-lançamento excluído.'); void refreshPersonalDeadlineStat(); }
             catch (error) { toast.error(error.message); }
             openCalendar();
           };
@@ -631,7 +631,7 @@
             const dayEvents = [...(events.get(key) || [])].sort((a, b) => String(a.when || '').localeCompare(String(b.when || '')));
             const details = el('calendarDayDetails');
             details.hidden = false;
-            details.innerHTML = `<div class="calendar-day-details__head"><div><span>AGENDA DO ANALISTA</span><h3>${esc(calendarDateLabel(key))}</h3></div><small>${dayEvents.length} prazo(s)</small></div>${dayEvents.length ? `<div class="calendar-day-list">${dayEvents.map(item => `<button type="button" class="calendar-day-item ${item.type === 'prelaunch' ? 'is-prelaunch' : ''}" data-day-${item.type}="${esc(item.process.id)}"><time>${esc(calendarTimeLabel(item.when))}</time><span><strong>${esc(item.process.booking || 'Sem booking')}</strong><small>${esc(item.label)} · ${esc(item.process.exporter || 'Exportador não informado')}</small></span>${item.type === 'prelaunch' ? '<em>Botão direito para excluir</em>' : ''}</button>`).join('')}</div>` : '<p class="empty">Nenhum processo ou pré-lançamento para este dia.</p>'}`;
+            details.innerHTML = `<div class="calendar-day-details__head"><div><span>AGENDA DO ANALISTA</span><h3>${esc(calendarDateLabel(key))}</h3></div><small>${dayEvents.length} prazo(s)</small></div>${dayEvents.length ? `<div class="calendar-day-list">${dayEvents.map(item => `<button type="button" class="calendar-day-item ${item.type === 'prelaunch' ? 'is-prelaunch' : ''}" data-day-${item.type}="${esc(item.process.id)}"><time>${esc(calendarTimeLabel(item.when))}</time><span><strong>${esc(item.process.booking || 'Sem booking')}</strong><small>${esc(item.type === 'prelaunch' ? (item.process.exporter || 'Exportador não informado') : `${item.label} · ${item.process.exporter || 'Exportador não informado'}`)}</small></span>${item.type === 'prelaunch' ? '<em>Botão direito para excluir</em>' : ''}</button>`).join('')}</div>` : '<p class="empty">Nenhum processo ou pré-lançamento para este dia.</p>'}`;
             connectCalendarActions(details);
           };
           connectCalendarActions(el('calendarGrid'));
@@ -674,7 +674,7 @@
         if (!deadline) return toast.warning('Informe o deadline no formato dd/mm hh:mm.');
         try {
           await request('/api/prelaunches', { method:'POST', body:JSON.stringify({ clientId:el('prelaunchClient').value, booking:el('prelaunchBooking').value.trim(), deadline }) });
-          prelaunchForm.reset(); openPrelaunchForm(); toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar();
+          prelaunchForm.reset(); openPrelaunchForm(); toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar(); void refreshPersonalDeadlineStat();
         } catch (error) { toast.error(error.message); }
       };
 
@@ -756,6 +756,30 @@
           summary.textContent = `${total} processo${total === 1 ? '' : 's'} na visualização`;
         }
       };
+      // O cartão mostra somente os pré-lançamentos pessoais ainda pendentes.
+      // Processos definitivos não entram neste indicador operacional.
+      const isDeadlineInNextSevenDays = deadline => {
+        const normalized = dateForDatabase(deadline, true);
+        const deadlineTime = Date.parse(normalized || '');
+        if (Number.isNaN(deadlineTime)) return false;
+        const now = new Date();
+        const limit = new Date(now);
+        limit.setDate(limit.getDate() + 7);
+        limit.setHours(23, 59, 59, 999);
+        return deadlineTime >= now.getTime() && deadlineTime <= limit.getTime();
+      };
+      const refreshPersonalDeadlineStat = async () => {
+        try {
+          const prelaunches = await request('/api/prelaunches');
+          const prelaunchDeadlines = prelaunches.filter(prelaunch => isDeadlineInNextSevenDays(prelaunch.deadline)).length;
+          const total = prelaunchDeadlines;
+          const counter = el('dueSoon');
+          counter.textContent = total;
+          counter.setAttribute('aria-label', `${total} pré-lançamento(s) pessoal(is) com deadline de draft nos próximos 7 dias.`);
+        } catch {
+          // Falha transitória na agenda não deve apagar o total já renderizado.
+        }
+      };
       const showProcessLoading = () => {
         const emptyState = el('empty');
         if (!emptyState) return;
@@ -777,6 +801,7 @@
         el('empty')?.removeAttribute('aria-busy');
         processPagination = page.pagination;
         renderProcessPage();
+        void refreshPersonalDeadlineStat();
         if (!data.length) {
           el('empty').textContent = 'Nenhum processo encontrado.';
           el('empty').hidden = false;
@@ -1154,7 +1179,7 @@
           // Um pré-lançamento só é concluído após o processo definitivo ser
           // persistido. Em falha de rede, ele continua na agenda do analista.
           if (isNewProcess && form.dataset.prelaunchId) {
-            try { await request(`/api/prelaunches/${form.dataset.prelaunchId}`, { method:'DELETE' }); delete form.dataset.prelaunchId; }
+            try { await request(`/api/prelaunches/${form.dataset.prelaunchId}`, { method:'DELETE' }); delete form.dataset.prelaunchId; void refreshPersonalDeadlineStat(); }
             catch { toast.warning('Processo salvo, mas o pré-lançamento continua na agenda. Você pode removê-lo depois.'); }
           }
           if (isNewProcess) {

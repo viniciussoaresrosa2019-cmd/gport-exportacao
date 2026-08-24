@@ -817,6 +817,8 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(runtime, /openPrelaunchForm/);
   assert.match(runtime, /const refreshPersonalDeadlineStat = async/);
   assert.match(runtime, /prelaunchDeadlines/);
+  assert.doesNotMatch(runtime, /const processDeadlines/);
+  assert.match(runtime, /label:prelaunch\.exporter \|\| 'Exportador não informado'/);
   assert.match(runtime, /void refreshPersonalDeadlineStat\(\)/);
   assert.match(runtime, /if \(!returning\) \{ el\('prelaunchForm'\)\.reset\(\); openPrelaunchForm\(\); \}/);
   assert.match(await read('public/assets/gport.css'), /\.calendar-controls #openPrelaunchBtn\{display:none!important\}/);
