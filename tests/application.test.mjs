@@ -531,6 +531,20 @@ test('processos permitem filtrar pelo período em que foram lançados', async ()
   assert.match(css, /\.process-period-filter\{display:flex/);
 });
 
+test('relatórios consideram processos lançados no período, e não deadlines ou data de envio', async () => {
+  const server = await read('src/server.js');
+  const legacy = await read('public/assets/legacy-ui.js');
+  const html = await readInterface();
+
+  assert.match(server, /EXTRACT\(YEAR FROM p\.created_at AT TIME ZONE 'America\/Sao_Paulo'\)=\$1/);
+  assert.match(server, /EXTRACT\(MONTH FROM p\.created_at AT TIME ZONE 'America\/Sao_Paulo'\)=\$2/);
+  assert.doesNotMatch(server, /p\.shipping_date IS NOT NULL AND EXTRACT\(YEAR FROM p\.shipping_date\)/);
+  assert.match(legacy, /window\.gportRequest\(`\/api\/reports\?\$\{params\}`\)/);
+  assert.match(legacy, /params\.set\('all','true'\)/);
+  assert.match(legacy, /Processos lançados no mês/);
+  assert.match(html, /Processos cadastrados no período selecionado\./);
+});
+
 test('Prazos e Financeiro permanecem reversíveis, mas fora da navegação operacional atual', async () => {
   const html = await readInterface();
   assert.match(html, /id="deadlineNav" href="#" hidden aria-hidden="true"/);

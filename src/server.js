@@ -1185,15 +1185,18 @@ app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly
 app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => {
   const year = Number(req.query.year || new Date().getFullYear());
   const month = req.query.month ? Number(req.query.month) : null;
+  const allPeriods = String(req.query.all || '').toLowerCase() === 'true';
   if (!Number.isInteger(year) || year < 2000 || year > 2100 || (month !== null && (!Number.isInteger(month) || month < 1 || month > 12))) return res.status(400).json({ error: 'Período de relatório inválido.' });
   const params = [year, month];
-  const period = `p.shipping_date IS NOT NULL AND EXTRACT(YEAR FROM p.shipping_date)=$1 AND ($2::int IS NULL OR EXTRACT(MONTH FROM p.shipping_date)=$2)`;
+  // Relatórios operacionais sempre representam o volume de processos
+  // lançados/cadastrados no período, e não prazo ou data de embarque.
+  const period = allPeriods ? 'TRUE' : `EXTRACT(YEAR FROM p.created_at AT TIME ZONE 'America/Sao_Paulo')=$1 AND ($2::int IS NULL OR EXTRACT(MONTH FROM p.created_at AT TIME ZONE 'America/Sao_Paulo')=$2)`;
   const [total, analysts, exporters] = await Promise.all([
     query(`SELECT COUNT(*)::int AS total FROM processes p WHERE ${period}`, params),
     query(`SELECT u.username AS name,COUNT(*)::int AS total FROM processes p JOIN users u ON u.id=p.analyst_id WHERE ${period} GROUP BY u.username ORDER BY total DESC,name`, params),
     query(`SELECT c.name,COUNT(*)::int AS total FROM processes p JOIN clients c ON c.id=p.client_id WHERE ${period} GROUP BY c.name ORDER BY total DESC,name`, params)
   ]);
-  res.json({ year, month, total: total.rows[0].total, analysts: analysts.rows, exporters: exporters.rows });
+  res.json({ year, month, allPeriods, total: total.rows[0].total, analysts: analysts.rows, exporters: exporters.rows });
 }));
 
 app.use((error, req, res, _next) => {

@@ -364,6 +364,7 @@
         }
         return body;
       };
+      window.gportRequest = request;
       const ensureSessionActive = async ({ force = false } = {}) => {
         if (!currentUser) return false;
         if (!force && Date.now() - lastSessionCheckAt < sessionCheckIntervalMs) return true;
