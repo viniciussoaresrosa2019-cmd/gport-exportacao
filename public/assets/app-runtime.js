@@ -158,19 +158,6 @@
         };
         el('vgmList').innerHTML = vgmProcesses.length ? `<div class="vgm-board" role="list" aria-label="Processos para controle de VGM">${vgmProcesses.map(p => { const key = esc(p.id); const booking = esc(p.booking || '—'); return `<article class="vgm-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="vgm-card-process"><span class="vgm-card-label">BOOKING</span><strong class="process">${booking}</strong><span class="vgm-card-exporter">${esc(p.exportador || '—')}</span><span class="vgm-card-importer">${esc(p.importador || 'Importador não informado')}</span></div><div class="vgm-card-field"><label for="vgm-status-${key}">STATUS VGM</label><select id="vgm-status-${key}" aria-label="Status VGM do booking ${booking}" data-vgm-status="${key}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></div><div class="vgm-card-field vgm-card-date"><span class="vgm-card-label">ENVIO</span><strong>${esc(p.dataEnvioVgm || 'Não enviado')}</strong></div><div class="vgm-card-field"><label for="vgm-destination-${key}">ENVIADO PARA</label><input id="vgm-destination-${key}" aria-label="VGM enviado para do booking ${booking}" data-vgm-sent-to="${key}" value="${esc(p.vgmEnviadoPara || '')}" placeholder="Informar" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field"><label for="vgm-analyst-${key}">PROCESSO FÍSICO</label><select id="vgm-analyst-${key}" aria-label="Responsável pelo processo físico do booking ${booking}" data-vgm-analyst="${key}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-schedule-${key}">AGENDAMENTO</label><input id="vgm-schedule-${key}" aria-label="Deadline de agendamento do booking ${booking}" data-vgm-release-schedule="${key}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-deadline-${key}">LIBERAÇÃO</label><input id="vgm-deadline-${key}" aria-label="Deadline de liberação do booking ${booking}" data-vgm-release-deadline="${key}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div></article>`; }).join('')}</div>` : '<div class="empty">Nenhum processo cadastrado.</div>';
         if (canEdit) {
-          const vgmBulk = document.createElement('div');
-          vgmBulk.className = 'bulk-actions';
-          vgmBulk.innerHTML = `<label><input id="vgmSelectAll" type="checkbox"> Selecionar visíveis</label><select id="vgmBulkStatus" aria-label="Status de VGM para os selecionados">${vgmStatuses.map(status => `<option>${esc(status)}</option>`).join('')}</select><button class="btn secondary" id="vgmBulkApply" type="button">Atualizar selecionados</button>`;
-          el('vgmList').prepend(vgmBulk);
-          el('vgmList').querySelectorAll('.vgm-card').forEach(card => { const id = card.querySelector('[data-vgm-status]')?.dataset.vgmStatus; if (!id) return; const select = document.createElement('label'); select.className = 'bulk-select'; select.innerHTML = `<input type="checkbox" data-vgm-bulk-id="${esc(id)}" aria-label="Selecionar processo">`; card.prepend(select); });
-          el('vgmSelectAll').addEventListener('change', event => el('vgmList').querySelectorAll('[data-vgm-bulk-id]').forEach(input => { input.checked = event.target.checked; }));
-          el('vgmBulkApply').addEventListener('click', async () => {
-            const ids = [...el('vgmList').querySelectorAll('[data-vgm-bulk-id]:checked')].map(input => input.dataset.vgmBulkId);
-            if (!ids.length) return toast.warning('Selecione pelo menos um processo.');
-            const vgmStatus = el('vgmBulkStatus').value;
-            if (!(await confirmAction('Atualizar VGM em lote', `Aplicar “${vgmStatus}” a ${ids.length} processo(s)?`))) return;
-            try { const result = await request('/api/processes/bulk/vgm', { method:'PATCH', body:JSON.stringify({ ids, vgmStatus }) }); await refreshData(); renderVgm(); toast.success(`${result.updated} processo(s) atualizado(s).`); } catch (error) { toast.error(error.message); }
-          });
           el('vgmList').querySelectorAll('select[data-vgm-status],select[data-vgm-analyst]').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
           el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => {
             // Salvar a cada tecla reconstruía a tabela e interrompia a
@@ -225,19 +212,6 @@
         if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
         if (canEdit) el('releaseList').querySelectorAll('[data-release-deadline]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); })); if (canEdit) el('releaseList').querySelectorAll('[data-release-date]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value); }));
         if (canEdit) {
-          const releaseBulk = document.createElement('div');
-          releaseBulk.className = 'bulk-actions';
-          releaseBulk.innerHTML = '<label><input id="releaseSelectAll" type="checkbox"> Selecionar visíveis</label><select id="releaseBulkStatus" aria-label="Status de liberação para os selecionados"><option value="Sim">Liberado</option><option value="Não">Não liberado</option></select><button class="btn secondary" id="releaseBulkApply" type="button">Atualizar selecionados</button>';
-          el('releaseList').prepend(releaseBulk);
-          el('releaseList').querySelectorAll('tbody tr').forEach(row => { const id = row.querySelector('[data-release-status]')?.dataset.releaseStatus; if (!id) return; const cell = document.createElement('td'); cell.className = 'bulk-cell'; cell.dataset.label = 'SELECIONAR'; cell.innerHTML = `<input type="checkbox" data-release-bulk-id="${esc(id)}" aria-label="Selecionar processo">`; row.prepend(cell); });
-          el('releaseSelectAll').addEventListener('change', event => el('releaseList').querySelectorAll('[data-release-bulk-id]').forEach(input => { input.checked = event.target.checked; }));
-          el('releaseBulkApply').addEventListener('click', async () => {
-            const ids = [...el('releaseList').querySelectorAll('[data-release-bulk-id]:checked')].map(input => input.dataset.releaseBulkId);
-            if (!ids.length) return toast.warning('Selecione pelo menos um processo.');
-            const releaseStatus = el('releaseBulkStatus').value;
-            if (!(await confirmAction('Atualizar liberação em lote', `Aplicar o status selecionado a ${ids.length} processo(s)?`))) return;
-            try { const result = await request('/api/processes/bulk/release', { method:'PATCH', body:JSON.stringify({ ids, releaseStatus }) }); await refreshData(); renderRelease(); toast.success(`${result.updated} processo(s) atualizado(s).`); } catch (error) { toast.error(error.message); }
-          });
           el('releaseList').querySelectorAll('select[data-release-status],select[data-release-channel]').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { toast.error(error.message); renderRelease(); } }));
           el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-date]').forEach(input => input.addEventListener('input', () => {
             const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseDate;

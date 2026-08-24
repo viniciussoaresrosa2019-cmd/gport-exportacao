@@ -836,13 +836,9 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.ok(runtime.includes('attachments/${button.dataset.attachmentDownload}/download'));
 });
 
-test('ações em lote respeitam os papéis atuais de VGM e Liberação', async () => {
-  const server = await read('src/server.js');
+test('interface de VGM e Liberação usa somente ações individuais', async () => {
   const runtime = await read('public/assets/app-runtime.js');
-  assert.match(server, /processes\/bulk\/vgm', authenticate, vgmManagerOnly/);
-  assert.match(server, /processes\/bulk\/release', authenticate, releaseManagerOnly/);
-  assert.match(server, /processes\/bulk\/vgm[\s\S]{0,1200}processes\/:id\/vgm/);
-  assert.match(server, /processes\/bulk\/release[\s\S]{0,1200}processes\/:id\/release/);
-  assert.match(runtime, /vgmBulkApply/);
-  assert.match(runtime, /releaseBulkApply/);
+  assert.doesNotMatch(runtime, /vgmBulkApply|releaseBulkApply|data-vgm-bulk-id|data-release-bulk-id/);
+  assert.match(runtime, /saveVgmRow/);
+  assert.match(runtime, /saveReleaseRow/);
 });
