@@ -558,6 +558,8 @@
       const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const calendarEventLabel = (process, field) => ({ deadline:'Draft', container_collection_date:'Coleta', release_schedule:'Agendamento', release_deadline:'Liberação' }[field] || 'Prazo');
       const calendarDateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '';
+      const calendarTimeLabel = value => String(value || '').match(/T(\d{2}):(\d{2})/)?.slice(1).join(':') || 'Sem horário';
+      let selectedCalendarDay = '';
       const renderCalendar = async () => {
         const month = el('calendarMonth').value;
         if (!/^\d{4}-\d{2}$/.test(month)) return;
@@ -574,27 +576,27 @@
           const events = new Map();
           rows.forEach(process => ['deadline', 'container_collection_date', 'release_schedule', 'release_deadline'].forEach(field => {
             const key = String(process[field] || '').slice(0, 10);
-            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process, label:calendarEventLabel(process, field), type:'process' });
+            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process, label:calendarEventLabel(process, field), type:'process', when:process[field] });
           }));
           prelaunches.forEach(prelaunch => {
             const key = String(prelaunch.deadline || '').slice(0, 10);
-            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process:prelaunch, label:'Pré-lançamento', type:'prelaunch' });
+            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process:prelaunch, label:'Pré-lançamento', type:'prelaunch', when:prelaunch.deadline });
           });
           const firstWeekday = (from.getDay() + 6) % 7;
           const days = Array.from({ length:firstWeekday }, () => '<div class="calendar-day is-empty" aria-hidden="true"></div>');
           for (let day = 1; day <= to.getDate(); day += 1) {
             const key = `${month}-${String(day).padStart(2, '0')}`, dayEvents = events.get(key) || [];
-            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><strong>${day}</strong><div>${dayEvents.slice(0, 4).map(({ process, label, type }) => `<button type="button" class="calendar-event ${type === 'prelaunch' ? 'is-prelaunch' : ''}" data-calendar-${type}="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
+            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><button type="button" class="calendar-day-number" data-calendar-day="${key}" aria-label="Ver prazos de ${day}">${day}</button><div>${dayEvents.slice(0, 4).map(({ process, label, type }) => `<button type="button" class="calendar-event ${type === 'prelaunch' ? 'is-prelaunch' : ''}" data-calendar-${type}="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
           }
           el('calendarGrid').innerHTML = '<div class="calendar-weekdays"><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span></div><div class="calendar-days">' + days.join('') + '</div>';
           el('calendarSummary').textContent = `${rows.length} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })}.`;
-          el('calendarGrid').querySelectorAll('[data-calendar-process]').forEach(button => button.onclick = async () => {
-            const process = data.find(item => item.id === button.dataset.calendarProcess);
+          const openCalendarProcess = async id => {
+            const process = data.find(item => item.id === id);
             if (process) { el('calendarDialog').close(); open(process); return; }
-            try { const item = toViewProcess(await request(`/api/processes/${button.dataset.calendarProcess}`)); el('calendarDialog').close(); open(item); } catch (error) { toast.error(error.message); }
-          });
-          el('calendarGrid').querySelectorAll('[data-calendar-prelaunch]').forEach(button => button.onclick = () => {
-            const prelaunch = prelaunches.find(item => item.id === button.dataset.calendarPrelaunch);
+            try { const item = toViewProcess(await request(`/api/processes/${id}`)); el('calendarDialog').close(); open(item); } catch (error) { toast.error(error.message); }
+          };
+          const openCalendarPrelaunch = id => {
+            const prelaunch = prelaunches.find(item => item.id === id);
             if (!prelaunch) return;
             el('calendarDialog').close(); open(null);
             form.elements.exportador.value = prelaunch.client_id;
@@ -604,7 +606,36 @@
             syncDueOnlyLaunchFields(); form.dispatchEvent(new Event('gport:review-update'));
             form.dataset.prelaunchId = prelaunch.id;
             toast.info('Pré-lançamento carregado. Complete e salve o processo para finalizá-lo.');
-          });
+          };
+          const deleteCalendarPrelaunch = async id => {
+            const prelaunch = prelaunches.find(item => item.id === id);
+            if (!prelaunch) return;
+            el('calendarDialog').close();
+            const accepted = await confirmAction('Excluir pré-lançamento', `Excluir o pré-lançamento ${prelaunch.booking}? Nenhum processo definitivo será excluído.`);
+            if (!accepted) { openCalendar(); return; }
+            try { await request(`/api/prelaunches/${id}`, { method:'DELETE' }); toast.success('Pré-lançamento excluído.'); }
+            catch (error) { toast.error(error.message); }
+            openCalendar();
+          };
+          const connectCalendarActions = root => {
+            root.querySelectorAll('[data-calendar-process],[data-day-process]').forEach(button => button.onclick = event => { event.stopPropagation(); void openCalendarProcess(button.dataset.calendarProcess || button.dataset.dayProcess); });
+            root.querySelectorAll('[data-calendar-prelaunch],[data-day-prelaunch]').forEach(button => {
+              button.onclick = event => { event.stopPropagation(); openCalendarPrelaunch(button.dataset.calendarPrelaunch || button.dataset.dayPrelaunch); };
+              button.oncontextmenu = event => { event.preventDefault(); event.stopPropagation(); void deleteCalendarPrelaunch(button.dataset.calendarPrelaunch || button.dataset.dayPrelaunch); };
+            });
+          };
+          const showCalendarDay = key => {
+            selectedCalendarDay = key;
+            const dayEvents = [...(events.get(key) || [])].sort((a, b) => String(a.when || '').localeCompare(String(b.when || '')));
+            const details = el('calendarDayDetails');
+            details.hidden = false;
+            details.innerHTML = `<div class="calendar-day-details__head"><div><span>AGENDA DO ANALISTA</span><h3>${esc(calendarDateLabel(key))}</h3></div><small>${dayEvents.length} prazo(s)</small></div>${dayEvents.length ? `<div class="calendar-day-list">${dayEvents.map(item => `<button type="button" class="calendar-day-item ${item.type === 'prelaunch' ? 'is-prelaunch' : ''}" data-day-${item.type}="${esc(item.process.id)}"><time>${esc(calendarTimeLabel(item.when))}</time><span><strong>${esc(item.process.booking || 'Sem booking')}</strong><small>${esc(item.label)} · ${esc(item.process.exporter || 'Exportador não informado')}</small></span>${item.type === 'prelaunch' ? '<em>Botão direito para excluir</em>' : ''}</button>`).join('')}</div>` : '<p class="empty">Nenhum processo ou pré-lançamento para este dia.</p>'}`;
+            connectCalendarActions(details);
+          };
+          connectCalendarActions(el('calendarGrid'));
+          el('calendarGrid').querySelectorAll('[data-calendar-day]').forEach(button => button.onclick = () => showCalendarDay(button.dataset.calendarDay));
+          if (selectedCalendarDay && selectedCalendarDay >= isoDate(from) && selectedCalendarDay <= isoDate(to)) showCalendarDay(selectedCalendarDay);
+          else el('calendarDayDetails').hidden = true;
         } catch (error) { el('calendarSummary').textContent = 'Não foi possível carregar o calendário agora.'; toast.error(error.message); }
       };
       const openCalendar = () => { const now = new Date(); if (!el('calendarMonth').value) el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; el('calendarDialog').showModal(); void renderCalendar(); };

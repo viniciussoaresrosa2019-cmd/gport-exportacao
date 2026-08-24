@@ -808,12 +808,17 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(html, /id="calendarDialog"/);
   assert.match(html, /id="prelaunchForm"/);
   assert.match(html, /id="prelaunchClient"/);
+  assert.match(html, /id="calendarDayDetails"/);
   assert.match(html, /id="processWorkspaceDialog"/);
   assert.match(runtime, /const openCalendar/);
   assert.match(runtime, /data-calendar-prelaunch/);
   assert.match(runtime, /Array\.isArray\(calendar\) \? calendar/);
   assert.match(runtime, /form\.dataset\.prelaunchId/);
   assert.match(runtime, /openPrelaunchForm/);
+  assert.match(runtime, /selectedCalendarDay/);
+  assert.match(runtime, /data-calendar-day/);
+  assert.match(runtime, /Botão direito para excluir/);
+  assert.match(runtime, /deleteCalendarPrelaunch/);
   assert.match(runtime, /const prelaunchForm = event\.currentTarget/);
   assert.match(runtime, /prelaunchForm\.reset\(\)/);
   assert.match(runtime, /const openWorkspace/);
