@@ -782,13 +782,46 @@ app.get('/api/calendar', authenticate, asyncRoute(async (req, res) => {
   if (!datePattern.test(from) || !datePattern.test(to) || from > to) return res.status(400).json({ error:'Período do calendário inválido.' });
   const rangeDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000;
   if (!Number.isFinite(rangeDays) || rangeDays > 93) return res.status(400).json({ error:'Selecione no máximo três meses no calendário.' });
+  // O calendário é pessoal mesmo que a planilha seja compartilhada: evita
+  // misturar a agenda operacional de analistas diferentes.
   const result = await query(`${processSelect}
     WHERE (p.deadline::date BETWEEN $1::date AND $2::date
       OR p.container_collection_date BETWEEN $1::date AND $2::date
       OR p.release_schedule::date BETWEEN $1::date AND $2::date
       OR p.release_deadline::date BETWEEN $1::date AND $2::date)
-    ORDER BY COALESCE(p.release_deadline,p.deadline,p.container_collection_date) ASC LIMIT 500`, [from, to]);
+      AND p.analyst_id=$3
+    ORDER BY COALESCE(p.release_deadline,p.deadline,p.container_collection_date) ASC LIMIT 500`, [from, to, req.user.sub]);
+  const prelaunches = await query(`SELECT pl.id,pl.client_id,pl.booking,pl.deadline,c.name AS exporter,pl.created_at
+    FROM process_prelaunches pl JOIN clients c ON c.id=pl.client_id
+    WHERE pl.analyst_id=$1 AND pl.deadline::date BETWEEN $2::date AND $3::date
+    ORDER BY pl.deadline ASC`, [req.user.sub, from, to]);
+  res.json({ processes: result.rows, prelaunches: prelaunches.rows });
+}));
+app.get('/api/prelaunches', authenticate, asyncRoute(async (req, res) => {
+  const result = await query(`SELECT pl.id,pl.client_id,pl.booking,pl.deadline,c.name AS exporter,pl.created_at
+    FROM process_prelaunches pl JOIN clients c ON c.id=pl.client_id
+    WHERE pl.analyst_id=$1 ORDER BY pl.deadline ASC`, [req.user.sub]);
   res.json(result.rows);
+}));
+app.post('/api/prelaunches', authenticate, processCreatorOnly, asyncRoute(async (req, res) => {
+  const clientId = String(req.body.clientId || '').trim();
+  const booking = cleanText(req.body.booking, 160, 'Booking', { required:true });
+  const deadline = cleanOptionalDate(req.body.deadline, 'Deadline de draft');
+  if (!validId(clientId)) return res.status(400).json({ error:'Selecione um exportador válido.' });
+  if (!deadline) return res.status(400).json({ error:'Informe o deadline de draft.' });
+  const client = await query('SELECT id FROM clients WHERE id=$1 AND active=true', [clientId]);
+  if (!client.rowCount) return res.status(400).json({ error:'O exportador selecionado não está disponível.' });
+  const result = await query(`INSERT INTO process_prelaunches(analyst_id,client_id,booking,deadline)
+    VALUES($1,$2,$3,$4) RETURNING *`, [req.user.sub, clientId, booking, deadline]);
+  await audit(req.user.sub, 'process.prelaunch_created', 'process_prelaunch', result.rows[0].id, { clientId, booking, deadline });
+  res.status(201).json(result.rows[0]);
+}));
+app.delete('/api/prelaunches/:id', authenticate, processCreatorOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error:'Identificador de pré-lançamento inválido.' });
+  const result = await query('DELETE FROM process_prelaunches WHERE id=$1 AND analyst_id=$2 RETURNING id', [req.params.id, req.user.sub]);
+  if (!result.rowCount) return res.status(404).json({ error:'Pré-lançamento não encontrado.' });
+  await audit(req.user.sub, 'process.prelaunch_deleted', 'process_prelaunch', req.params.id);
+  res.status(204).end();
 }));
 app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
@@ -1291,9 +1324,19 @@ const ensureProcessFields = async () => {
     uploaded_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+  await query(`CREATE TABLE IF NOT EXISTS process_prelaunches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    analyst_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+    booking VARCHAR(160) NOT NULL,
+    deadline TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
   await query('CREATE INDEX IF NOT EXISTS process_checklist_items_process_idx ON process_checklist_items(process_id,completed,created_at)');
   await query('CREATE INDEX IF NOT EXISTS process_comments_process_idx ON process_comments(process_id,created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS process_attachments_process_idx ON process_attachments(process_id,created_at DESC)');
+  await query('CREATE INDEX IF NOT EXISTS process_prelaunches_analyst_deadline_idx ON process_prelaunches(analyst_id,deadline)');
 };
 
 ensureProcessFields()

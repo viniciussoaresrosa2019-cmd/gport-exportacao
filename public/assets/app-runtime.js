@@ -531,6 +531,7 @@
           form.elements.id.value = '';
           form.elements.createdAt.value = '';
           form.elements.numeroProcesso.value = '';
+          delete form.dataset.prelaunchId;
           resetNewProcessContainerState();
         } else {
           restoreOriginPort(p.origem);
@@ -564,24 +565,42 @@
         const from = new Date(year, monthNumber - 1, 1), to = new Date(year, monthNumber, 0);
         el('calendarSummary').textContent = 'Carregando prazos…'; el('calendarGrid').innerHTML = '';
         try {
-          const rows = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}`);
+          const calendar = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}`);
+          const rows = calendar.processes || [];
+          const prelaunches = calendar.prelaunches || [];
           const events = new Map();
           rows.forEach(process => ['deadline', 'container_collection_date', 'release_schedule', 'release_deadline'].forEach(field => {
             const key = String(process[field] || '').slice(0, 10);
-            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process, label:calendarEventLabel(process, field) });
+            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process, label:calendarEventLabel(process, field), type:'process' });
           }));
+          prelaunches.forEach(prelaunch => {
+            const key = String(prelaunch.deadline || '').slice(0, 10);
+            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process:prelaunch, label:'Pré-lançamento', type:'prelaunch' });
+          });
           const firstWeekday = (from.getDay() + 6) % 7;
           const days = Array.from({ length:firstWeekday }, () => '<div class="calendar-day is-empty" aria-hidden="true"></div>');
           for (let day = 1; day <= to.getDate(); day += 1) {
             const key = `${month}-${String(day).padStart(2, '0')}`, dayEvents = events.get(key) || [];
-            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><strong>${day}</strong><div>${dayEvents.slice(0, 4).map(({ process, label }) => `<button type="button" class="calendar-event" data-calendar-process="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
+            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><strong>${day}</strong><div>${dayEvents.slice(0, 4).map(({ process, label, type }) => `<button type="button" class="calendar-event ${type === 'prelaunch' ? 'is-prelaunch' : ''}" data-calendar-${type}="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
           }
           el('calendarGrid').innerHTML = '<div class="calendar-weekdays"><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span></div><div class="calendar-days">' + days.join('') + '</div>';
-          el('calendarSummary').textContent = `${rows.length} processo(s) com prazos em ${from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })}.`;
+          el('calendarSummary').textContent = `${rows.length} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })}.`;
           el('calendarGrid').querySelectorAll('[data-calendar-process]').forEach(button => button.onclick = async () => {
             const process = data.find(item => item.id === button.dataset.calendarProcess);
             if (process) { el('calendarDialog').close(); open(process); return; }
             try { const item = toViewProcess(await request(`/api/processes/${button.dataset.calendarProcess}`)); el('calendarDialog').close(); open(item); } catch (error) { toast.error(error.message); }
+          });
+          el('calendarGrid').querySelectorAll('[data-calendar-prelaunch]').forEach(button => button.onclick = () => {
+            const prelaunch = prelaunches.find(item => item.id === button.dataset.calendarPrelaunch);
+            if (!prelaunch) return;
+            el('calendarDialog').close(); open(null);
+            form.elements.exportador.value = prelaunch.client_id;
+            renderClientOptions(); form.elements.exportador.value = prelaunch.client_id;
+            form.elements.booking.value = prelaunch.booking || '';
+            form.elements.prazo.value = dateForField(prelaunch.deadline, true);
+            syncDueOnlyLaunchFields(); form.dispatchEvent(new Event('gport:review-update'));
+            form.dataset.prelaunchId = prelaunch.id;
+            toast.info('Pré-lançamento carregado. Complete e salve o processo para finalizá-lo.');
           });
         } catch (error) { el('calendarSummary').textContent = 'Não foi possível carregar o calendário agora.'; toast.error(error.message); }
       };
@@ -590,6 +609,23 @@
       el('closeCalendarBtn').onclick = () => el('calendarDialog').close();
       el('calendarMonth').onchange = () => void renderCalendar();
       el('calendarTodayBtn').onclick = () => { const now = new Date(); el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; void renderCalendar(); };
+      const openPrelaunchForm = () => {
+        const select = el('prelaunchClient');
+        select.innerHTML = '<option value="">Selecione um exportador</option>' + clients.filter(client => client.active !== false).map(client => `<option value="${esc(client.id)}">${esc(client.nome)}</option>`).join('');
+        el('prelaunchForm').hidden = false; el('prelaunchBooking').focus();
+      };
+      el('openPrelaunchBtn').onclick = openPrelaunchForm;
+      el('cancelPrelaunchBtn').onclick = () => { el('prelaunchForm').reset(); el('prelaunchForm').hidden = true; };
+      el('prelaunchDeadline').addEventListener('input', event => { event.target.value = formatDateTyping(event.target.value, true); });
+      el('prelaunchForm').onsubmit = async event => {
+        event.preventDefault();
+        const deadline = dateForDatabase(el('prelaunchDeadline').value, true);
+        if (!deadline) return toast.warning('Informe o deadline no formato dd/mm hh:mm.');
+        try {
+          await request('/api/prelaunches', { method:'POST', body:JSON.stringify({ clientId:el('prelaunchClient').value, booking:el('prelaunchBooking').value.trim(), deadline }) });
+          event.currentTarget.reset(); event.currentTarget.hidden = true; toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar();
+        } catch (error) { toast.error(error.message); }
+      };
 
       // Espaço de trabalho do processo: registros curtos, checklist e anexos
       // controlados ficam fora do formulário principal para evitar poluição.
@@ -1064,6 +1100,12 @@
           editingProcessId = view.id;
           el('processWorkspaceBtn').hidden = false;
           if (isNewProcess) newProcessIdempotencyKey = null;
+          // Um pré-lançamento só é concluído após o processo definitivo ser
+          // persistido. Em falha de rede, ele continua na agenda do analista.
+          if (isNewProcess && form.dataset.prelaunchId) {
+            try { await request(`/api/prelaunches/${form.dataset.prelaunchId}`, { method:'DELETE' }); delete form.dataset.prelaunchId; }
+            catch { toast.warning('Processo salvo, mas o pré-lançamento continua na agenda. Você pode removê-lo depois.'); }
+          }
           if (isNewProcess) {
             // Um filtro anterior não deve esconder um processo recém-lançado.
             processFilter = null;

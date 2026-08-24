@@ -796,6 +796,9 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   const runtime = await read('public/assets/app-runtime.js');
   const html = await read('public/index.html');
   assert.match(server, /app\.get\('\/api\/calendar', authenticate/);
+  assert.match(server, /AND p\.analyst_id=\$3/);
+  assert.match(server, /process_prelaunches/);
+  assert.match(server, /app\.post\('\/api\/prelaunches', authenticate, processCreatorOnly/);
   assert.match(server, /process_checklist_items/);
   assert.match(server, /process_comments/);
   assert.match(server, /process_attachments/);
@@ -803,8 +806,13 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(server, /attachmentMaxBytes/);
   assert.match(server, /application\/pdf/);
   assert.match(html, /id="calendarDialog"/);
+  assert.match(html, /id="prelaunchForm"/);
+  assert.match(html, /id="prelaunchClient"/);
   assert.match(html, /id="processWorkspaceDialog"/);
   assert.match(runtime, /const openCalendar/);
+  assert.match(runtime, /data-calendar-prelaunch/);
+  assert.match(runtime, /form\.dataset\.prelaunchId/);
+  assert.match(runtime, /openPrelaunchForm/);
   assert.match(runtime, /const openWorkspace/);
   assert.match(runtime, /readFileAsBase64/);
   assert.ok(runtime.includes('attachments/${button.dataset.attachmentDownload}/download'));
