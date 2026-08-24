@@ -505,7 +505,7 @@ const validateContainerDetails = (value, quantity, mapaInspection) => {
       tare: cleanNonNegative(item.tare, 999999, 'Tara', { integer: true, required: true }),
       seal: upperText(cleanText(item.seal, 80, 'Lacre', { required: true })),
       invoice_number: upperText(cleanText(item.invoiceNumber ?? item.invoice_number, 120, 'Nota fiscal')),
-      new_seal: mapaInspection ? upperText(cleanText(item.new_seal, 80, 'Novo lacre', { required: true })) : null
+      new_seal: mapaInspection ? upperText(cleanText(item.new_seal, 80, 'Novo lacre')) : null
     };
   });
 };
@@ -532,8 +532,8 @@ const validatedProcess = (raw, { rucManual = false, dueOnly = false } = {}) => {
     dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: !rucManual }), dueIssueDate: (rucManual || dueOnly) ? cleanOptionalDate(raw.dueIssueDate, 'Data da DUE') : cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: !dueOnly }),
     originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: true }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: true }),
     vessel: cleanText(raw.vessel, 160, 'Navio', { required: true }), agency: cleanText(raw.agency, 160, 'Agência', { required: !dueOnly }), carrier: cleanText(raw.carrier, 160, 'Armador', { required: !dueOnly }),
-    deadline: dueOnly ? null : cleanRequiredDateTime(raw.deadline, 'Deadline de draft'), shippingDate: dueOnly ? null : cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: dueOnly ? null : cleanRequiredDate(raw.containerCollectionDate, 'Data da coleta'),
-    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal da coleta', { required: !dueOnly }), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true, required: !dueOnly }), incoterm, shipmentType,
+    deadline: dueOnly ? null : cleanRequiredDateTime(raw.deadline, 'Deadline de draft'), shippingDate: dueOnly ? null : cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: dueOnly ? null : cleanOptionalDate(raw.containerCollectionDate, 'Data da coleta'),
+    collectionTerminal: cleanText(raw.collectionTerminal, 160, 'Terminal da coleta'), freeTimeDays: cleanNonNegative(raw.freeTimeDays, 3650, 'Free time', { integer: true }), incoterm, shipmentType,
     blType: cleanText(raw.blType, 80, 'Tipo de BL', { required: !dueOnly }), freightType: cleanText(raw.freightType, 80, 'Tipo de frete', { required: !dueOnly }), mapaInspection, isfLacey, containerQuantity,
     containerType: shipmentType === 'LCL' ? null : cleanText(raw.containerType || (dueOnly ? 'NÃO INFORMADO' : ''), 80, 'Tipo de contêiner', { required: true }), cubicMeters: cleanNonNegative(raw.cubicMeters, 999999999, 'Metragem cúbica', { required: !dueOnly }),
     netWeightKg: cleanNonNegative(raw.netWeightKg, 999999999, 'Peso líquido', { required: !dueOnly }), grossWeightKg: cleanNonNegative(raw.grossWeightKg, 999999999, 'Peso bruto', { required: !dueOnly }),

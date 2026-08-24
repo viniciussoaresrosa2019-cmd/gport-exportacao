@@ -14,6 +14,11 @@
       };
       syncShipmentType = syncShipmentTypeWithoutInlineStyle;
       form.elements.tipoEmbarque.onchange = syncShipmentTypeWithoutInlineStyle;
+      // O novo lacre só complementa a vistoria MAPA. Ele pode ser informado
+      // depois, sem impedir o lançamento do processo.
+      const makeMapaSealOptional = () => el('containerDetails')?.querySelectorAll('[data-new-seal]').forEach(input => { input.required = false; });
+      new MutationObserver(makeMapaSealOptional).observe(el('containerDetails'), { childList:true });
+      makeMapaSealOptional();
       const pendingToast = sessionStorage.getItem('gport_toast_notice');
       if (pendingToast) { sessionStorage.removeItem('gport_toast_notice'); window.setTimeout(() => toast.info(pendingToast), 50); }
       const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
@@ -540,6 +545,9 @@
       };
       const processFilterSessionKey = 'gport:process-filter:v1';
       let serverProcessFilter = null;
+      // Cada pesquisa recebe uma versão. Caso uma busca antiga termine depois
+      // da mais nova, a resposta antiga é descartada e não substitui a lista.
+      let processRefreshVersion = 0;
       try {
         const savedFilter = JSON.parse(sessionStorage.getItem(processFilterSessionKey) || 'null');
         if (savedFilter?.field && savedFilter?.value) { serverProcessFilter = savedFilter; el('searchField').value = savedFilter.field; el('search').value = savedFilter.value; }
@@ -581,9 +589,11 @@
         }
       };
       async function refreshData({ append=false, refreshReferenceData=false } = {}) {
+        const refreshVersion = ++processRefreshVersion;
         const offset = append ? processPagination.offset + processPagination.limit : 0;
         const searchParams = new URLSearchParams({ limit:'50', offset:String(offset) });
-        if (serverProcessFilter) { searchParams.set('field', serverProcessFilter.field); searchParams.set('search', serverProcessFilter.value); }
+        const requestedFilter = serverProcessFilter ? { ...serverProcessFilter } : null;
+        if (requestedFilter) { searchParams.set('field', requestedFilter.field); searchParams.set('search', requestedFilter.value); }
         if (processClientFilter !== 'all') {
           const selectedClient = clients.find(client => client.id === processClientFilter);
           searchParams.set('client', processClientFilter);
@@ -599,6 +609,7 @@
           : null;
         if (!append && !data.length) showProcessLoading();
         const remoteProcesses = await processRequest;
+        if (refreshVersion !== processRefreshVersion) return false;
         applyProcessPage(remoteProcesses, append);
         if (needsReferenceData) {
           // Dependências de formulário seguem em segundo plano. Assim, login,
@@ -614,6 +625,7 @@
             if (clientResult.status === 'fulfilled') render();
           }).finally(() => { referenceDataLoadPromise = null; });
         }
+        return true;
       }
       let realtimeFallbackTimer = null;
       let realtimeFailureTimer = null;
@@ -757,10 +769,17 @@
           return;
         }
         serverProcessFilter = { field, value }; processFilter = null; sessionStorage.setItem(processFilterSessionKey, JSON.stringify(serverProcessFilter));
-        try { await refreshData(); const summary = el('filterSummary'); summary.hidden = false; summary.textContent = `${processPagination.total} processo(s) encontrado(s).`; }
+        const filterKey = `${field}:${value}`;
+        const summary = el('filterSummary'); summary.hidden = false; summary.textContent = 'Buscando processos…'; summary.setAttribute('aria-busy', 'true');
+        try {
+          const applied = await refreshData();
+          if (!applied || `${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}` !== filterKey) return;
+          summary.textContent = `${processPagination.total} processo(s) encontrado(s).`;
+        }
         catch (error) { toast.error(error.message); }
+        finally { if (`${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}` === filterKey) summary.removeAttribute('aria-busy'); }
       };
-      const scheduleServerProcessSearch = () => { clearTimeout(processSearchTimer); processSearchTimer = setTimeout(() => { void applyServerProcessSearch(); }, 350); };
+      const scheduleServerProcessSearch = () => { clearTimeout(processSearchTimer); processSearchTimer = setTimeout(() => { void applyServerProcessSearch(); }, 250); };
       el('filterBtn').onclick = () => { clearTimeout(processSearchTimer); return applyServerProcessSearch({ showValidation:true }); };
       el('search').oninput = scheduleServerProcessSearch;
       el('searchField').onchange = scheduleServerProcessSearch;

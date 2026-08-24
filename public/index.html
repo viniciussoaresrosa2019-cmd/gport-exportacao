@@ -7,7 +7,7 @@
   <meta name="csp-nonce" content="__CSP_NONCE__">
   <title>GPORT | Gestão de Processos</title>
     <link rel="stylesheet" href="assets/gport.css?v=20260817.13">
-  <link rel="stylesheet" href="assets/toasts.css?v=20260808.9">
+  <link rel="stylesheet" href="assets/toasts.css?v=20260823.1">
   <link rel="stylesheet" href="assets/experience.css?v=20260817.11">
 </head>
 <body>
@@ -26,8 +26,8 @@
     </div><div class="section-title">Rota e programação</div><div class="grid">
       <div class="field"><label>Porto de origem *</label><select name="origem" required><option value="">Selecione</option><option>Itajaí</option><option>Navegantes</option><option>Paranaguá</option><option>Rio Grande</option><option>Imbituba</option><option>Santos</option><option>Itapoá</option></select></div><div class="field"><label>Porto de destino *</label><input name="destino" placeholder="Digite o porto de destino" required></div><div class="field"><label>Tipo de embarque *</label><select name="tipoEmbarque" id="shipmentType" required><option value="">Selecione</option><option value="FCL">FCL</option><option value="LCL">LCL</option></select></div>
       <div class="field"><label>Navio *</label><input name="navio" required></div><div class="field"><label>Armador *</label><input name="armador" required></div><div class="field"><label>Agência *</label><input name="agencia" required></div>
-      <div class="field"><label for="processDeadline">Deadline de draft (data e horário) *</label><input id="processDeadline" name="prazo" placeholder="dd/mm hh:mm" inputmode="numeric" maxlength="11" required></div><div class="field"><label>Data de envio do Draft *</label><input name="envio" placeholder="dd/mm" inputmode="numeric" required></div><div class="field"><label>Data da coleta *</label><input name="coleta" placeholder="dd/mm" inputmode="numeric" required></div>
-      <div class="field"><label>Terminal da coleta *</label><input name="terminal" required></div><div class="field"><label>Free time (dias) *</label><input name="freetime" type="number" min="0" required></div><div class="field"><label>Incoterm *</label><select name="incoterm" required><option value="">Selecione</option><option>EXW</option><option>FCA</option><option>FAS</option><option>FOB</option><option>CPT</option><option>CIP</option><option>CFR</option><option>CIF</option><option>DAP</option><option>DPU</option><option>DDP</option></select></div>
+      <div class="field"><label for="processDeadline">Deadline de draft (data e horário) *</label><input id="processDeadline" name="prazo" placeholder="dd/mm hh:mm" inputmode="numeric" maxlength="11" required></div><div class="field"><label>Data de envio do Draft *</label><input name="envio" placeholder="dd/mm" inputmode="numeric" required></div><div class="field"><label>Data da coleta</label><input name="coleta" placeholder="dd/mm" inputmode="numeric"></div>
+      <div class="field"><label>Terminal da coleta</label><input name="terminal"></div><div class="field"><label>Free time (dias)</label><input name="freetime" type="number" min="0"></div><div class="field"><label>Incoterm *</label><select name="incoterm" required><option value="">Selecione</option><option>EXW</option><option>FCA</option><option>FAS</option><option>FOB</option><option>CPT</option><option>CIP</option><option>CFR</option><option>CIF</option><option>DAP</option><option>DPU</option><option>DDP</option></select></div>
     </div><div class="section-title">Documentos e conferência</div><div class="grid">
       <div class="field"><label>Tipo de BL *</label><select name="tipoBL" required><option value="">Selecione</option><option>Original na origem</option><option>Original no destino</option><option>Express Release</option><option>TELEX Release</option><option>Sea Waybill</option></select></div><div class="field"><label>Tipo de frete *</label><select name="tipoFrete" required><option value="">Selecione</option><option>Prepaid</option><option>Prepaid Abroad</option><option>Collect</option></select></div><div class="field"><label>MAPA *</label><select name="vistoriaMapa" required><option value="Não">Não</option><option value="Sim">Sim</option></select></div><div class="field"><label>ISF/LACEY *</label><select name="isfLacey" required><option value="Não" selected>Não</option><option value="Sim">Sim</option></select></div>
     </div><div class="section-title">Carga</div><div class="grid">
@@ -47,7 +47,7 @@
   <dialog id="financialDialog"><div class="modal-head"><div><p class="eyebrow">Financeiro</p><h2 class="m-0">Controle financeiro</h2></div><button class="close" id="closeFinancialBtn" aria-label="Fechar">×</button></div><div class="dialog-content"><p class="intro mt-0">Visão dos valores, faturas, exportadores e status dos processos.</p><div id="financialList" class="panel scrollable-panel"></div></div></dialog>
   <script src="assets/ui-feedback.js?v=20260808.9" defer></script>
   <script src="assets/legacy-ui.js?v=20260817.8" defer></script>
-    <script src="assets/app-runtime.js?v=20260817.13" defer></script>
+    <script src="assets/app-runtime.js?v=20260823.2" defer></script>
   <script src="assets/accessibility.js?v=20260808.10" defer></script>
   <script src="assets/experience.js?v=20260817.11" defer></script>
   __TURNSTILE_SCRIPT__

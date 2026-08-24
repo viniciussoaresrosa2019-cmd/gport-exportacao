@@ -43,6 +43,20 @@ test('lançamento exige campos operacionais e dados individuais completos do con
   }
 });
 
+test('coleta, free time e novo lacre MAPA são opcionais no lançamento', async () => {
+  const server = await read('src/server.js');
+  const index = await read('public/index.html');
+  const runtime = await read('public/assets/app-runtime.js');
+  assert.match(index, /name="coleta" placeholder="dd\/mm" inputmode="numeric">/);
+  assert.match(index, /name="terminal">/);
+  assert.match(index, /name="freetime" type="number" min="0">/);
+  assert.match(server, /containerCollectionDate: dueOnly \? null : cleanOptionalDate\(raw\.containerCollectionDate, 'Data da coleta'\)/);
+  assert.match(server, /collectionTerminal: cleanText\(raw\.collectionTerminal, 160, 'Terminal da coleta'\)/);
+  assert.match(server, /freeTimeDays: cleanNonNegative\(raw\.freeTimeDays, 3650, 'Free time', \{ integer: true \}\)/);
+  assert.match(server, /new_seal: mapaInspection \? upperText\(cleanText\(item\.new_seal, 80, 'Novo lacre'\)\) : null/);
+  assert.match(runtime, /makeMapaSealOptional/);
+});
+
 test('deadline de draft exige horário e preserva dia e mês na capa', async () => {
   const index = await read('public/index.html');
   const runtime = await read('public/assets/app-runtime.js');
@@ -247,6 +261,8 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
   assert.match(html, /toast\.warning\('Selecione qual dado deseja pesquisar\.'/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
+  assert.match(toastCss, /#toastRegion \.toast\{[\s\S]*pointer-events:none/);
+  assert.match(toastCss, /\.toast__close\{[\s\S]*pointer-events:auto/);
   assert.match(html, /toast__title/);
   assert.match(html, /toast__progress/);
   assert.match(toastCss, /body\.theme-dark #toastRegion \.toast/);
@@ -585,7 +601,11 @@ test('pesquisas atualizam automaticamente sem exigir clique no botão Filtrar', 
   assert.match(html, /setTimeout\(runAutomaticSearch, 300\)/);
   assert.match(html, /el\('search'\)\.oninput = scheduleServerProcessSearch/);
   assert.match(html, /el\('searchField'\)\.onchange = scheduleServerProcessSearch/);
-  assert.match(html, /setTimeout\(\(\) => \{ void applyServerProcessSearch\(\); \}, 350\)/);
+  assert.match(html, /let processRefreshVersion = 0/);
+  assert.match(html, /if \(refreshVersion !== processRefreshVersion\) return false/);
+  assert.match(html, /const requestedFilter = serverProcessFilter \? \{ \.\.\.serverProcessFilter \} : null/);
+  assert.match(html, /summary\.textContent = 'Buscando processos…'/);
+  assert.match(html, /setTimeout\(\(\) => \{ void applyServerProcessSearch\(\); \}, 250\)/);
 });
 
 test('processos históricos não somem quando referências falham e qualquer usuário autenticado pode cadastrar exportador', async () => {
