@@ -811,6 +811,7 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(html, /id="processWorkspaceDialog"/);
   assert.match(runtime, /const openCalendar/);
   assert.match(runtime, /data-calendar-prelaunch/);
+  assert.match(runtime, /Array\.isArray\(calendar\) \? calendar/);
   assert.match(runtime, /form\.dataset\.prelaunchId/);
   assert.match(runtime, /openPrelaunchForm/);
   assert.match(runtime, /const openWorkspace/);

@@ -566,8 +566,11 @@
         el('calendarSummary').textContent = 'Carregando prazos…'; el('calendarGrid').innerHTML = '';
         try {
           const calendar = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}`);
-          const rows = calendar.processes || [];
-          const prelaunches = calendar.prelaunches || [];
+          // Durante uma atualização, o navegador pode receber o JavaScript
+          // novo antes de o servidor responder no formato novo. Aceite a
+          // lista legada também para que o calendário nunca deixe de abrir.
+          const rows = Array.isArray(calendar) ? calendar : (calendar.processes || []);
+          const prelaunches = Array.isArray(calendar) ? [] : (calendar.prelaunches || []);
           const events = new Map();
           rows.forEach(process => ['deadline', 'container_collection_date', 'release_schedule', 'release_deadline'].forEach(field => {
             const key = String(process[field] || '').slice(0, 10);
