@@ -1340,7 +1340,32 @@
         if (!['admin', 'financeiro'].includes(currentUser?.role)) return;
         renderFinancial(); el('financialDialog').showModal();
       };
-      el('helpNav').onclick = event => { event.preventDefault(); if (!el('helpDialog').open) el('helpDialog').showModal(); };
+      const quickHelpTopics = [
+        { title:'1. Começar pela lista de processos', text:'A página Processos é o ponto de partida. Use os filtros para localizar um processo já lançado ou escolha + Novo processo para iniciar um lançamento.', steps:['Para uma busca ampla, clique em Buscar e informe booking, fatura, DU-E, navio, agência, porto ou importador.','Nos filtros da lista, os resultados são atualizados automaticamente enquanto você digita.','Use Limpar para voltar à visualização completa.'] },
+        { title:'2. Lançar e editar um processo', text:'Preencha os dados em ordem, começando pelo exportador. Os campos com asterisco são obrigatórios e os avisos indicam exatamente o que falta.', steps:['Selecione o exportador para preencher as regras específicas de RUC manual ou Apenas DU-E.','Conclua as seções de processo, rota, documentos e carga.','Confira a revisão e clique em Salvar processo. A capa só fica disponível depois que o processo for salvo.','Para corrigir, abra o processo pela lista, altere o necessário e salve novamente.'] },
+        { title:'3. Organizar prazos no calendário', text:'O calendário é pessoal: mostra seus processos e pré-lançamentos. Alterne entre as visões Mês e Semana conforme a sua necessidade.', steps:['Clique em Calendário para abrir sua agenda.','Cadastre o exportador, booking e deadline de draft para criar um pré-lançamento.','Clique em um dia para ver a lista daquele dia organizada por horário.','Clique no pré-lançamento para completar o lançamento; use o botão direito nele caso precise excluí-lo.'] },
+        { title:'4. Atualizar VGM', text:'Na aba VGM, atualize o status, a data de envio, o destino e quem está com o processo físico. Cada alteração é salva no próprio processo.', steps:['Localize o booking ou use os filtros disponíveis.','Informe o status e os dados de envio solicitados.','O relatório de VGM permite abrir um dia e conferir todos os VGMs enviados naquela data.'] },
+        { title:'5. Registrar a liberação', text:'A aba Liberação agrupa os processos por porto de origem e prioriza o deadline de liberação mais próximo.', steps:['Filtre por porto quando necessário.','Registre o canal, status, agendamento e deadline de liberação.','Use os indicadores de texto e cor para identificar pendências e liberações concluídas.'] },
+        { title:'6. Consultar Follow up e relatórios', text:'Follow up concentra o histórico; Relatórios apresenta os indicadores consolidados para acompanhamento operacional.', steps:['No Follow up, abra Histórico para ver quem alterou cada item, em qual data e o que mudou.','Use a opção de PDF quando precisar compartilhar ou arquivar o histórico.','Em Relatórios, confira os indicadores e selecione os recortes disponíveis para analisar o período.'] },
+        { title:'7. Exportadores, usuários e permissões', text:'Administradores podem cadastrar exportadores e gerenciar usuários. Cada perfil visualiza somente as abas e ações autorizadas.', steps:['No cadastro de exportador, informe RUC manual, Apenas DU-E e Ovação somente quando aplicável.','Use Usuários para criar contas ou redefinir senhas, sempre respeitando o perfil da pessoa.','Se uma aba não estiver disponível, isso significa que a permissão do seu perfil não permite aquela operação.'] },
+        { title:'8. Dúvidas e situações comuns', text:'O sistema mostra confirmações na própria tela para evitar interrupções e proteger os dados do processo.', steps:['Se a sessão expirar, entre novamente: os dados preenchidos no formulário são preservados.','Se a busca não retornar resultado, revise o campo escolhido ou use a Busca global.','Em caso de mensagem de erro, tente novamente; se persistir, informe ao administrador o horário e a ação realizada, sem enviar senhas.'] }
+      ];
+      const renderQuickHelp = () => {
+        const content = el('helpDialog').querySelector('.help-content');
+        content.replaceChildren();
+        const intro = document.createElement('p'); intro.className = 'intro'; intro.textContent = 'Guia prático para as funções principais do GPORT. Abra um tópico e siga o passo a passo.';
+        const notice = document.createElement('p'); notice.className = 'help-notice'; notice.textContent = 'Dica: use o menu lateral para acessar cada área. As opções exibidas dependem do seu perfil de acesso.';
+        const topics = document.createElement('div'); topics.className = 'help-topics';
+        quickHelpTopics.forEach((topic, index) => {
+          const details = document.createElement('details'); details.className = 'help-topic'; details.open = index === 0;
+          const summary = document.createElement('summary'); summary.textContent = topic.title;
+          const text = document.createElement('p'); text.textContent = topic.text;
+          const steps = document.createElement('ol'); topic.steps.forEach(step => { const item = document.createElement('li'); item.textContent = step; steps.appendChild(item); });
+          details.append(summary, text, steps); topics.appendChild(details);
+        });
+        content.append(intro, notice, topics);
+      };
+      el('helpNav').onclick = event => { event.preventDefault(); renderQuickHelp(); if (!el('helpDialog').open) el('helpDialog').showModal(); };
       el('closeHelpBtn').onclick = () => el('helpDialog').close();
       el('processNav').onclick = e => { e.preventDefault(); showProcessesPage(); };
       el('closeVgmBtn').onclick = showProcessesPage;
