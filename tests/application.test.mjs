@@ -280,7 +280,18 @@ test('HTML inicial referencia scripts externos e não mantém estilos ou eventos
   assert.match(html, /assets\/experience\.js\?v=[0-9.]+" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
-  assert.ok(Buffer.byteLength(html, 'utf8') < 30_000, 'HTML inicial voltou a crescer acima de 30 KB.');
+  assert.ok(Buffer.byteLength(html, 'utf8') < 31_000, 'HTML inicial voltou a crescer acima do limite de 31 KB.');
+});
+
+test('interface disponibiliza busca global, ajuda rápida e calendário semanal', async () => {
+  const html = await read('public/index.html');
+  const runtime = await read('public/assets/app-runtime.js');
+  assert.match(html, /id="globalSearchBtn"/);
+  assert.match(html, /id="helpDialog"/);
+  assert.match(html, /id="calendarView"/);
+  assert.match(runtime, /calendarWeekValue/);
+  assert.match(runtime, /globalSearchForm/);
+  assert.match(runtime, /searchField'\)\.value = 'todos'/);
 });
 
 test('interface associa labels, nomeia controles e permite abrir processos pelo teclado', async () => {

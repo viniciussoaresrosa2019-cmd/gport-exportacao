@@ -266,10 +266,10 @@
         let modal = el('processHistoryDialog');
         if (!modal) {
           modal = document.createElement('dialog'); modal.id='processHistoryDialog'; modal.className='process-history-dialog';
-          modal.innerHTML='<div class="modal-head"><div><p class="eyebrow">Acompanhamento</p><h2>Histórico do processo</h2></div><button class="close" type="button" aria-label="Fechar histórico">×</button></div><p class="intro" id="processHistoryIntro"></p><ol id="processHistoryTimeline" class="history-timeline"></ol>';
+          modal.innerHTML='<div class="modal-head"><div><p class="eyebrow">Linha do tempo</p><h2>Histórico do processo</h2></div><button class="close" type="button" aria-label="Fechar histórico">×</button></div><p class="intro" id="processHistoryIntro">Veja as principais ações e alterações registradas neste processo.</p><ol id="processHistoryTimeline" class="history-timeline"></ol>';
           document.body.appendChild(modal); modal.querySelector('.close').onclick=()=>modal.close();
         }
-        el('processHistoryIntro').textContent=`BOOKING ${process.booking || '—'} · ${process.exportador || 'Exportador não informado'}`;
+        el('processHistoryIntro').textContent=`BOOKING ${process.booking || '—'} · ${process.exportador || 'Exportador não informado'} · Registros em ordem do mais recente para o mais antigo.`;
         const timeline=el('processHistoryTimeline'); timeline.replaceChildren(...events.map(item => { const row=document.createElement('li'); const head=document.createElement('strong'); const meta=document.createElement('span'); const details=document.createElement('p'); head.textContent=historyLabel(item); meta.textContent=`${historyDateTime(item.created_at)} · ${item.username || 'Usuário não identificado'}`; details.textContent=historyDetails(item); row.append(head,meta,details); return row; }));
         if (!events.length) timeline.innerHTML='<li><strong>Nenhuma alteração registrada.</strong></li>';
         modal.showModal();
@@ -531,16 +531,53 @@
       // Calendário operacional: consulta somente o intervalo exibido e não
       // interfere na lista principal nem nos filtros que o usuário já aplicou.
       const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const calendarWeekValue = date => {
+        const reference = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        reference.setDate(reference.getDate() + 4 - (reference.getDay() || 7));
+        const yearStart = new Date(reference.getFullYear(), 0, 1);
+        const week = Math.ceil((((reference - yearStart) / 86400000) + 1) / 7);
+        return `${reference.getFullYear()}-W${String(week).padStart(2, '0')}`;
+      };
+      const calendarWeekStart = raw => {
+        const match = String(raw || '').match(/^(\d{4})-W(\d{2})$/);
+        if (!match) return null;
+        const year = Number(match[1]), week = Number(match[2]);
+        const jan4 = new Date(year, 0, 4);
+        const mondayOffset = (jan4.getDay() + 6) % 7;
+        const start = new Date(year, 0, 4 - mondayOffset + ((week - 1) * 7));
+        start.setHours(0, 0, 0, 0);
+        return start;
+      };
+      const syncCalendarView = () => {
+        const weekly = el('calendarView')?.value === 'week';
+        el('calendarMonth').hidden = weekly;
+        el('calendarMonthLabel').hidden = weekly;
+        el('calendarWeek').hidden = !weekly;
+        el('calendarWeekLabel').hidden = !weekly;
+        if (weekly && !el('calendarWeek').value) el('calendarWeek').value = calendarWeekValue(new Date());
+      };
       const calendarEventLabel = (process, field) => ({ deadline:'Draft', container_collection_date:'Coleta', release_schedule:'Agendamento', release_deadline:'Liberação' }[field] || 'Prazo');
       const calendarDateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '';
       const calendarTimeLabel = value => String(value || '').match(/T(\d{2}):(\d{2})/)?.slice(1).join(':') || 'Sem horário';
       let selectedCalendarDay = '';
       let returnToCalendarAfterProcess = false;
       const renderCalendar = async () => {
+        const weekly = el('calendarView')?.value === 'week';
         const month = el('calendarMonth').value;
-        if (!/^\d{4}-\d{2}$/.test(month)) return;
-        const [year, monthNumber] = month.split('-').map(Number);
-        const from = new Date(year, monthNumber - 1, 1), to = new Date(year, monthNumber, 0);
+        let from, to, periodLabel, firstWeekday, numberOfDays;
+        if (weekly) {
+          from = calendarWeekStart(el('calendarWeek').value);
+          if (!from) return;
+          to = new Date(from); to.setDate(to.getDate() + 6);
+          periodLabel = `a semana de ${from.toLocaleDateString('pt-BR', { day:'2-digit', month:'long' })} a ${to.toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' })}`;
+          firstWeekday = 0; numberOfDays = 7;
+        } else {
+          if (!/^\d{4}-\d{2}$/.test(month)) return;
+          const [year, monthNumber] = month.split('-').map(Number);
+          from = new Date(year, monthNumber - 1, 1); to = new Date(year, monthNumber, 0);
+          periodLabel = from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+          firstWeekday = (from.getDay() + 6) % 7; numberOfDays = to.getDate();
+        }
         el('calendarSummary').textContent = 'Carregando prazos…'; el('calendarGrid').innerHTML = '';
         try {
           const calendar = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}`);
@@ -558,14 +595,14 @@
             const key = String(prelaunch.deadline || '').slice(0, 10);
             if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process:prelaunch, label:prelaunch.exporter || 'Exportador não informado', type:'prelaunch', when:prelaunch.deadline });
           });
-          const firstWeekday = (from.getDay() + 6) % 7;
           const days = Array.from({ length:firstWeekday }, () => '<div class="calendar-day is-empty" aria-hidden="true"></div>');
-          for (let day = 1; day <= to.getDate(); day += 1) {
-            const key = `${month}-${String(day).padStart(2, '0')}`, dayEvents = events.get(key) || [];
-            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><button type="button" class="calendar-day-number" data-calendar-day="${key}" aria-label="Ver prazos de ${day}">${day}</button><div>${dayEvents.slice(0, 4).map(({ process, label, type }) => `<button type="button" class="calendar-event ${type === 'prelaunch' ? 'is-prelaunch' : ''}" data-calendar-${type}="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
+          for (let index = 0; index < numberOfDays; index += 1) {
+            const current = weekly ? new Date(from.getFullYear(), from.getMonth(), from.getDate() + index) : new Date(from.getFullYear(), from.getMonth(), index + 1);
+            const key = isoDate(current), dayEvents = events.get(key) || [], day = current.getDate();
+            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><button type="button" class="calendar-day-number" data-calendar-day="${key}" aria-label="Ver prazos de ${calendarDateLabel(key)}">${day}</button><div>${dayEvents.slice(0, 4).map(({ process, label, type }) => `<button type="button" class="calendar-event ${type === 'prelaunch' ? 'is-prelaunch' : ''}" data-calendar-${type}="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
           }
           el('calendarGrid').innerHTML = '<div class="calendar-weekdays"><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span></div><div class="calendar-days">' + days.join('') + '</div>';
-          el('calendarSummary').textContent = `${rows.length} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })}.`;
+          el('calendarSummary').textContent = `${rows.length} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${periodLabel}.`;
           const openCalendarProcess = async id => {
             const process = data.find(item => item.id === id);
             if (process) { returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(process); return; }
@@ -618,6 +655,8 @@
       const openCalendar = ({ returning=false } = {}) => {
         const now = new Date();
         if (!el('calendarMonth').value) el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        if (!el('calendarWeek').value) el('calendarWeek').value = calendarWeekValue(now);
+        syncCalendarView();
         if (!returning) { el('prelaunchForm').reset(); openPrelaunchForm(); }
         if (!el('calendarDialog').open) el('calendarDialog').showModal();
         void renderCalendar();
@@ -630,7 +669,9 @@
         window.setTimeout(() => openCalendar({ returning:true }), 0);
       });
       el('calendarMonth').onchange = () => void renderCalendar();
-      el('calendarTodayBtn').onclick = () => { const now = new Date(); el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; void renderCalendar(); };
+      el('calendarWeek').onchange = () => void renderCalendar();
+      el('calendarView').onchange = () => { syncCalendarView(); void renderCalendar(); };
+      el('calendarTodayBtn').onclick = () => { const now = new Date(); el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; el('calendarWeek').value = calendarWeekValue(now); void renderCalendar(); };
       const openPrelaunchForm = () => {
         const select = el('prelaunchClient');
         select.innerHTML = '<option value="">Selecione um exportador</option>' + clients.filter(client => client.active !== false).map(client => `<option value="${esc(client.id)}">${esc(client.nome)}</option>`).join('');
@@ -1000,6 +1041,29 @@
         clearTimeout(processSearchTimer); serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey); el('search').value = ''; el('searchField').selectedIndex = 0; el('processLaunchedFrom').value = ''; el('processLaunchedTo').value = '';
         try { await refreshData(); } catch (error) { toast.error(error.message); }
       };
+      // Busca global reaproveita a pesquisa paginada no servidor: não baixa a
+      // base inteira e mantém os mesmos resultados da lista principal.
+      if (!el('searchField').querySelector('option[value="todos"]')) {
+        const option = new Option('TODOS OS DADOS', 'todos');
+        el('searchField').add(option, 1);
+      }
+      const closeGlobalSearch = () => el('globalSearchDialog').close();
+      const openGlobalSearch = () => {
+        el('globalSearchInput').value = el('search').value;
+        if (!el('globalSearchDialog').open) el('globalSearchDialog').showModal();
+        window.setTimeout(() => el('globalSearchInput').focus(), 0);
+      };
+      el('globalSearchBtn').onclick = openGlobalSearch;
+      el('closeGlobalSearchBtn').onclick = closeGlobalSearch;
+      el('cancelGlobalSearchBtn').onclick = closeGlobalSearch;
+      el('globalSearchForm').onsubmit = event => {
+        event.preventDefault();
+        const query = el('globalSearchInput').value.trim();
+        if (!query) return toast.warning('Digite uma informação para localizar processos.');
+        el('searchField').value = 'todos'; el('search').value = query;
+        closeGlobalSearch(); showProcessesPage(); clearTimeout(processSearchTimer);
+        void applyServerProcessSearch({ showValidation:true });
+      };
       const turnstileWidget = el('turnstileWidget');
       const turnstileSiteKey = turnstileWidget?.dataset.sitekey || '';
       let turnstileWidgetId = null, turnstileToken = '';
@@ -1276,6 +1340,8 @@
         if (!['admin', 'financeiro'].includes(currentUser?.role)) return;
         renderFinancial(); el('financialDialog').showModal();
       };
+      el('helpNav').onclick = event => { event.preventDefault(); if (!el('helpDialog').open) el('helpDialog').showModal(); };
+      el('closeHelpBtn').onclick = () => el('helpDialog').close();
       el('processNav').onclick = e => { e.preventDefault(); showProcessesPage(); };
       el('closeVgmBtn').onclick = showProcessesPage;
       el('closeReleaseBtn').onclick = showProcessesPage;
