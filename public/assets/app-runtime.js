@@ -622,11 +622,15 @@
       el('prelaunchDeadline').addEventListener('input', event => { event.target.value = formatDateTyping(event.target.value, true); });
       el('prelaunchForm').onsubmit = async event => {
         event.preventDefault();
+        // currentTarget pode ser limpo pelo navegador depois de um await.
+        // Guarde o formulário antes da requisição para concluir o envio sem
+        // depender do objeto Event após a resposta da API.
+        const prelaunchForm = event.currentTarget;
         const deadline = dateForDatabase(el('prelaunchDeadline').value, true);
         if (!deadline) return toast.warning('Informe o deadline no formato dd/mm hh:mm.');
         try {
           await request('/api/prelaunches', { method:'POST', body:JSON.stringify({ clientId:el('prelaunchClient').value, booking:el('prelaunchBooking').value.trim(), deadline }) });
-          event.currentTarget.reset(); event.currentTarget.hidden = true; toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar();
+          prelaunchForm.reset(); prelaunchForm.hidden = true; toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar();
         } catch (error) { toast.error(error.message); }
       };
 

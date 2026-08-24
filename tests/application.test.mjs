@@ -814,6 +814,8 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(runtime, /Array\.isArray\(calendar\) \? calendar/);
   assert.match(runtime, /form\.dataset\.prelaunchId/);
   assert.match(runtime, /openPrelaunchForm/);
+  assert.match(runtime, /const prelaunchForm = event\.currentTarget/);
+  assert.match(runtime, /prelaunchForm\.reset\(\)/);
   assert.match(runtime, /const openWorkspace/);
   assert.match(runtime, /readFileAsBase64/);
   assert.ok(runtime.includes('attachments/${button.dataset.attachmentDownload}/download'));
