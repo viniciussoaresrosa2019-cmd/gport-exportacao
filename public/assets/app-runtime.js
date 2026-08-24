@@ -643,7 +643,7 @@
       const openCalendar = ({ returning=false } = {}) => {
         const now = new Date();
         if (!el('calendarMonth').value) el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        if (!returning) { el('prelaunchForm').reset(); el('prelaunchForm').hidden = true; }
+        if (!returning) { el('prelaunchForm').reset(); openPrelaunchForm(); }
         if (!el('calendarDialog').open) el('calendarDialog').showModal();
         void renderCalendar();
       };
@@ -662,7 +662,7 @@
         el('prelaunchForm').hidden = false; el('prelaunchBooking').focus();
       };
       el('openPrelaunchBtn').onclick = openPrelaunchForm;
-      el('cancelPrelaunchBtn').onclick = () => { el('prelaunchForm').reset(); el('prelaunchForm').hidden = true; };
+      el('cancelPrelaunchBtn').onclick = () => { el('prelaunchForm').reset(); openPrelaunchForm(); };
       el('prelaunchDeadline').addEventListener('input', event => { event.target.value = formatDateTyping(event.target.value, true); });
       el('prelaunchForm').onsubmit = async event => {
         event.preventDefault();
@@ -674,7 +674,7 @@
         if (!deadline) return toast.warning('Informe o deadline no formato dd/mm hh:mm.');
         try {
           await request('/api/prelaunches', { method:'POST', body:JSON.stringify({ clientId:el('prelaunchClient').value, booking:el('prelaunchBooking').value.trim(), deadline }) });
-          prelaunchForm.reset(); prelaunchForm.hidden = true; toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar();
+          prelaunchForm.reset(); openPrelaunchForm(); toast.success('Pré-lançamento salvo na sua agenda.'); void renderCalendar();
         } catch (error) { toast.error(error.message); }
       };
 

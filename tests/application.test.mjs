@@ -815,6 +815,8 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(runtime, /Array\.isArray\(calendar\) \? calendar/);
   assert.match(runtime, /form\.dataset\.prelaunchId/);
   assert.match(runtime, /openPrelaunchForm/);
+  assert.match(runtime, /if \(!returning\) \{ el\('prelaunchForm'\)\.reset\(\); openPrelaunchForm\(\); \}/);
+  assert.match(await read('public/assets/gport.css'), /\.calendar-controls #openPrelaunchBtn\{display:none!important\}/);
   assert.match(runtime, /selectedCalendarDay/);
   assert.match(runtime, /data-calendar-day/);
   assert.match(runtime, /Botão direito para excluir/);
