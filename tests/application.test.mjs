@@ -189,7 +189,7 @@ test('sessão, CSRF, autorização e validação têm proteções regressivas', 
   for (const required of [
     "const sessionCookie = 'gport_session'", 'httpOnly', "sameSite: 'strict'",
     'csrfProtection', "X-CSRF-Token", 'token_version', 'processEditorOnly', 'processCreatorOnly',
-    'validatedProcess', "limit: '256kb'", 'frame-ancestors', 'isStrongPassword',
+    'validatedProcess', "limit: '6mb'", 'frame-ancestors', 'isStrongPassword',
     'script-src \'self\' \'nonce-${nonce}\'', 'Access-Control-Allow-Origin'
   ]) assert.ok(server.includes(required), `Proteção ausente: ${required}`);
   assert.match(server, /app\.post\('\/api\/users', authenticate, adminOnly/);
@@ -505,6 +505,21 @@ test('filtro de processos é persistido somente durante a sessão do navegador',
   assert.match(html, /sessionStorage\.removeItem\(processFilterSessionKey\)/);
 });
 
+test('processos permitem filtrar pelo período em que foram lançados', async () => {
+  const server = await read('src/server.js');
+  const html = await readInterface();
+  const css = await read('public/assets/gport.css');
+  assert.match(server, /const launchedFrom = String\(req\.query\.launchedFrom \|\| ''\)\.trim\(\)/);
+  assert.match(server, /const launchedTo = String\(req\.query\.launchedTo \|\| ''\)\.trim\(\)/);
+  assert.match(server, /p\.created_at >= \$5::date/);
+  assert.match(server, /p\.created_at < \(\$6::date \+ INTERVAL '1 day'\)/);
+  assert.match(html, /id="processLaunchedFrom" type="date"/);
+  assert.match(html, /id="processLaunchedTo" type="date"/);
+  assert.match(html, /searchParams\.set\('launchedFrom', requestedFilter\.launchedFrom\)/);
+  assert.match(html, /el\('processLaunchedFrom'\)\.onchange = scheduleServerProcessSearch/);
+  assert.match(css, /\.process-period-filter\{display:flex/);
+});
+
 test('Prazos e Financeiro permanecem reversíveis, mas fora da navegação operacional atual', async () => {
   const html = await readInterface();
   assert.match(html, /id="deadlineNav" href="#" hidden aria-hidden="true"/);
@@ -774,4 +789,34 @@ test('sessão ativa é renovada e expiração permite novo login sem recarregar 
   assert.match(runtime, /response\.status === 401/);
   assert.match(runtime, /os dados preenchidos foram mantidos/);
   assert.doesNotMatch(runtime, /requireSessionLogin[\s\S]{0,700}location\.reload/);
+});
+
+test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos controlados', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const html = await read('public/index.html');
+  assert.match(server, /app\.get\('\/api\/calendar', authenticate/);
+  assert.match(server, /process_checklist_items/);
+  assert.match(server, /process_comments/);
+  assert.match(server, /process_attachments/);
+  assert.match(server, /allowedAttachmentTypes/);
+  assert.match(server, /attachmentMaxBytes/);
+  assert.match(server, /application\/pdf/);
+  assert.match(html, /id="calendarDialog"/);
+  assert.match(html, /id="processWorkspaceDialog"/);
+  assert.match(runtime, /const openCalendar/);
+  assert.match(runtime, /const openWorkspace/);
+  assert.match(runtime, /readFileAsBase64/);
+  assert.ok(runtime.includes('attachments/${button.dataset.attachmentDownload}/download'));
+});
+
+test('ações em lote respeitam os papéis atuais de VGM e Liberação', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  assert.match(server, /processes\/bulk\/vgm', authenticate, vgmManagerOnly/);
+  assert.match(server, /processes\/bulk\/release', authenticate, releaseManagerOnly/);
+  assert.match(server, /processes\/bulk\/vgm[\s\S]{0,1200}processes\/:id\/vgm/);
+  assert.match(server, /processes\/bulk\/release[\s\S]{0,1200}processes\/:id\/release/);
+  assert.match(runtime, /vgmBulkApply/);
+  assert.match(runtime, /releaseBulkApply/);
 });

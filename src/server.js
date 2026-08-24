@@ -89,7 +89,10 @@ app.use((req, res, next) => {
   res.once('finish', () => recordApiMetric(req, res.statusCode, Math.round(performance.now() - startedAt)));
   next();
 });
-app.use(express.json({ limit: '256kb', strict: true, type: 'application/json' }));
+// Anexos operacionais são enviados em base64 pelo navegador e têm limite
+// individual estrito na rota. O limite global cobre somente esse caso, sem
+// aceitar corpos arbitrariamente grandes.
+app.use(express.json({ limit: '6mb', strict: true, type: 'application/json' }));
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, '../public');
@@ -131,6 +134,8 @@ const publicUser = user => ({ id: user.id, username: user.username, role: user.r
 const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao'];
 const isStrongPassword = password => typeof password === 'string' && password.length >= 12 && password.length <= 200 && /[A-Za-z]/.test(password) && /\d/.test(password);
 const validId = value => typeof value === 'string' && uuidPattern.test(value);
+const attachmentMaxBytes = 4 * 1024 * 1024;
+const allowedAttachmentTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const setSession = (res, user, csrfToken = randomBytes(32).toString('base64url')) => {
   res.cookie(sessionCookie, tokenFor(user, csrfToken), cookieOptions(true));
   res.cookie(csrfCookie, csrfToken, cookieOptions(false));
@@ -749,23 +754,41 @@ app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
   const field = String(req.query.field || 'todos').trim().toLowerCase();
   const clientId = String(req.query.client || '').trim();
   const clientName = String(req.query.clientName || '').trim();
+  const launchedFrom = String(req.query.launchedFrom || '').trim();
+  const launchedTo = String(req.query.launchedTo || '').trim();
   const limit = Number(req.query.limit || 50);
   const offset = Number(req.query.offset || 0);
-  if (term.length > 100 || status.length > 40 || clientName.length > 200 || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (term.length > 100 || status.length > 40 || clientName.length > 200 || (launchedFrom && !datePattern.test(launchedFrom)) || (launchedTo && !datePattern.test(launchedTo)) || (launchedFrom && launchedTo && launchedFrom > launchedTo) || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
   const scope = '';
-  const params = [status, term, clientId, clientName];
+  const params = [status, term, clientId, clientName, launchedFrom, launchedTo];
   const next = params.length + 1;
   // client_id é UUID no PostgreSQL. O parâmetro vem da URL como texto e,
   // mesmo vazio, não pode ser comparado diretamente com UUID (erro 42883).
   // NULLIF mantém o filtro opcional sem fazer coerção insegura de tipos.
   // O nome é um fallback exclusivo para processos históricos cujo client_id
   // ficou nulo, mas que ainda exibem o exportador pelo LEFT JOIN.
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4))${scope}`;
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day'))${scope}`;
   const [items, total] = await Promise.all([
     query(`${processSelect} ${where} ORDER BY c.name ASC,p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
     query(`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`, params)
   ]);
   res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });
+}));
+app.get('/api/calendar', authenticate, asyncRoute(async (req, res) => {
+  const from = String(req.query.from || '').trim();
+  const to = String(req.query.to || '').trim();
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!datePattern.test(from) || !datePattern.test(to) || from > to) return res.status(400).json({ error:'Período do calendário inválido.' });
+  const rangeDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000;
+  if (!Number.isFinite(rangeDays) || rangeDays > 93) return res.status(400).json({ error:'Selecione no máximo três meses no calendário.' });
+  const result = await query(`${processSelect}
+    WHERE (p.deadline::date BETWEEN $1::date AND $2::date
+      OR p.container_collection_date BETWEEN $1::date AND $2::date
+      OR p.release_schedule::date BETWEEN $1::date AND $2::date
+      OR p.release_deadline::date BETWEEN $1::date AND $2::date)
+    ORDER BY COALESCE(p.release_deadline,p.deadline,p.container_collection_date) ASC LIMIT 500`, [from, to]);
+  res.json(result.rows);
 }));
 app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
@@ -776,6 +799,108 @@ app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   // identificadores válidos para usuários sem acesso.
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   res.json(result.rows[0]);
+}));
+// Acompanhamento do processo: itens pendentes, comunicação interna e anexos
+// ficam separados da ficha operacional. Nenhum item é obrigatório e esses
+// recursos não alteram o status do processo.
+const checklistDefaults = ['DUE', 'DRAFT', 'VGM', 'BL', 'NOTA FISCAL'];
+const assertExistingProcess = async processId => {
+  if (!validId(processId)) throw Object.assign(new Error('Identificador de processo inválido.'), { status: 400 });
+  const result = await query('SELECT id,analyst_id FROM processes WHERE id=$1', [processId]);
+  if (!result.rowCount) throw Object.assign(new Error('Processo não encontrado.'), { status: 404 });
+  return result.rows[0];
+};
+const checklistRows = processId => query(`SELECT i.id,i.label,i.completed,i.completed_at,u.username AS completed_by,i.created_at
+  FROM process_checklist_items i LEFT JOIN users u ON u.id=i.completed_by
+  WHERE i.process_id=$1 ORDER BY i.completed ASC,i.created_at ASC`, [processId]);
+app.post('/api/processes/:id/checklist/defaults', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  const existing = await query('SELECT 1 FROM process_checklist_items WHERE process_id=$1 LIMIT 1', [req.params.id]);
+  if (!existing.rowCount) {
+    await Promise.all(checklistDefaults.map(label => query('INSERT INTO process_checklist_items(process_id,label,created_by) VALUES($1,$2,$3)', [req.params.id, label, req.user.sub])));
+    await audit(req.user.sub, 'process.checklist_seeded', 'process', req.params.id);
+  }
+  res.json((await checklistRows(req.params.id)).rows);
+}));
+app.get('/api/processes/:id/checklist', authenticate, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  res.json((await checklistRows(req.params.id)).rows);
+}));
+app.post('/api/processes/:id/checklist', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  const label = upperText(cleanText(req.body.label, 120, 'Item do checklist', { required:true }));
+  const result = await query('INSERT INTO process_checklist_items(process_id,label,created_by) VALUES($1,$2,$3) RETURNING id,label,completed,completed_at,created_at', [req.params.id, label, req.user.sub]);
+  await audit(req.user.sub, 'process.checklist_item_created', 'process', req.params.id, { label });
+  res.status(201).json(result.rows[0]);
+}));
+app.patch('/api/processes/:id/checklist/:itemId', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  if (!validId(req.params.itemId) || typeof req.body.completed !== 'boolean') return res.status(400).json({ error:'Item do checklist inválido.' });
+  const result = await query(`UPDATE process_checklist_items SET completed=$1,completed_at=CASE WHEN $1 THEN NOW() ELSE NULL END,completed_by=CASE WHEN $1 THEN $2 ELSE NULL END
+    WHERE id=$3 AND process_id=$4 RETURNING id,label,completed,completed_at`, [req.body.completed, req.user.sub, req.params.itemId, req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error:'Item do checklist não encontrado.' });
+  await audit(req.user.sub, 'process.checklist_item_updated', 'process', req.params.id, { label:result.rows[0].label, completed:req.body.completed });
+  res.json(result.rows[0]);
+}));
+app.delete('/api/processes/:id/checklist/:itemId', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  if (!validId(req.params.itemId)) return res.status(400).json({ error:'Item do checklist inválido.' });
+  const result = await query('DELETE FROM process_checklist_items WHERE id=$1 AND process_id=$2 RETURNING label', [req.params.itemId, req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error:'Item do checklist não encontrado.' });
+  await audit(req.user.sub, 'process.checklist_item_deleted', 'process', req.params.id, { label:result.rows[0].label });
+  res.status(204).end();
+}));
+app.get('/api/processes/:id/comments', authenticate, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  const result = await query(`SELECT c.id,c.body,c.created_at,u.username FROM process_comments c JOIN users u ON u.id=c.user_id
+    WHERE c.process_id=$1 ORDER BY c.created_at DESC LIMIT 100`, [req.params.id]);
+  res.json(result.rows);
+}));
+app.post('/api/processes/:id/comments', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  const body = cleanText(req.body.body, 1000, 'Comentário', { required:true });
+  const result = await query(`INSERT INTO process_comments(process_id,user_id,body) VALUES($1,$2,$3)
+    RETURNING id,body,created_at`, [req.params.id, req.user.sub, body]);
+  await audit(req.user.sub, 'process.comment_created', 'process', req.params.id);
+  res.status(201).json({ ...result.rows[0], username:req.user.username });
+}));
+app.get('/api/processes/:id/attachments', authenticate, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  const result = await query(`SELECT a.id,a.file_name,a.mime_type,a.size_bytes,a.created_at,u.username FROM process_attachments a
+    JOIN users u ON u.id=a.uploaded_by WHERE a.process_id=$1 ORDER BY a.created_at DESC`, [req.params.id]);
+  res.json(result.rows);
+}));
+app.post('/api/processes/:id/attachments', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  const fileName = cleanText(req.body.fileName, 160, 'Nome do arquivo', { required:true });
+  const mimeType = String(req.body.mimeType || '').toLowerCase();
+  const encoded = String(req.body.contentBase64 || '');
+  if (!allowedAttachmentTypes.has(mimeType) || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return res.status(400).json({ error:'Envie somente PDF, PNG ou JPG válidos.' });
+  const content = Buffer.from(encoded, 'base64');
+  if (!content.length || content.length > attachmentMaxBytes) return res.status(400).json({ error:'O anexo deve ter no máximo 4 MB.' });
+  const result = await query(`INSERT INTO process_attachments(process_id,file_name,mime_type,size_bytes,content,uploaded_by)
+    VALUES($1,$2,$3,$4,$5,$6) RETURNING id,file_name,mime_type,size_bytes,created_at`, [req.params.id, fileName, mimeType, content.length, content, req.user.sub]);
+  await audit(req.user.sub, 'process.attachment_uploaded', 'process', req.params.id, { fileName, mimeType, sizeBytes:content.length });
+  res.status(201).json({ ...result.rows[0], username:req.user.username });
+}));
+app.get('/api/processes/:id/attachments/:attachmentId/download', authenticate, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  if (!validId(req.params.attachmentId)) return res.status(400).json({ error:'Anexo inválido.' });
+  const result = await query('SELECT file_name,mime_type,content FROM process_attachments WHERE id=$1 AND process_id=$2', [req.params.attachmentId, req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error:'Anexo não encontrado.' });
+  const attachment = result.rows[0];
+  res.setHeader('Content-Type', attachment.mime_type);
+  res.setHeader('Content-Disposition', `attachment; filename="${String(attachment.file_name).replace(/["\\\r\n]/g, '_')}"`);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(attachment.content);
+}));
+app.delete('/api/processes/:id/attachments/:attachmentId', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  await assertExistingProcess(req.params.id);
+  if (!validId(req.params.attachmentId)) return res.status(400).json({ error:'Anexo inválido.' });
+  const result = await query('DELETE FROM process_attachments WHERE id=$1 AND process_id=$2 RETURNING file_name', [req.params.attachmentId, req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error:'Anexo não encontrado.' });
+  await audit(req.user.sub, 'process.attachment_deleted', 'process', req.params.id, { fileName:result.rows[0].file_name });
+  res.status(204).end();
 }));
 app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };
@@ -860,6 +985,24 @@ app.delete('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   res.status(204).end();
 }));
 
+const validateBulkProcessIds = ids => {
+  if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => !validId(id))) throw Object.assign(new Error('Selecione entre 1 e 100 processos válidos.'), { status:400 });
+  return [...new Set(ids)];
+};
+// As rotas em lote precisam vir antes de `:id`, pois "bulk" também é um
+// valor válido para o parâmetro de rota do Express.
+app.patch('/api/processes/bulk/vgm', authenticate, vgmManagerOnly, asyncRoute(async (req, res) => {
+  const ids = validateBulkProcessIds(req.body.ids);
+  const statuses = ['Não', 'Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'];
+  const vgmStatus = String(req.body.vgmStatus || '');
+  if (!statuses.includes(vgmStatus)) return res.status(400).json({ error:'Status de VGM inválido.' });
+  const result = await query(`UPDATE processes SET vgm_status=$1,vgm_sent_date=CASE WHEN $1 IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT') THEN COALESCE(vgm_sent_date,NOW()) ELSE NULL END
+    WHERE id=ANY($2::uuid[]) RETURNING *`, [vgmStatus, ids]);
+  await Promise.all(result.rows.map(process => audit(req.user.sub, 'process.vgm_bulk_updated', 'process', process.id, { vgmStatus })));
+  result.rows.forEach(process => publishProcessChange(process, 'vgm-updated'));
+  res.json({ updated:result.rowCount });
+}));
+
 app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const statuses = ['Não', 'Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'];
@@ -891,6 +1034,17 @@ app.patch('/api/processes/:id/vgm', authenticate, vgmManagerOnly, asyncRoute(asy
   notifyProcessChange(result.rows[0], 'vgm-updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'vgm-updated');
   res.json(result.rows[0]);
+}));
+
+app.patch('/api/processes/bulk/release', authenticate, releaseManagerOnly, asyncRoute(async (req, res) => {
+  const ids = validateBulkProcessIds(req.body.ids);
+  const releaseStatus = String(req.body.releaseStatus || '');
+  if (!['Não','Sim'].includes(releaseStatus)) return res.status(400).json({ error:'Status de liberação inválido.' });
+  const result = await query(`UPDATE processes SET release_status=$1,release_date=CASE WHEN $1='Sim' THEN COALESCE(release_date,NOW()) ELSE NULL END
+    WHERE id=ANY($2::uuid[]) RETURNING *`, [releaseStatus, ids]);
+  await Promise.all(result.rows.map(process => audit(req.user.sub, 'process.release_bulk_updated', 'process', process.id, { releaseStatus })));
+  result.rows.forEach(process => publishProcessChange(process, 'release-updated'));
+  res.json({ updated:result.rowCount });
 }));
 
 app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncRoute(async (req, res) => {
@@ -929,7 +1083,6 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
   publishProcessChange(result.rows[0], 'release-updated');
   res.json(result.rows[0]);
 }));
-
 app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const followupStatus = String(req.body.followupStatus || 'Pendente');
@@ -1089,6 +1242,7 @@ const ensureProcessFields = async () => {
   await query('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check');
   await query("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'analyst', 'vgm', 'financeiro', 'liberacao'))");
   await query('CREATE INDEX IF NOT EXISTS processes_status_deadline_idx ON processes(status, deadline)');
+  await query('CREATE INDEX IF NOT EXISTS processes_created_at_idx ON processes(created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_analyst_created_at_idx ON processes(analyst_id, created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_client_created_at_idx ON processes(client_id, created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_vgm_status_idx ON processes(vgm_status)');
@@ -1108,6 +1262,38 @@ const ensureProcessFields = async () => {
     UNIQUE(user_id,dedupe_key)
   )`);
   await query('CREATE INDEX IF NOT EXISTS user_notifications_user_unread_idx ON user_notifications(user_id,read_at,created_at DESC)');
+  // Recursos de acompanhamento: pequenos, auditáveis e vinculados ao processo.
+  // O conteúdo do anexo fica no banco para não depender do disco efêmero do Render.
+  await query(`CREATE TABLE IF NOT EXISTS process_checklist_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    process_id UUID NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+    label VARCHAR(120) NOT NULL,
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    completed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    completed_at TIMESTAMPTZ,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS process_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    process_id UUID NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    body VARCHAR(1000) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS process_attachments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    process_id UUID NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+    file_name VARCHAR(160) NOT NULL,
+    mime_type VARCHAR(80) NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 4194304),
+    content BYTEA NOT NULL,
+    uploaded_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await query('CREATE INDEX IF NOT EXISTS process_checklist_items_process_idx ON process_checklist_items(process_id,completed,created_at)');
+  await query('CREATE INDEX IF NOT EXISTS process_comments_process_idx ON process_comments(process_id,created_at DESC)');
+  await query('CREATE INDEX IF NOT EXISTS process_attachments_process_idx ON process_attachments(process_id,created_at DESC)');
 };
 
 ensureProcessFields()

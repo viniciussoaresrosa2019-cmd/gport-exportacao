@@ -158,7 +158,20 @@
         };
         el('vgmList').innerHTML = vgmProcesses.length ? `<div class="vgm-board" role="list" aria-label="Processos para controle de VGM">${vgmProcesses.map(p => { const key = esc(p.id); const booking = esc(p.booking || '—'); return `<article class="vgm-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="vgm-card-process"><span class="vgm-card-label">BOOKING</span><strong class="process">${booking}</strong><span class="vgm-card-exporter">${esc(p.exportador || '—')}</span><span class="vgm-card-importer">${esc(p.importador || 'Importador não informado')}</span></div><div class="vgm-card-field"><label for="vgm-status-${key}">STATUS VGM</label><select id="vgm-status-${key}" aria-label="Status VGM do booking ${booking}" data-vgm-status="${key}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></div><div class="vgm-card-field vgm-card-date"><span class="vgm-card-label">ENVIO</span><strong>${esc(p.dataEnvioVgm || 'Não enviado')}</strong></div><div class="vgm-card-field"><label for="vgm-destination-${key}">ENVIADO PARA</label><input id="vgm-destination-${key}" aria-label="VGM enviado para do booking ${booking}" data-vgm-sent-to="${key}" value="${esc(p.vgmEnviadoPara || '')}" placeholder="Informar" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field"><label for="vgm-analyst-${key}">PROCESSO FÍSICO</label><select id="vgm-analyst-${key}" aria-label="Responsável pelo processo físico do booking ${booking}" data-vgm-analyst="${key}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-schedule-${key}">AGENDAMENTO</label><input id="vgm-schedule-${key}" aria-label="Deadline de agendamento do booking ${booking}" data-vgm-release-schedule="${key}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-deadline-${key}">LIBERAÇÃO</label><input id="vgm-deadline-${key}" aria-label="Deadline de liberação do booking ${booking}" data-vgm-release-deadline="${key}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div></article>`; }).join('')}</div>` : '<div class="empty">Nenhum processo cadastrado.</div>';
         if (canEdit) {
-          el('vgmList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
+          const vgmBulk = document.createElement('div');
+          vgmBulk.className = 'bulk-actions';
+          vgmBulk.innerHTML = `<label><input id="vgmSelectAll" type="checkbox"> Selecionar visíveis</label><select id="vgmBulkStatus" aria-label="Status de VGM para os selecionados">${vgmStatuses.map(status => `<option>${esc(status)}</option>`).join('')}</select><button class="btn secondary" id="vgmBulkApply" type="button">Atualizar selecionados</button>`;
+          el('vgmList').prepend(vgmBulk);
+          el('vgmList').querySelectorAll('.vgm-card').forEach(card => { const id = card.querySelector('[data-vgm-status]')?.dataset.vgmStatus; if (!id) return; const select = document.createElement('label'); select.className = 'bulk-select'; select.innerHTML = `<input type="checkbox" data-vgm-bulk-id="${esc(id)}" aria-label="Selecionar processo">`; card.prepend(select); });
+          el('vgmSelectAll').addEventListener('change', event => el('vgmList').querySelectorAll('[data-vgm-bulk-id]').forEach(input => { input.checked = event.target.checked; }));
+          el('vgmBulkApply').addEventListener('click', async () => {
+            const ids = [...el('vgmList').querySelectorAll('[data-vgm-bulk-id]:checked')].map(input => input.dataset.vgmBulkId);
+            if (!ids.length) return toast.warning('Selecione pelo menos um processo.');
+            const vgmStatus = el('vgmBulkStatus').value;
+            if (!(await confirmAction('Atualizar VGM em lote', `Aplicar “${vgmStatus}” a ${ids.length} processo(s)?`))) return;
+            try { const result = await request('/api/processes/bulk/vgm', { method:'PATCH', body:JSON.stringify({ ids, vgmStatus }) }); await refreshData(); renderVgm(); toast.success(`${result.updated} processo(s) atualizado(s).`); } catch (error) { toast.error(error.message); }
+          });
+          el('vgmList').querySelectorAll('select[data-vgm-status],select[data-vgm-analyst]').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
           el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => {
             // Salvar a cada tecla reconstruía a tabela e interrompia a
             // digitação. Grave somente quando o usuário concluir o campo.
@@ -212,8 +225,21 @@
         if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
         if (canEdit) el('releaseList').querySelectorAll('[data-release-deadline]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); })); if (canEdit) el('releaseList').querySelectorAll('[data-release-date]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value); }));
         if (canEdit) {
-          el('releaseList').querySelectorAll('select').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { toast.error(error.message); renderRelease(); } }));
-          el('releaseList').querySelectorAll('input').forEach(input => input.addEventListener('input', () => {
+          const releaseBulk = document.createElement('div');
+          releaseBulk.className = 'bulk-actions';
+          releaseBulk.innerHTML = '<label><input id="releaseSelectAll" type="checkbox"> Selecionar visíveis</label><select id="releaseBulkStatus" aria-label="Status de liberação para os selecionados"><option value="Sim">Liberado</option><option value="Não">Não liberado</option></select><button class="btn secondary" id="releaseBulkApply" type="button">Atualizar selecionados</button>';
+          el('releaseList').prepend(releaseBulk);
+          el('releaseList').querySelectorAll('tbody tr').forEach(row => { const id = row.querySelector('[data-release-status]')?.dataset.releaseStatus; if (!id) return; const cell = document.createElement('td'); cell.className = 'bulk-cell'; cell.dataset.label = 'SELECIONAR'; cell.innerHTML = `<input type="checkbox" data-release-bulk-id="${esc(id)}" aria-label="Selecionar processo">`; row.prepend(cell); });
+          el('releaseSelectAll').addEventListener('change', event => el('releaseList').querySelectorAll('[data-release-bulk-id]').forEach(input => { input.checked = event.target.checked; }));
+          el('releaseBulkApply').addEventListener('click', async () => {
+            const ids = [...el('releaseList').querySelectorAll('[data-release-bulk-id]:checked')].map(input => input.dataset.releaseBulkId);
+            if (!ids.length) return toast.warning('Selecione pelo menos um processo.');
+            const releaseStatus = el('releaseBulkStatus').value;
+            if (!(await confirmAction('Atualizar liberação em lote', `Aplicar o status selecionado a ${ids.length} processo(s)?`))) return;
+            try { const result = await request('/api/processes/bulk/release', { method:'PATCH', body:JSON.stringify({ ids, releaseStatus }) }); await refreshData(); renderRelease(); toast.success(`${result.updated} processo(s) atualizado(s).`); } catch (error) { toast.error(error.message); }
+          });
+          el('releaseList').querySelectorAll('select[data-release-status],select[data-release-channel]').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { toast.error(error.message); renderRelease(); } }));
+          el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-date]').forEach(input => input.addEventListener('input', () => {
             const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseDate;
             const schedule = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
             const deadline = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDate = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
@@ -493,6 +519,7 @@
         // A capa só pode ser emitida a partir de um processo persistido. O
         // lançamento novo deve ser salvo antes de disponibilizar esta ação.
         el('printBtn').hidden = !p;
+        el('processWorkspaceBtn').hidden = !p;
         newProcessIdempotencyKey = p ? null : crypto.randomUUID();
         if (!p) {
           // Não reutilize nenhum identificador do último processo salvo. O
@@ -525,6 +552,80 @@
         form.dispatchEvent(new Event('gport:review-update'));
         form.dispatchEvent(new CustomEvent('gport:process-form-opened', { detail:{ mode:'edit' } }));
       };
+      // Calendário operacional: consulta somente o intervalo exibido e não
+      // interfere na lista principal nem nos filtros que o usuário já aplicou.
+      const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const calendarEventLabel = (process, field) => ({ deadline:'Draft', container_collection_date:'Coleta', release_schedule:'Agendamento', release_deadline:'Liberação' }[field] || 'Prazo');
+      const calendarDateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '';
+      const renderCalendar = async () => {
+        const month = el('calendarMonth').value;
+        if (!/^\d{4}-\d{2}$/.test(month)) return;
+        const [year, monthNumber] = month.split('-').map(Number);
+        const from = new Date(year, monthNumber - 1, 1), to = new Date(year, monthNumber, 0);
+        el('calendarSummary').textContent = 'Carregando prazos…'; el('calendarGrid').innerHTML = '';
+        try {
+          const rows = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}`);
+          const events = new Map();
+          rows.forEach(process => ['deadline', 'container_collection_date', 'release_schedule', 'release_deadline'].forEach(field => {
+            const key = String(process[field] || '').slice(0, 10);
+            if (key >= isoDate(from) && key <= isoDate(to)) (events.get(key) || (events.set(key, []), events.get(key))).push({ process, label:calendarEventLabel(process, field) });
+          }));
+          const firstWeekday = (from.getDay() + 6) % 7;
+          const days = Array.from({ length:firstWeekday }, () => '<div class="calendar-day is-empty" aria-hidden="true"></div>');
+          for (let day = 1; day <= to.getDate(); day += 1) {
+            const key = `${month}-${String(day).padStart(2, '0')}`, dayEvents = events.get(key) || [];
+            days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><strong>${day}</strong><div>${dayEvents.slice(0, 4).map(({ process, label }) => `<button type="button" class="calendar-event" data-calendar-process="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
+          }
+          el('calendarGrid').innerHTML = '<div class="calendar-weekdays"><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span></div><div class="calendar-days">' + days.join('') + '</div>';
+          el('calendarSummary').textContent = `${rows.length} processo(s) com prazos em ${from.toLocaleDateString('pt-BR', { month:'long', year:'numeric' })}.`;
+          el('calendarGrid').querySelectorAll('[data-calendar-process]').forEach(button => button.onclick = async () => {
+            const process = data.find(item => item.id === button.dataset.calendarProcess);
+            if (process) { el('calendarDialog').close(); open(process); return; }
+            try { const item = toViewProcess(await request(`/api/processes/${button.dataset.calendarProcess}`)); el('calendarDialog').close(); open(item); } catch (error) { toast.error(error.message); }
+          });
+        } catch (error) { el('calendarSummary').textContent = 'Não foi possível carregar o calendário agora.'; toast.error(error.message); }
+      };
+      const openCalendar = () => { const now = new Date(); if (!el('calendarMonth').value) el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; el('calendarDialog').showModal(); void renderCalendar(); };
+      el('calendarBtn').onclick = openCalendar;
+      el('closeCalendarBtn').onclick = () => el('calendarDialog').close();
+      el('calendarMonth').onchange = () => void renderCalendar();
+      el('calendarTodayBtn').onclick = () => { const now = new Date(); el('calendarMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; void renderCalendar(); };
+
+      // Espaço de trabalho do processo: registros curtos, checklist e anexos
+      // controlados ficam fora do formulário principal para evitar poluição.
+      const workspace = { processId:null, checklist:[], comments:[], attachments:[] };
+      const setWorkspaceTab = tab => {
+        document.querySelectorAll('[data-workspace-tab]').forEach(button => { const active = button.dataset.workspaceTab === tab; button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active)); });
+        document.querySelectorAll('[data-workspace-panel]').forEach(panel => { panel.hidden = panel.dataset.workspacePanel !== tab; });
+      };
+      const renderWorkspace = () => {
+        el('checklistList').innerHTML = workspace.checklist.length ? workspace.checklist.map(item => `<article class="workspace-item"><label><input type="checkbox" data-checklist-toggle="${esc(item.id)}" ${item.completed ? 'checked' : ''}><span>${esc(item.label)}</span></label><button type="button" class="icon-button" data-checklist-delete="${esc(item.id)}" aria-label="Excluir item ${esc(item.label)}">×</button></article>`).join('') : '<p class="empty">Nenhum item no checklist.</p>';
+        el('commentList').innerHTML = workspace.comments.length ? workspace.comments.map(item => `<article class="workspace-comment"><p>${esc(item.body)}</p><small>${esc(item.username || 'Usuário')} · ${new Date(item.created_at).toLocaleString('pt-BR')}</small></article>`).join('') : '<p class="empty">Nenhum comentário registrado.</p>';
+        el('attachmentList').innerHTML = workspace.attachments.length ? workspace.attachments.map(item => `<article class="workspace-item"><div><strong>${esc(item.file_name)}</strong><small>${esc(item.mime_type)} · ${Math.ceil(Number(item.size_bytes || 0) / 1024)} KB</small></div><div class="workspace-actions"><button type="button" class="btn secondary" data-attachment-download="${esc(item.id)}">Baixar</button><button type="button" class="icon-button" data-attachment-delete="${esc(item.id)}" aria-label="Excluir anexo ${esc(item.file_name)}">×</button></div></article>`).join('') : '<p class="empty">Nenhum anexo enviado.</p>';
+        el('checklistList').querySelectorAll('[data-checklist-toggle]').forEach(input => input.onchange = async () => { try { await request(`/api/processes/${workspace.processId}/checklist/${input.dataset.checklistToggle}`, { method:'PATCH', body:JSON.stringify({ completed:input.checked }) }); await loadWorkspace(); } catch (error) { toast.error(error.message); input.checked = !input.checked; } });
+        el('checklistList').querySelectorAll('[data-checklist-delete]').forEach(button => button.onclick = async () => { if (!(await confirmAction('Excluir item', 'Excluir este item do checklist?'))) return; try { await request(`/api/processes/${workspace.processId}/checklist/${button.dataset.checklistDelete}`, { method:'DELETE' }); await loadWorkspace(); } catch (error) { toast.error(error.message); } });
+        el('attachmentList').querySelectorAll('[data-attachment-download]').forEach(button => button.onclick = () => { window.open(`/api/processes/${workspace.processId}/attachments/${button.dataset.attachmentDownload}/download`, '_blank', 'noopener'); });
+        el('attachmentList').querySelectorAll('[data-attachment-delete]').forEach(button => button.onclick = async () => { if (!(await confirmAction('Excluir anexo', 'Excluir este anexo? Esta ação não poderá ser desfeita.'))) return; try { await request(`/api/processes/${workspace.processId}/attachments/${button.dataset.attachmentDelete}`, { method:'DELETE' }); await loadWorkspace(); } catch (error) { toast.error(error.message); } });
+      };
+      const loadWorkspace = async () => {
+        if (!workspace.processId) return;
+        const [checklist, comments, attachments] = await Promise.all([request(`/api/processes/${workspace.processId}/checklist`), request(`/api/processes/${workspace.processId}/comments`), request(`/api/processes/${workspace.processId}/attachments`)]);
+        workspace.checklist = checklist; workspace.comments = comments; workspace.attachments = attachments; renderWorkspace();
+      };
+      const openWorkspace = async () => {
+        if (!editingProcessId) return toast.warning('Salve o processo antes de registrar o acompanhamento.');
+        workspace.processId = editingProcessId;
+        el('workspaceTitle').textContent = `Processo ${form.elements.booking.value || 'sem booking'}`;
+        el('processWorkspaceDialog').showModal(); setWorkspaceTab('checklist');
+        try { await request(`/api/processes/${workspace.processId}/checklist/defaults`, { method:'POST', body:'{}' }); await loadWorkspace(); } catch (error) { toast.error(error.message); }
+      };
+      el('processWorkspaceBtn').onclick = openWorkspace;
+      el('closeWorkspaceBtn').onclick = () => el('processWorkspaceDialog').close();
+      document.querySelectorAll('[data-workspace-tab]').forEach(button => button.onclick = () => setWorkspaceTab(button.dataset.workspaceTab));
+      el('checklistForm').onsubmit = async event => { event.preventDefault(); const label = el('checklistText').value.trim(); if (!label) return; try { await request(`/api/processes/${workspace.processId}/checklist`, { method:'POST', body:JSON.stringify({ label }) }); event.currentTarget.reset(); await loadWorkspace(); } catch (error) { toast.error(error.message); } };
+      el('commentForm').onsubmit = async event => { event.preventDefault(); const body = el('commentText').value.trim(); if (!body) return; try { await request(`/api/processes/${workspace.processId}/comments`, { method:'POST', body:JSON.stringify({ body }) }); event.currentTarget.reset(); await loadWorkspace(); } catch (error) { toast.error(error.message); } };
+      const readFileAsBase64 = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.')); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.readAsDataURL(file); });
+      el('attachmentForm').onsubmit = async event => { event.preventDefault(); const file = el('attachmentFile').files[0]; if (!file) return toast.warning('Selecione um arquivo para enviar.'); if (file.size > 4 * 1024 * 1024) return toast.warning('O anexo deve ter no máximo 4 MB.'); try { const contentBase64 = await readFileAsBase64(file); await request(`/api/processes/${workspace.processId}/attachments`, { method:'POST', body:JSON.stringify({ fileName:file.name, mimeType:file.type, contentBase64 }) }); event.currentTarget.reset(); await loadWorkspace(); toast.success('Anexo enviado com sucesso.'); } catch (error) { toast.error(error.message); } };
       // Garante que o botão sempre use a abertura reforçada acima, mesmo se
       // outro script tiver registrado um manipulador anterior.
       el('newBtn').onclick = async () => {
@@ -550,7 +651,13 @@
       let processRefreshVersion = 0;
       try {
         const savedFilter = JSON.parse(sessionStorage.getItem(processFilterSessionKey) || 'null');
-        if (savedFilter?.field && savedFilter?.value) { serverProcessFilter = savedFilter; el('searchField').value = savedFilter.field; el('search').value = savedFilter.value; }
+        if (savedFilter?.field && (savedFilter?.value || savedFilter?.launchedFrom || savedFilter?.launchedTo)) {
+          serverProcessFilter = savedFilter;
+          el('searchField').value = savedFilter.field;
+          el('search').value = savedFilter.value || '';
+          el('processLaunchedFrom').value = savedFilter.launchedFrom || '';
+          el('processLaunchedTo').value = savedFilter.launchedTo || '';
+        }
       } catch { sessionStorage.removeItem(processFilterSessionKey); }
       const renderProcessPage = () => {
         render();
@@ -593,7 +700,12 @@
         const offset = append ? processPagination.offset + processPagination.limit : 0;
         const searchParams = new URLSearchParams({ limit:'50', offset:String(offset) });
         const requestedFilter = serverProcessFilter ? { ...serverProcessFilter } : null;
-        if (requestedFilter) { searchParams.set('field', requestedFilter.field); searchParams.set('search', requestedFilter.value); }
+        if (requestedFilter) {
+          searchParams.set('field', requestedFilter.field);
+          searchParams.set('search', requestedFilter.value || '');
+          if (requestedFilter.launchedFrom) searchParams.set('launchedFrom', requestedFilter.launchedFrom);
+          if (requestedFilter.launchedTo) searchParams.set('launchedTo', requestedFilter.launchedTo);
+        }
         if (processClientFilter !== 'all') {
           const selectedClient = clients.find(client => client.id === processClientFilter);
           searchParams.set('client', processClientFilter);
@@ -760,32 +872,41 @@
       let processSearchTimer = null;
       const applyServerProcessSearch = async ({ showValidation=false } = {}) => {
         const field = el('searchField').value, value = el('search').value.trim();
-        if (!field || !value) {
-          if (showValidation) return toast.warning(!field ? 'Selecione qual dado deseja pesquisar.' : 'Informe o valor a pesquisar.');
-          if (!value && serverProcessFilter) {
+        const launchedFrom = el('processLaunchedFrom').value, launchedTo = el('processLaunchedTo').value;
+        const hasPeriod = !!(launchedFrom || launchedTo);
+        if (launchedFrom && launchedTo && launchedFrom > launchedTo) {
+          if (showValidation) toast.warning('A data inicial deve ser anterior ou igual à data final.');
+          return;
+        }
+        if (!value && !hasPeriod) {
+          if (showValidation) return toast.warning('Informe um valor para pesquisar ou selecione um período.');
+          if (serverProcessFilter) {
             serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey);
             try { await refreshData(); } catch (error) { toast.error(error.message); }
           }
           return;
         }
-        serverProcessFilter = { field, value }; processFilter = null; sessionStorage.setItem(processFilterSessionKey, JSON.stringify(serverProcessFilter));
-        const filterKey = `${field}:${value}`;
+        serverProcessFilter = { field, value, launchedFrom, launchedTo }; processFilter = null; sessionStorage.setItem(processFilterSessionKey, JSON.stringify(serverProcessFilter));
+        const filterKey = `${field}:${value}:${launchedFrom}:${launchedTo}`;
         const summary = el('filterSummary'); summary.hidden = false; summary.textContent = 'Buscando processos…'; summary.setAttribute('aria-busy', 'true');
         try {
           const applied = await refreshData();
-          if (!applied || `${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}` !== filterKey) return;
-          summary.textContent = `${processPagination.total} processo(s) encontrado(s).`;
+          if (!applied || `${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` !== filterKey) return;
+          const periodText = launchedFrom || launchedTo ? ` no período selecionado` : '';
+          summary.textContent = `${processPagination.total} processo(s) encontrado(s)${periodText}.`;
         }
         catch (error) { toast.error(error.message); }
-        finally { if (`${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}` === filterKey) summary.removeAttribute('aria-busy'); }
+        finally { if (`${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` === filterKey) summary.removeAttribute('aria-busy'); }
       };
       const scheduleServerProcessSearch = () => { clearTimeout(processSearchTimer); processSearchTimer = setTimeout(() => { void applyServerProcessSearch(); }, 250); };
       el('filterBtn').onclick = () => { clearTimeout(processSearchTimer); return applyServerProcessSearch({ showValidation:true }); };
       el('search').oninput = scheduleServerProcessSearch;
       el('searchField').onchange = scheduleServerProcessSearch;
+      el('processLaunchedFrom').onchange = scheduleServerProcessSearch;
+      el('processLaunchedTo').onchange = scheduleServerProcessSearch;
       el('search').onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); clearTimeout(processSearchTimer); void applyServerProcessSearch({ showValidation:true }); } };
       el('clearFilterBtn').onclick = async () => {
-        clearTimeout(processSearchTimer); serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey); el('search').value = ''; el('searchField').selectedIndex = 0;
+        clearTimeout(processSearchTimer); serverProcessFilter = null; processFilter = null; sessionStorage.removeItem(processFilterSessionKey); el('search').value = ''; el('searchField').selectedIndex = 0; el('processLaunchedFrom').value = ''; el('processLaunchedTo').value = '';
         try { await refreshData(); } catch (error) { toast.error(error.message); }
       };
       const turnstileWidget = el('turnstileWidget');
@@ -941,6 +1062,7 @@
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;
           editingProcessId = view.id;
+          el('processWorkspaceBtn').hidden = false;
           if (isNewProcess) newProcessIdempotencyKey = null;
           if (isNewProcess) {
             // Um filtro anterior não deve esconder um processo recém-lançado.
