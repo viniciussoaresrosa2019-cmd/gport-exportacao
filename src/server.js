@@ -736,8 +736,16 @@ app.patch('/api/notifications/:id/read', authenticate, asyncRoute(async (req, re
   if (!result.rowCount) return res.status(404).json({ error:'Notificação não encontrada.' });
   res.status(204).end();
 }));
+const normalizeSearchTerm = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLocaleLowerCase('pt-BR');
+const escapeLikeTerm = value => normalizeSearchTerm(value).replace(/[\\%_]/g, match => `\\${match}`);
+const normalizedSearchExpression = expression => `regexp_replace(translate(lower(COALESCE((${expression})::text,'')), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'), '\\s+', ' ', 'g')`;
 const processSearchFields = {
-  todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,c.name,p.importer,p.invoice,p.origin_port,p.destination_port,p.vessel,u.username)",
+  todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,p.status,c.name,p.importer,p.invoice,p.due_number,p.ruc_number,p.origin_port,p.destination_port,p.vessel,p.agency,p.carrier,p.bl_type,p.freight_type,p.vgm_status,p.release_status,p.release_channel,p.container_details::text,u.username)",
   booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
   origem: 'p.origin_port', destino: 'p.destination_port', porto: "CONCAT_WS(' ',p.origin_port,p.destination_port)", navio: 'p.vessel', analista: 'u.username',
   prazo: "TO_CHAR(p.deadline,'DD/MM HH24:MI')", envio: "TO_CHAR(p.shipping_date,'DD/MM')", coleta: "TO_CHAR(p.container_collection_date,'DD/MM')",
@@ -749,28 +757,39 @@ const processSearchFields = {
 };
 
 app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
-  const term = String(req.query.search || '').trim();
+  const rawTerm = normalizeSearchTerm(req.query.search);
+  const term = escapeLikeTerm(rawTerm);
   const status = String(req.query.status || '').trim();
   const field = String(req.query.field || 'todos').trim().toLowerCase();
   const clientId = String(req.query.client || '').trim();
   const clientName = String(req.query.clientName || '').trim();
   const launchedFrom = String(req.query.launchedFrom || '').trim();
   const launchedTo = String(req.query.launchedTo || '').trim();
+  const vgmStatus = String(req.query.vgmStatus || '').trim().toLowerCase();
+  const releaseStatus = String(req.query.releaseStatus || '').trim().toLowerCase();
+  const originPort = normalizeSearchTerm(req.query.originPort);
+  const view = String(req.query.view || 'processes').trim().toLowerCase();
   const limit = Number(req.query.limit || 50);
   const offset = Number(req.query.offset || 0);
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  if (term.length > 100 || status.length > 40 || clientName.length > 200 || (launchedFrom && !datePattern.test(launchedFrom)) || (launchedTo && !datePattern.test(launchedTo)) || (launchedFrom && launchedTo && launchedFrom > launchedTo) || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
+  if (rawTerm.length > 100 || status.length > 40 || clientName.length > 200 || originPort.length > 120 || !['processes', 'vgm', 'release', 'followup'].includes(view) || !['', 'sent', 'pending'].includes(vgmStatus) || !['', 'released', 'pending'].includes(releaseStatus) || (launchedFrom && !datePattern.test(launchedFrom)) || (launchedTo && !datePattern.test(launchedTo)) || (launchedFrom && launchedTo && launchedFrom > launchedTo) || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
   const scope = '';
-  const params = [status, term, clientId, clientName, launchedFrom, launchedTo];
+  const params = [status, term, clientId, clientName, launchedFrom, launchedTo, vgmStatus, releaseStatus, originPort];
   const next = params.length + 1;
   // client_id é UUID no PostgreSQL. O parâmetro vem da URL como texto e,
   // mesmo vazio, não pode ser comparado diretamente com UUID (erro 42883).
   // NULLIF mantém o filtro opcional sem fazer coerção insegura de tipos.
   // O nome é um fallback exclusivo para processos históricos cujo client_id
   // ficou nulo, mas que ainda exibem o exportador pelo LEFT JOIN.
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${processSearchFields[field]} ILIKE '%'||$2||'%') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day'))${scope}`;
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||$2||'%' ESCAPE E'\\\\') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day')) AND ($7='' OR ($7='sent' AND p.vgm_status IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')) OR ($7='pending' AND COALESCE(p.vgm_status,'') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT'))) AND ($8='' OR ($8='released' AND p.release_status='Sim') OR ($8='pending' AND COALESCE(p.release_status,'Não')<>'Sim')) AND ($9='' OR ${normalizedSearchExpression('p.origin_port')}=$9)${scope}`;
+  const orderBy = {
+    processes:'c.name ASC,p.created_at DESC,p.id DESC',
+    vgm:'p.vgm_sent_date DESC NULLS LAST,p.created_at DESC,p.id DESC',
+    release:'p.origin_port ASC,p.release_deadline ASC NULLS LAST,p.created_at DESC,p.id DESC',
+    followup:'p.updated_at DESC,p.id DESC'
+  }[view];
   const [items, total] = await Promise.all([
-    query(`${processSelect} ${where} ORDER BY c.name ASC,p.created_at DESC,p.id DESC LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
+    query(`${processSelect} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
     query(`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`, params)
   ]);
   res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });
@@ -1279,6 +1298,9 @@ const ensureProcessFields = async () => {
   await query('CREATE INDEX IF NOT EXISTS processes_analyst_created_at_idx ON processes(analyst_id, created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_client_created_at_idx ON processes(client_id, created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_vgm_status_idx ON processes(vgm_status)');
+  await query('CREATE INDEX IF NOT EXISTS processes_vgm_sent_date_idx ON processes(vgm_sent_date DESC)');
+  await query('CREATE INDEX IF NOT EXISTS processes_release_origin_deadline_idx ON processes(origin_port, release_deadline ASC)');
+  await query('CREATE INDEX IF NOT EXISTS processes_updated_at_idx ON processes(updated_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS audit_log_entity_created_at_idx ON audit_log(entity, created_at DESC)');
   // Caixa de notificações persistente e por usuário. A chave de deduplicação
   // impede que o mesmo evento gere alertas repetidos em reconexões/reloads.

@@ -259,7 +259,7 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(html, /toast\.success\('Login realizado com sucesso\.'/);
   assert.match(html, /toast\.success\('Status de VGM atualizado\.'/);
   assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
-  assert.match(html, /toast\.warning\('Selecione qual dado deseja pesquisar\.'/);
+  assert.match(html, /toast\.warning\('Selecione um campo para buscar\.'/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /#toastRegion \.toast\{[\s\S]*pointer-events:none/);
   assert.match(toastCss, /\.toast__close\{[\s\S]*pointer-events:auto/);
@@ -598,7 +598,7 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(server, /const clientId = String\(req\.query\.client \|\| ''\)\.trim\(\)/);
   assert.match(server, /const clientName = String\(req\.query\.clientName \|\| ''\)\.trim\(\)/);
   assert.match(server, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
-  assert.match(server, /ORDER BY c\.name ASC,p\.created_at DESC,p\.id DESC/);
+  assert.match(server, /processes:'c\.name ASC,p\.created_at DESC,p\.id DESC'/);
   assert.match(html, /processClientFilter='all'/);
   assert.match(html, /processClientFilters/);
   assert.match(html, /client-filter-popover/);
@@ -634,12 +634,37 @@ test('pesquisas atualizam automaticamente sem exigir clique no botão Filtrar', 
   assert.match(html, /setTimeout\(\(\) => \{ void applyServerProcessSearch\(\); \}, 250\)/);
 });
 
+test('busca operacional é normalizada, paginada no servidor e cancela consultas antigas', async () => {
+  const server = await read('src/server.js');
+  const html = await readInterface();
+  assert.match(server, /const normalizeSearchTerm/);
+  assert.match(server, /const escapeLikeTerm/);
+  assert.match(server, /p\.due_number,p\.ruc_number/);
+  assert.match(server, /p\.container_details::text/);
+  assert.match(server, /vgmStatus/);
+  assert.match(server, /releaseStatus/);
+  assert.match(server, /originPort/);
+  assert.match(server, /processes_vgm_sent_date_idx/);
+  assert.match(server, /processes_release_origin_deadline_idx/);
+  assert.match(server, /req\.query\.view \|\| 'processes'/);
+  assert.match(server, /ESCAPE E'\\\\\\\\'/);
+  assert.match(html, /processSearchController\?\.abort\(\)/);
+  assert.match(html, /new AbortController\(\)/);
+  assert.match(html, /const sectionSearchStates/);
+  assert.match(html, /view:name/);
+  assert.match(html, /sectionSearchStates\.vgm\.filter = filter/);
+  assert.match(html, /sectionSearchStates\.release\.filter = filter/);
+  assert.match(html, /sectionSearchStates\.followup\.filter = followupSearchFilter/);
+  assert.match(html, /Nenhum resultado encontrado\./);
+  assert.match(html, /normalizeSearchText/);
+});
+
 test('processos históricos não somem quando referências falham e qualquer usuário autenticado pode cadastrar exportador', async () => {
   const server = await read('src/server.js');
   const html = await readInterface();
   assert.match(server, /app\.post\('\/api\/clients', authenticate, clientCreatorOnly/);
   assert.match(server, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
-  assert.match(html, /const remoteProcesses = await processRequest/);
+  assert.match(html, /remoteProcesses = await processRequest/);
   assert.match(html, /Promise\.allSettled\(\[\s*request\('\/api\/clients'\), request\('\/api\/assignees'\)/);
 });
 
@@ -679,7 +704,7 @@ test('login e carregamento inicial não aguardam dados auxiliares para exibir pr
   assert.match(server, /void clearLoginFailures\(req\)/);
   assert.match(html, /const referenceRequests = needsReferenceData/);
   assert.match(html, /Promise\.allSettled\(\[request\('\/api\/clients'\), request\('\/api\/assignees'\)\]\)/);
-  assert.match(html, /const remoteProcesses = await processRequest/);
+  assert.match(html, /remoteProcesses = await processRequest/);
   assert.match(html, /applyProcessPage\(remoteProcesses, requestedPage\)/);
   assert.match(html, /showProcessLoading\(\)/);
   assert.match(html, /void referenceRequests\.then/);

@@ -49,7 +49,7 @@
       const showVgmPage = () => {
         el('processesPage').hidden = true; el('vgmPage').hidden = false; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = true;
         el('processNav').classList.remove('active'); el('vgmNav').classList.add('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
-        renderVgm();
+        renderVgm(); void refreshSectionData('vgm', { page:sectionSearchStates.vgm.pagination.page || 1 });
       };
       const showVgmReportPage = () => {
         if (!['admin', 'vgm'].includes(currentUser?.role)) { toast.warning('Acesso restrito a VGM e Administrador.'); return; }
@@ -60,12 +60,12 @@
       const showReleasePage = () => {
         el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = false; el('followupPage').hidden = true; el('reportsPage').hidden = true;
         el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.add('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
-        renderRelease();
+        renderRelease(); void refreshSectionData('release', { page:sectionSearchStates.release.pagination.page || 1 });
       };
       const showFollowupPage = () => {
         el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = false; el('reportsPage').hidden = true;
         el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.add('active'); el('reportsNav').classList.remove('active');
-        renderFollowup();
+        renderFollowup(); void refreshSectionData('followup', { page:sectionSearchStates.followup.pagination.page || 1 });
       };
       const formatStorageSize = bytes => {
         const value = Number(bytes || 0);
@@ -121,42 +121,94 @@
         window.dispatchEvent(new Event('gport:role-tabs-updated'));
       };
       const money = p => p.valor ? `${p.moeda || 'USD'} ${Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
-      const sectionSearchOptions = '<option value="booking" selected>BOOKING</option><option value="fatura">FATURA</option><option value="due">DUE</option><option value="navio">NAVIO</option><option value="agencia">AGÊNCIA</option><option value="porto">PORTO</option><option value="importador">IMPORTADOR</option>';
+      const sectionSearchOptions = '<option value="booking" selected>BOOKING</option><option value="todos">TODOS OS DADOS</option><option value="fatura">FATURA</option><option value="due">DU-E</option><option value="navio">NAVIO</option><option value="agencia">AGÊNCIA</option><option value="porto">PORTO</option><option value="importador">IMPORTADOR</option><option value="exportador">EXPORTADOR</option><option value="containers">CONTÊINER / LACRE</option>';
+      const normalizeSearchText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt-BR');
       const matchesSectionSearch = (process, filter) => {
         if (!filter) return true;
-        const term = String(filter.value || '').trim().toLocaleLowerCase('pt-BR');
+        const term = normalizeSearchText(filter.value);
         if (!term) return true;
-        const values = filter.field === 'porto' ? [process.origem, process.destino] : [process[filter.field]];
-        return values.some(value => String(value || '').toLocaleLowerCase('pt-BR').includes(term));
+        const processValues = { booking:process.booking, fatura:process.fatura, due:process.due, navio:process.navio, agencia:process.agencia, porto:[process.origem, process.destino], importador:process.importador, exportador:process.exportador, containers:[process.containers, process.lacre], todos:[process.booking, process.numero, process.fatura, process.due, process.ruc, process.exportador, process.importador, process.navio, process.agencia, process.origem, process.destino, process.containers, process.lacre, process.tipoBL, process.tipoFrete, process.vgmStatus, process.liberacaoStatus] };
+        const values = processValues[filter.field] || [process[filter.field]];
+        return (Array.isArray(values) ? values : [values]).some(value => normalizeSearchText(value).includes(term));
       };
       const renderSectionSearch = (id, anchor, filter, onChange) => {
         let controls = el(id);
-        if (!controls) { controls = document.createElement('div'); controls.id = id; controls.className = 'toolbar'; anchor.insertAdjacentElement('afterend', controls); }
-        controls.innerHTML = `<select class="select" aria-label="Campo para filtrar">${sectionSearchOptions}</select><input class="search" placeholder="Informe o valor a pesquisar"><button class="btn" type="button">Filtrar</button><button class="btn secondary" type="button">Limpar</button>`;
+        if (!controls) {
+          controls = document.createElement('div'); controls.id = id; controls.className = 'toolbar'; anchor.insertAdjacentElement('afterend', controls);
+          controls.innerHTML = `<select class="select" aria-label="Campo para filtrar">${sectionSearchOptions}</select><input class="search" type="search" maxlength="100" autocomplete="off" placeholder="Digite para buscar…"><button class="btn" type="button">Buscar</button><button class="btn secondary" type="button">Limpar filtros</button><span class="search-feedback" aria-live="polite"></span>`;
+        }
         const [field, value, apply, clear] = controls.querySelectorAll('select,input,button');
-        if (filter) { field.value = filter.field; value.value = filter.value; }
-        const submit = () => { if (!field.value) return toast.warning('Selecione qual dado deseja pesquisar.'); if (!value.value.trim()) return toast.warning('Informe o valor a pesquisar.'); onChange({ field:field.value, value:value.value.trim() }); };
+        if (filter) { field.value = filter.field; if (document.activeElement !== value) value.value = filter.value; }
+        else if (document.activeElement !== value) { field.value = 'booking'; value.value = ''; }
+        if (controls.dataset.bound === 'true') return;
+        controls.dataset.bound = 'true';
+        const feedback = controls.querySelector('.search-feedback');
+        const submit = () => { if (!field.value) return toast.warning('Selecione um campo para buscar.'); if (!value.value.trim()) return toast.warning('Digite uma informação para buscar.'); feedback.textContent = 'Buscando…'; onChange({ field:field.value, value:value.value.trim() }); };
         let automaticSearchTimer = null;
         const runAutomaticSearch = () => {
           const term = value.value.trim();
-          if (!term) { onChange(null); return; }
+          if (!term) { feedback.textContent = ''; onChange(null); return; }
           if (!field.value) return;
-          const caret = value.selectionStart;
+          const caret = value.selectionStart; feedback.textContent = 'Buscando…';
           onChange({ field:field.value, value:term });
           requestAnimationFrame(() => { const nextInput = el(id)?.querySelector('input'); if (nextInput) { nextInput.focus(); nextInput.setSelectionRange(caret, caret); } });
         };
         const scheduleAutomaticSearch = () => { clearTimeout(automaticSearchTimer); automaticSearchTimer = setTimeout(runAutomaticSearch, 300); };
-        apply.onclick = submit; clear.onclick = () => { clearTimeout(automaticSearchTimer); onChange(null); }; value.oninput = scheduleAutomaticSearch; field.onchange = scheduleAutomaticSearch; value.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); clearTimeout(automaticSearchTimer); submit(); } };
+        apply.onclick = submit; clear.onclick = () => { clearTimeout(automaticSearchTimer); feedback.textContent = ''; onChange({ clear:true }); }; value.oninput = scheduleAutomaticSearch; field.onchange = scheduleAutomaticSearch; value.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); clearTimeout(automaticSearchTimer); submit(); } };
       };
+      // VGM, Liberação e Follow up têm a própria página de dados. Assim a
+      // busca dessas áreas não fica limitada aos 50 processos da planilha.
+      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'followup'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
+      const sectionItems = name => sectionSearchStates[name]?.items || [];
+      const renderSectionPagination = (name, anchor) => {
+        const state = sectionSearchStates[name]; if (!state || !anchor) return;
+        let navigation = el(`${name}SearchPagination`);
+        if (!navigation) { navigation = document.createElement('nav'); navigation.id = `${name}SearchPagination`; navigation.className = 'process-pagination section-pagination'; navigation.setAttribute('aria-label', `Paginação de ${name}`); anchor.insertAdjacentElement('afterend', navigation); }
+        const totalPages = Math.max(1, Math.ceil(Number(state.pagination.total || 0) / Number(state.pagination.limit || 50)));
+        if (totalPages <= 1) { navigation.hidden = true; navigation.replaceChildren(); return; }
+        navigation.hidden = false; navigation.replaceChildren();
+        const current = Number(state.pagination.page || 1);
+        const button = (label, page, disabled=false) => { const item = document.createElement('button'); item.type = 'button'; item.className = `btn secondary pagination-button${page === current ? ' active' : ''}`; item.textContent = label; item.disabled = disabled; item.setAttribute('aria-label', `Ir para a página ${page}`); if (page === current) item.setAttribute('aria-current', 'page'); item.onclick = () => { if (!disabled) void refreshSectionData(name, { page }); }; return item; };
+        navigation.append(button('‹', Math.max(1,current-1), current === 1));
+        const pages = new Set([1,totalPages,current-1,current,current+1]);
+        [...pages].filter(page => page >= 1 && page <= totalPages).sort((a,b) => a-b).forEach(page => navigation.append(button(String(page), page)));
+        navigation.append(button('›', Math.min(totalPages,current+1), current === totalPages));
+        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = `Página ${current} de ${totalPages} · ${state.pagination.total} resultado(s)`; navigation.append(info);
+      };
+      async function refreshSectionData(name, { page=1 } = {}) {
+        const state = sectionSearchStates[name]; if (!state) return false;
+        state.controller?.abort(); const controller = new AbortController(); state.controller = controller; const version = ++state.version; state.loading = true;
+        if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
+        const params = new URLSearchParams({ view:name, limit:String(state.pagination.limit || 50), offset:String((page - 1) * Number(state.pagination.limit || 50)) });
+        const filter = state.filter;
+        if (filter?.value) { params.set('field', filter.field || 'booking'); params.set('search', filter.value); }
+        if (name === 'vgm' && vgmFilter !== 'all') params.set('vgmStatus', vgmFilter);
+        if (name === 'release') { if (releaseFilter !== 'all') params.set('releaseStatus', releaseFilter); if (releasePortFilter !== 'all') params.set('originPort', releasePortFilter); }
+        try {
+          const result = await request(`/api/processes?${params}`, { signal:controller.signal });
+          if (version !== state.version) return false;
+          state.items = result.items.map(item => ({ ...toViewProcess(item), createdAt:item.created_at || '', updatedAt:item.updated_at || '', releaseDeadlineOrder:item.release_deadline || '' }));
+          state.pagination = { ...result.pagination, page }; state.loading = false;
+          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
+          return true;
+        } catch (error) {
+          if (error?.name === 'AbortError') return false;
+          state.loading = false;
+          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
+          toast.error(error.message || 'Não foi possível atualizar a busca. Tente novamente.');
+          return false;
+        } finally { if (state.controller === controller) state.controller = null; }
+      }
       const vgmStatuses = ['Enviado pelo Cliente', 'Enviando no DRAFT', 'Não', 'Sim'];
       const renderVgm = () => {
-        const canEdit = ['admin', 'vgm'].includes(currentUser?.role); const vgmSent = p => ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus); const filterSelect = el('vgmFilterSelect'); filterSelect.value = vgmFilter; filterSelect.onchange = () => { vgmFilter = filterSelect.value; renderVgm(); }; renderSectionSearch('vgmSearchControls', filterSelect.closest('.field'), vgmSearchFilter, filter => { vgmSearchFilter = filter; renderVgm(); }); const vgmProcesses = (vgmFilter === 'sent' ? data.filter(vgmSent) : vgmFilter === 'pending' ? data.filter(p => !vgmSent(p)) : data).filter(process => matchesSectionSearch(process, vgmSearchFilter)).slice().sort((a,b) => String(b.dataEnvioVgmOrdenacao || '').localeCompare(String(a.dataEnvioVgmOrdenacao || '')));
+        const canEdit = ['admin', 'vgm'].includes(currentUser?.role); const vgmSent = p => ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus); const filterSelect = el('vgmFilterSelect'); filterSelect.value = vgmFilter; filterSelect.onchange = () => { vgmFilter = filterSelect.value; void refreshSectionData('vgm'); }; renderSectionSearch('vgmSearchControls', filterSelect.closest('.field'), vgmSearchFilter, filter => { if (filter?.clear) { vgmFilter = 'all'; vgmSearchFilter = null; sectionSearchStates.vgm.filter = null; } else { vgmSearchFilter = filter; sectionSearchStates.vgm.filter = filter; } void refreshSectionData('vgm'); }); const vgmProcesses = (vgmFilter === 'sent' ? sectionItems('vgm').filter(vgmSent) : vgmFilter === 'pending' ? sectionItems('vgm').filter(p => !vgmSent(p)) : sectionItems('vgm')).filter(process => matchesSectionSearch(process, vgmSearchFilter)).slice().sort((a,b) => String(b.dataEnvioVgmOrdenacao || '').localeCompare(String(a.dataEnvioVgmOrdenacao || '')));
         const options = p => vgmStatuses.map(status => `<option ${p.vgmStatus === status ? 'selected' : ''}>${esc(status)}</option>`).join('');
         const analystOptions = p => {
           const people = [...availableAssignees, ...(p.analistaFisico && !availableAssignees.some(a => a.username === p.analistaFisico) ? [{ username:p.analistaFisico, role:'' }] : [])];
           return `<option value="">Selecione</option>${people.map(person => `<option value="${esc(person.username)}" ${p.analistaFisico === person.username ? 'selected' : ''}>${esc(person.username)}</option>`).join('')}`;
         };
-        el('vgmList').innerHTML = vgmProcesses.length ? `<div class="vgm-board" role="list" aria-label="Processos para controle de VGM">${vgmProcesses.map(p => { const key = esc(p.id); const booking = esc(p.booking || '—'); return `<article class="vgm-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="vgm-card-process"><span class="vgm-card-label">BOOKING</span><strong class="process">${booking}</strong><span class="vgm-card-exporter">${esc(p.exportador || '—')}</span><span class="vgm-card-importer">${esc(p.importador || 'Importador não informado')}</span></div><div class="vgm-card-field"><label for="vgm-status-${key}">STATUS VGM</label><select id="vgm-status-${key}" aria-label="Status VGM do booking ${booking}" data-vgm-status="${key}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></div><div class="vgm-card-field vgm-card-date"><span class="vgm-card-label">ENVIO</span><strong>${esc(p.dataEnvioVgm || 'Não enviado')}</strong></div><div class="vgm-card-field"><label for="vgm-destination-${key}">ENVIADO PARA</label><input id="vgm-destination-${key}" aria-label="VGM enviado para do booking ${booking}" data-vgm-sent-to="${key}" value="${esc(p.vgmEnviadoPara || '')}" placeholder="Informar" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field"><label for="vgm-analyst-${key}">PROCESSO FÍSICO</label><select id="vgm-analyst-${key}" aria-label="Responsável pelo processo físico do booking ${booking}" data-vgm-analyst="${key}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-schedule-${key}">AGENDAMENTO</label><input id="vgm-schedule-${key}" aria-label="Deadline de agendamento do booking ${booking}" data-vgm-release-schedule="${key}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-deadline-${key}">LIBERAÇÃO</label><input id="vgm-deadline-${key}" aria-label="Deadline de liberação do booking ${booking}" data-vgm-release-deadline="${key}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div></article>`; }).join('')}</div>` : '<div class="empty">Nenhum processo cadastrado.</div>';
+        el('vgmList').innerHTML = vgmProcesses.length ? `<div class="vgm-board" role="list" aria-label="Processos para controle de VGM">${vgmProcesses.map(p => { const key = esc(p.id); const booking = esc(p.booking || '—'); return `<article class="vgm-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="vgm-card-process"><span class="vgm-card-label">BOOKING</span><strong class="process">${booking}</strong><span class="vgm-card-exporter">${esc(p.exportador || '—')}</span><span class="vgm-card-importer">${esc(p.importador || 'Importador não informado')}</span></div><div class="vgm-card-field"><label for="vgm-status-${key}">STATUS VGM</label><select id="vgm-status-${key}" aria-label="Status VGM do booking ${booking}" data-vgm-status="${key}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></div><div class="vgm-card-field vgm-card-date"><span class="vgm-card-label">ENVIO</span><strong>${esc(p.dataEnvioVgm || 'Não enviado')}</strong></div><div class="vgm-card-field"><label for="vgm-destination-${key}">ENVIADO PARA</label><input id="vgm-destination-${key}" aria-label="VGM enviado para do booking ${booking}" data-vgm-sent-to="${key}" value="${esc(p.vgmEnviadoPara || '')}" placeholder="Informar" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field"><label for="vgm-analyst-${key}">PROCESSO FÍSICO</label><select id="vgm-analyst-${key}" aria-label="Responsável pelo processo físico do booking ${booking}" data-vgm-analyst="${key}" ${canEdit ? '' : 'disabled'}>${analystOptions(p)}</select></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-schedule-${key}">AGENDAMENTO</label><input id="vgm-schedule-${key}" aria-label="Deadline de agendamento do booking ${booking}" data-vgm-release-schedule="${key}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div><div class="vgm-card-field vgm-card-deadline"><label for="vgm-deadline-${key}">LIBERAÇÃO</label><input id="vgm-deadline-${key}" aria-label="Deadline de liberação do booking ${booking}" data-vgm-release-deadline="${key}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></div></article>`; }).join('')}</div>` : `<div class="empty">${sectionSearchStates.vgm.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
+        renderSectionPagination('vgm', el('vgmList'));
         if (canEdit) {
           el('vgmList').querySelectorAll('select[data-vgm-status],select[data-vgm-analyst]').forEach(input => input.addEventListener('change', async () => { try { await saveVgmRow(input.dataset.vgmStatus || input.dataset.vgmAnalyst); } catch (error) { toast.error(error.message); renderVgm(); } }));
           el('vgmList').querySelectorAll('[data-vgm-sent-to]').forEach(input => {
@@ -191,7 +243,7 @@
         el('clearVgmReportDay')?.addEventListener('click', () => { selectedVgmReportDay = null; renderVgmReport(); });
       };
       const renderRelease = () => {
-        const canEdit = ['admin', 'liberacao'].includes(currentUser?.role); const normalizePort = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); const deadlineOrder = p => { const stored = Date.parse(p.releaseDeadlineOrder || ''); if (Number.isFinite(stored)) return stored; const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/); if (!match) return Number.MAX_SAFE_INTEGER; const now = new Date(), date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4])); if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1); return date.getTime(); }; const filterSelect = el('releaseFilterSelect'); filterSelect.value = releaseFilter; filterSelect.onchange = () => { releaseFilter = filterSelect.value; renderRelease(); }; renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => { releaseSearchFilter = filter; renderRelease(); }); let portControls = el('releasePortFilters'); if (!portControls) { portControls = document.createElement('div'); portControls.id = 'releasePortFilters'; portControls.className = 'release-port-filters'; filterSelect.closest('.field').insertAdjacentElement('afterend', portControls); } const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos']; const knownPortMap = new Map(); [...standardPorts, ...data.map(p => String(p.origem || '').trim())].forEach(port => { const key=normalizePort(port); if(key&&!knownPortMap.has(key))knownPortMap.set(key,port); }); const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b,'pt-BR',{sensitivity:'base'})); portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`; portControls.querySelectorAll('[data-release-port]').forEach(button => button.onclick = () => { releasePortFilter = button.dataset.releasePort; renderRelease(); }); const releaseProcesses = (releaseFilter === 'released' ? data.filter(p => p.liberacaoStatus === 'Sim') : releaseFilter === 'pending' ? data.filter(p => p.liberacaoStatus !== 'Sim') : data).filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter)).filter(process => matchesSectionSearch(process, releaseSearchFilter)).slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR'));
+        const canEdit = ['admin', 'liberacao'].includes(currentUser?.role); const normalizePort = value => normalizeSearchText(value); const deadlineOrder = p => { const stored = Date.parse(p.releaseDeadlineOrder || ''); if (Number.isFinite(stored)) return stored; const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/); if (!match) return Number.MAX_SAFE_INTEGER; const now = new Date(), date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4])); if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1); return date.getTime(); }; const filterSelect = el('releaseFilterSelect'); filterSelect.value = releaseFilter; filterSelect.onchange = () => { releaseFilter = filterSelect.value; void refreshSectionData('release'); }; renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => { if (filter?.clear) { releaseFilter = 'all'; releasePortFilter = 'all'; releaseSearchFilter = null; sectionSearchStates.release.filter = null; } else { releaseSearchFilter = filter; sectionSearchStates.release.filter = filter; } void refreshSectionData('release'); }); let portControls = el('releasePortFilters'); if (!portControls) { portControls = document.createElement('div'); portControls.id = 'releasePortFilters'; portControls.className = 'release-port-filters'; filterSelect.closest('.field').insertAdjacentElement('afterend', portControls); } const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos']; const knownPortMap = new Map(); [...standardPorts, ...sectionItems('release').map(p => String(p.origem || '').trim())].forEach(port => { const key=normalizePort(port); if(key&&!knownPortMap.has(key))knownPortMap.set(key,port); }); const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b,'pt-BR',{sensitivity:'base'})); portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`; portControls.querySelectorAll('[data-release-port]').forEach(button => button.onclick = () => { releasePortFilter = button.dataset.releasePort; void refreshSectionData('release'); }); const releaseProcesses = (releaseFilter === 'released' ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim') : releaseFilter === 'pending' ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim') : sectionItems('release')).filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter)).filter(process => matchesSectionSearch(process, releaseSearchFilter)).slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR'));
         const options = p => ['Não', 'Sim'].map(status => `<option ${p.liberacaoStatus === status ? 'selected' : ''}>${status}</option>`).join('');
         const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
         // A liberação é organizada primeiro por porto e, dentro de cada grupo,
@@ -206,7 +258,8 @@
         });
         const releaseRow = p => `<tr class="process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(p.origem || '—')}</td><td><input data-release-vessel="${p.id}" value="${esc(p.navio || '')}" ${canEdit ? '' : 'readonly'}></td><td><input data-release-schedule="${p.id}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><input data-release-deadline="${p.id}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><select data-release-channel="${p.id}" ${canEdit ? '' : 'disabled'}>${channels(p)}</select></td><td><select data-release-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td><input data-release-date="${p.id}" value="${esc(p.dataLiberacao || '')}" placeholder="dd/mm" ${canEdit ? '' : 'readonly'}></td></tr>`;
         const releaseTable = processes => `<table class="release-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>PORTO DE ORIGEM</th><th>NAVIO</th><th>AGENDAMENTO</th><th>DEADLINE DE LIBERAÇÃO</th><th>CANAL</th><th>LIBERADO?</th><th>DATA DE LIBERAÇÃO</th></tr></thead><tbody>${processes.slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR')).map(releaseRow).join('')}</tbody></table>`;
-        el('releaseList').innerHTML = releaseProcesses.length ? `<div class="release-groups" role="list">${[...releaseGroups.values()].sort((a,b) => a.port.localeCompare(b.port,'pt-BR',{sensitivity:'base'})).map(group => `<section class="release-port-group" role="listitem"><header><div><span>PORTO DE ORIGEM</span><h2>${esc(group.port)}</h2></div><strong>${group.processes.length} processo${group.processes.length === 1 ? '' : 's'}</strong></header>${releaseTable(group.processes)}</section>`).join('')}</div>` : '<div class="empty">Nenhum processo cadastrado.</div>';
+        el('releaseList').innerHTML = releaseProcesses.length ? `<div class="release-groups" role="list">${[...releaseGroups.values()].sort((a,b) => a.port.localeCompare(b.port,'pt-BR',{sensitivity:'base'})).map(group => `<section class="release-port-group" role="listitem"><header><div><span>PORTO DE ORIGEM</span><h2>${esc(group.port)}</h2></div><strong>${group.processes.length} processo${group.processes.length === 1 ? '' : 's'}</strong></header>${releaseTable(group.processes)}</section>`).join('')}</div>` : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
+        renderSectionPagination('release', el('releaseList'));
         const releaseLabels = ['BOOKING','EXPORTADOR / IMPORTADOR','PORTO DE ORIGEM','NAVIO','AGENDAMENTO','DEADLINE DE LIBERAÇÃO','CANAL','LIBERADO?','DATA DE LIBERAÇÃO'];
         el('releaseList').querySelectorAll('tbody tr').forEach(row => row.querySelectorAll('td').forEach((cell, index) => { cell.dataset.label = releaseLabels[index] || ''; }));
         if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
@@ -223,8 +276,9 @@
         }
       };
       const renderFollowup = () => {
-        renderSectionSearch('followupSearchControls', document.querySelector('#followupPage .intro'), followupSearchFilter, filter => { followupSearchFilter = filter; renderFollowup(); }); const followupProcesses = data.filter(process => matchesSectionSearch(process, followupSearchFilter));
-        el('followupPdfList').innerHTML = followupProcesses.length ? `<div class="followup-board" role="list">${followupProcesses.map(p => `<article class="followup-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="followup-card__process"><span>BOOKING</span><strong>${esc(p.booking || '—')}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="followup-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="followup-card__meta"><span>NAVIO</span><strong>${esc(p.navio || '—')}</strong></div><div class="followup-card__meta"><span>ANALISTA</span><strong>${esc(p.analista || '—')}</strong></div><div class="followup-card__actions"><button class="btn secondary followup-history" data-followup-history="${p.id}" aria-label="Ver histórico do booking ${esc(p.booking || 'sem booking')}">Histórico</button><button class="btn secondary followup-pdf" data-followup-pdf="${p.id}" aria-label="Gerar PDF do histórico do booking ${esc(p.booking || 'sem booking')}">PDF</button></div></article>`).join('')}</div>` : '<div class="empty">Nenhum processo encontrado.</div>';
+        renderSectionSearch('followupSearchControls', document.querySelector('#followupPage .intro'), followupSearchFilter, filter => { followupSearchFilter = filter?.clear ? null : filter; sectionSearchStates.followup.filter = followupSearchFilter; void refreshSectionData('followup'); }); const followupProcesses = sectionItems('followup').filter(process => matchesSectionSearch(process, followupSearchFilter));
+        el('followupPdfList').innerHTML = followupProcesses.length ? `<div class="followup-board" role="list">${followupProcesses.map(p => `<article class="followup-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="followup-card__process"><span>BOOKING</span><strong>${esc(p.booking || '—')}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="followup-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="followup-card__meta"><span>NAVIO</span><strong>${esc(p.navio || '—')}</strong></div><div class="followup-card__meta"><span>ANALISTA</span><strong>${esc(p.analista || '—')}</strong></div><div class="followup-card__actions"><button class="btn secondary followup-history" data-followup-history="${p.id}" aria-label="Ver histórico do booking ${esc(p.booking || 'sem booking')}">Histórico</button><button class="btn secondary followup-pdf" data-followup-pdf="${p.id}" aria-label="Gerar PDF do histórico do booking ${esc(p.booking || 'sem booking')}">PDF</button></div></article>`).join('')}</div>` : `<div class="empty">${sectionSearchStates.followup.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
+        renderSectionPagination('followup', el('followupPdfList'));
       };
       const historyLabel = item => {
         let details = item.details || {}; try { details = typeof details === 'string' ? JSON.parse(details) : details; } catch { details = {}; }
@@ -774,6 +828,7 @@
       // Cada pesquisa recebe uma versão. Caso uma busca antiga termine depois
       // da mais nova, a resposta antiga é descartada e não substitui a lista.
       let processRefreshVersion = 0;
+      let processSearchController = null;
       try {
         const savedFilter = JSON.parse(sessionStorage.getItem(processFilterSessionKey) || 'null');
         if (savedFilter?.field && (savedFilter?.value || savedFilter?.launchedFrom || savedFilter?.launchedTo)) {
@@ -850,6 +905,9 @@
       };
       async function refreshData({ page=null, refreshReferenceData=false } = {}) {
         const refreshVersion = ++processRefreshVersion;
+        processSearchController?.abort();
+        const controller = new AbortController();
+        processSearchController = controller;
         const requestedFilter = serverProcessFilter ? { ...serverProcessFilter } : null;
         const scope = JSON.stringify({ filter:requestedFilter, client:processClientFilter });
         const requestedPage = page || (scope !== lastProcessListScope ? 1 : Math.max(1, Number(processPagination.page || 1)));
@@ -867,7 +925,7 @@
           if (selectedClient?.nome) searchParams.set('clientName', selectedClient.nome);
         }
         const needsReferenceData = refreshReferenceData || Date.now() >= referenceDataCache.expiresAt;
-        const processRequest = request(`/api/processes?${searchParams}`);
+        const processRequest = request(`/api/processes?${searchParams}`, { signal:controller.signal });
         // Clientes e responsáveis não são necessários para exibir a planilha.
         // As três requisições começam juntas; a lista fica disponível assim que
         // os processos chegam, mesmo se referências demorarem ou falharem.
@@ -875,7 +933,13 @@
           ? (referenceDataLoadPromise ||= Promise.allSettled([request('/api/clients'), request('/api/assignees')]))
           : null;
         if (!data.length) showProcessLoading();
-        const remoteProcesses = await processRequest;
+        let remoteProcesses;
+        try { remoteProcesses = await processRequest; }
+        catch (error) {
+          if (error?.name === 'AbortError') return false;
+          throw error;
+        }
+        finally { if (processSearchController === controller) processSearchController = null; }
         if (refreshVersion !== processRefreshVersion) return false;
         lastProcessListScope = scope;
         applyProcessPage(remoteProcesses, requestedPage);
@@ -911,9 +975,9 @@
         // Não substitua o input enquanto alguém está digitando. O evento será
         // refletido quando a edição for concluída ou na próxima sincronização.
         const editingVgmDestination = document.activeElement?.matches?.('[data-vgm-sent-to]');
-        if (!el('vgmPage').hidden && !editingVgmDestination) renderVgm();
-        if (!el('releasePage').hidden) renderRelease();
-        if (!el('followupPage').hidden) renderFollowup();
+        if (!el('vgmPage').hidden && !editingVgmDestination) void refreshSectionData('vgm', { page:sectionSearchStates.vgm.pagination.page || 1 });
+        if (!el('releasePage').hidden) void refreshSectionData('release', { page:sectionSearchStates.release.pagination.page || 1 });
+        if (!el('followupPage').hidden) void refreshSectionData('followup', { page:sectionSearchStates.followup.pagination.page || 1 });
       };
       const stopRealtimeFallback = () => {
         clearTimeout(realtimeFailureTimer); realtimeFailureTimer = null;
@@ -1067,10 +1131,12 @@
       };
       // Busca global reaproveita a pesquisa paginada no servidor: não baixa a
       // base inteira e mantém os mesmos resultados da lista principal.
-      if (!el('searchField').querySelector('option[value="todos"]')) {
-        const option = new Option('TODOS OS DADOS', 'todos');
-        el('searchField').add(option, 1);
-      }
+      const mainSearchFieldOptions = [['todos','TODOS OS DADOS'], ['exportador','EXPORTADOR'], ['containers','CONTÊINER / LACRE'], ['tipobl','TIPO DE BL'], ['tipofrete','TIPO DE FRETE']];
+      mainSearchFieldOptions.forEach(([value, label], index) => {
+        if (!el('searchField').querySelector(`option[value="${value}"]`)) el('searchField').add(new Option(label, value), index === 0 ? 1 : undefined);
+      });
+      el('search').type = 'search'; el('search').maxLength = 100; el('search').autocomplete = 'off'; el('search').placeholder = 'Digite para buscar…';
+      el('filterBtn').textContent = 'Buscar'; el('clearFilterBtn').textContent = 'Limpar busca';
       const closeGlobalSearch = () => el('globalSearchDialog').close();
       const openGlobalSearch = () => {
         el('globalSearchInput').value = el('search').value;
