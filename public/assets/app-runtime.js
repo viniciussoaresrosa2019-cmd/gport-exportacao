@@ -738,18 +738,36 @@
       el('newBtn').onclick = async () => {
         if (await ensureSessionActive({ force:true })) open(null);
       };
-      let processPagination = { offset:0, limit:50, hasMore:false, total:0 };
-      const updateLoadMoreButton = () => {
-        let button = el('loadMoreProcesses');
-        if (!button) {
-          button = document.createElement('button'); button.id = 'loadMoreProcesses'; button.type = 'button';
-          button.className = 'btn secondary load-more-processes';
-          const panel = document.querySelector('#processPage .panel:last-of-type');
-          if (panel) panel.after(button);
-          button.onclick = () => refreshData({ append:true }).catch(error => toast.error(error.message));
+      let processPagination = { offset:0, limit:50, hasMore:false, total:0, page:1 };
+      let lastProcessListScope = '';
+      const renderProcessPagination = () => {
+        let navigation = el('processPagination');
+        if (!navigation) {
+          navigation = document.createElement('nav'); navigation.id = 'processPagination'; navigation.className = 'process-pagination'; navigation.setAttribute('aria-label', 'Paginação de processos');
+          const panel = document.querySelector('#processesPage .process-board');
+          if (panel) panel.after(navigation);
         }
-        button.hidden = !processPagination.hasMore;
-        button.textContent = `Carregar mais processos (${data.length} de ${processPagination.total})`;
+        const totalPages = Math.max(1, Math.ceil(Number(processPagination.total || 0) / Number(processPagination.limit || 50)));
+        const current = Math.min(Math.max(1, Number(processPagination.page || 1)), totalPages);
+        if (totalPages <= 1) { navigation.hidden = true; navigation.replaceChildren(); return; }
+        navigation.hidden = false; navigation.replaceChildren();
+        const createButton = (label, page, { currentPage=false, disabled=false } = {}) => {
+          const button = document.createElement('button'); button.type = 'button'; button.className = `btn secondary pagination-button${currentPage ? ' active' : ''}`;
+          button.textContent = label; button.disabled = disabled; button.setAttribute('aria-label', `Ir para ${label === '‹' ? 'a página anterior' : label === '›' ? 'a próxima página' : `a página ${page}`}`);
+          if (currentPage) button.setAttribute('aria-current', 'page');
+          button.onclick = () => { if (!disabled) void refreshData({ page }).then(() => navigation.scrollIntoView({ block:'nearest' })).catch(error => toast.error(error.message)); };
+          return button;
+        };
+        navigation.appendChild(createButton('‹', current - 1, { disabled:current === 1 }));
+        const visiblePages = new Set([1, totalPages]);
+        for (let page = Math.max(1, current - 2); page <= Math.min(totalPages, current + 2); page += 1) visiblePages.add(page);
+        let previous = 0;
+        [...visiblePages].sort((a, b) => a - b).forEach(page => {
+          if (page - previous > 1) { const gap = document.createElement('span'); gap.className = 'pagination-gap'; gap.textContent = '…'; navigation.appendChild(gap); }
+          navigation.appendChild(createButton(String(page), page, { currentPage:page === current })); previous = page;
+        });
+        navigation.appendChild(createButton('›', current + 1, { disabled:current === totalPages }));
+        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = `Página ${current} de ${totalPages}`; navigation.appendChild(info);
       };
       const processFilterSessionKey = 'gport:process-filter:v1';
       let serverProcessFilter = null;
@@ -769,12 +787,15 @@
       const renderProcessPage = () => {
         render();
         renderClients();
-        updateLoadMoreButton();
+        renderProcessPagination();
         const summary = el('processListMeta');
         if (summary) {
           const total = Number(processPagination.total || data.length);
-          summary.textContent = `${total} processo${total === 1 ? '' : 's'} na visualização`;
+          const totalPages = Math.max(1, Math.ceil(total / Number(processPagination.limit || 50)));
+          summary.textContent = `${total} processo${total === 1 ? '' : 's'} na visualização · página ${processPagination.page || 1} de ${totalPages}`;
         }
+        const totalProcesses = el('totalProcesses');
+        if (totalProcesses) totalProcesses.textContent = String(Number(processPagination.total || data.length));
       };
       // O cartão mostra somente os pré-lançamentos pessoais ainda pendentes.
       // Processos definitivos não entram neste indicador operacional.
@@ -811,15 +832,15 @@
         el('totalProcesses').textContent = '—';
         el('dueSoon').textContent = '—';
       };
-      const applyProcessPage = (remoteProcesses, append) => {
+      const applyProcessPage = (remoteProcesses, pageNumber = 1) => {
         const page = Array.isArray(remoteProcesses)
           ? { items:remoteProcesses, pagination:{ limit:50, offset:0, total:remoteProcesses.length, hasMore:false } }
           : remoteProcesses;
         const viewItems = page.items.map(item => ({ ...toViewProcess(item), createdAt:item.created_at || '', updatedAt:item.updated_at || '', releaseDeadlineOrder:item.release_deadline || '' }));
-        data = append ? [...data, ...viewItems] : viewItems;
+        data = viewItems;
         el('empty')?.classList.remove('is-skeleton');
         el('empty')?.removeAttribute('aria-busy');
-        processPagination = page.pagination;
+        processPagination = { ...page.pagination, page:pageNumber };
         renderProcessPage();
         void refreshPersonalDeadlineStat();
         if (!data.length) {
@@ -827,11 +848,13 @@
           el('empty').hidden = false;
         }
       };
-      async function refreshData({ append=false, refreshReferenceData=false } = {}) {
+      async function refreshData({ page=null, refreshReferenceData=false } = {}) {
         const refreshVersion = ++processRefreshVersion;
-        const offset = append ? processPagination.offset + processPagination.limit : 0;
-        const searchParams = new URLSearchParams({ limit:'50', offset:String(offset) });
         const requestedFilter = serverProcessFilter ? { ...serverProcessFilter } : null;
+        const scope = JSON.stringify({ filter:requestedFilter, client:processClientFilter });
+        const requestedPage = page || (scope !== lastProcessListScope ? 1 : Math.max(1, Number(processPagination.page || 1)));
+        const offset = (requestedPage - 1) * Number(processPagination.limit || 50);
+        const searchParams = new URLSearchParams({ limit:String(processPagination.limit || 50), offset:String(offset) });
         if (requestedFilter) {
           searchParams.set('field', requestedFilter.field);
           searchParams.set('search', requestedFilter.value || '');
@@ -851,10 +874,11 @@
         const referenceRequests = needsReferenceData
           ? (referenceDataLoadPromise ||= Promise.allSettled([request('/api/clients'), request('/api/assignees')]))
           : null;
-        if (!append && !data.length) showProcessLoading();
+        if (!data.length) showProcessLoading();
         const remoteProcesses = await processRequest;
         if (refreshVersion !== processRefreshVersion) return false;
-        applyProcessPage(remoteProcesses, append);
+        lastProcessListScope = scope;
+        applyProcessPage(remoteProcesses, requestedPage);
         if (needsReferenceData) {
           // Dependências de formulário seguem em segundo plano. Assim, login,
           // paginação e filtros não aguardam clientes/responsáveis para terminar.
@@ -883,7 +907,7 @@
         if (duration) realtimeNoticeTimer = setTimeout(() => { notice.hidden = true; }, duration);
       };
       const renderAffectedViews = () => {
-        render(); updateLoadMoreButton();
+        render(); renderProcessPagination();
         // Não substitua o input enquanto alguém está digitando. O evento será
         // refletido quando a edição for concluída ou na próxima sincronização.
         const editingVgmDestination = document.activeElement?.matches?.('[data-vgm-sent-to]');

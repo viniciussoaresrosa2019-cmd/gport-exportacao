@@ -666,9 +666,11 @@ test('edição preserva o identificador técnico único do processo', async () =
 test('interface reutiliza dados de referência entre paginação e filtros', async () => {
   const html = await readInterface();
   assert.match(html, /const referenceDataTtlMs = 5 \* 60 \* 1000/);
-  assert.match(html, /refreshData\(\{ append=false, refreshReferenceData=false \} = \{\}\)/);
+  assert.match(html, /refreshData\(\{ page=null, refreshReferenceData=false \} = \{\}\)/);
   assert.match(html, /const needsReferenceData = refreshReferenceData \|\| Date\.now\(\) >= referenceDataCache\.expiresAt/);
   assert.match(html, /refreshData\(\{ refreshReferenceData:true \}\)/);
+  assert.match(html, /Página \$\{current\} de \$\{totalPages\}/);
+  assert.match(html, /refreshData\(\{ page \}\)/);
 });
 
 test('login e carregamento inicial não aguardam dados auxiliares para exibir processos', async () => {
@@ -678,7 +680,7 @@ test('login e carregamento inicial não aguardam dados auxiliares para exibir pr
   assert.match(html, /const referenceRequests = needsReferenceData/);
   assert.match(html, /Promise\.allSettled\(\[request\('\/api\/clients'\), request\('\/api\/assignees'\)\]\)/);
   assert.match(html, /const remoteProcesses = await processRequest/);
-  assert.match(html, /applyProcessPage\(remoteProcesses, append\)/);
+  assert.match(html, /applyProcessPage\(remoteProcesses, requestedPage\)/);
   assert.match(html, /showProcessLoading\(\)/);
   assert.match(html, /void referenceRequests\.then/);
 });
