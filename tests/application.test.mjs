@@ -791,7 +791,7 @@ test('sessão ativa é renovada e expiração permite novo login sem recarregar 
   assert.doesNotMatch(runtime, /requireSessionLogin[\s\S]{0,700}location\.reload/);
 });
 
-test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos controlados', async () => {
+test('planejamento usa APIs autenticadas e o acompanhamento detalhado não aparece no fluxo', async () => {
   const server = await read('src/server.js');
   const runtime = await read('public/assets/app-runtime.js');
   const html = await read('public/index.html');
@@ -809,7 +809,7 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(html, /id="prelaunchForm"/);
   assert.match(html, /id="prelaunchClient"/);
   assert.match(html, /id="calendarDayDetails"/);
-  assert.match(html, /id="processWorkspaceDialog"/);
+  assert.doesNotMatch(html, /id="processWorkspaceDialog"|id="processWorkspaceBtn"/);
   assert.match(runtime, /const openCalendar/);
   assert.match(runtime, /data-calendar-prelaunch/);
   assert.match(runtime, /Array\.isArray\(calendar\) \? calendar/);
@@ -831,9 +831,7 @@ test('planejamento e acompanhamento do processo usam APIs autenticadas e anexos 
   assert.match(runtime, /openCalendar\(\{ returning:true \}\)/);
   assert.match(runtime, /const prelaunchForm = event\.currentTarget/);
   assert.match(runtime, /prelaunchForm\.reset\(\)/);
-  assert.match(runtime, /const openWorkspace/);
-  assert.match(runtime, /readFileAsBase64/);
-  assert.ok(runtime.includes('attachments/${button.dataset.attachmentDownload}/download'));
+  assert.match(runtime, /processWorkspaceBtn'\)\?\.setAttribute\('hidden', ''\)/);
 });
 
 test('interface de VGM e Liberação usa somente ações individuais', async () => {

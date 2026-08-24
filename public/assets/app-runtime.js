@@ -493,7 +493,8 @@
         // A capa só pode ser emitida a partir de um processo persistido. O
         // lançamento novo deve ser salvo antes de disponibilizar esta ação.
         el('printBtn').hidden = !p;
-        el('processWorkspaceBtn').hidden = !p;
+        // O acompanhamento detalhado foi retirado do fluxo operacional.
+        el('processWorkspaceBtn')?.setAttribute('hidden', '');
         newProcessIdempotencyKey = p ? null : crypto.randomUUID();
         if (!p) {
           // Não reutilize nenhum identificador do último processo salvo. O
@@ -652,6 +653,9 @@
         } catch (error) { toast.error(error.message); }
       };
 
+      // Mantido de forma condicional para não invalidar registros antigos;
+      // a interface de acompanhamento foi retirada do formulário.
+      if (el('processWorkspaceBtn')) {
       // Espaço de trabalho do processo: registros curtos, checklist e anexos
       // controlados ficam fora do formulário principal para evitar poluição.
       const workspace = { processId:null, checklist:[], comments:[], attachments:[] };
@@ -687,6 +691,7 @@
       el('commentForm').onsubmit = async event => { event.preventDefault(); const body = el('commentText').value.trim(); if (!body) return; try { await request(`/api/processes/${workspace.processId}/comments`, { method:'POST', body:JSON.stringify({ body }) }); event.currentTarget.reset(); await loadWorkspace(); } catch (error) { toast.error(error.message); } };
       const readFileAsBase64 = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.')); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.readAsDataURL(file); });
       el('attachmentForm').onsubmit = async event => { event.preventDefault(); const file = el('attachmentFile').files[0]; if (!file) return toast.warning('Selecione um arquivo para enviar.'); if (file.size > 4 * 1024 * 1024) return toast.warning('O anexo deve ter no máximo 4 MB.'); try { const contentBase64 = await readFileAsBase64(file); await request(`/api/processes/${workspace.processId}/attachments`, { method:'POST', body:JSON.stringify({ fileName:file.name, mimeType:file.type, contentBase64 }) }); event.currentTarget.reset(); await loadWorkspace(); toast.success('Anexo enviado com sucesso.'); } catch (error) { toast.error(error.message); } };
+      }
       // Garante que o botão sempre use a abertura reforçada acima, mesmo se
       // outro script tiver registrado um manipulador anterior.
       el('newBtn').onclick = async () => {
@@ -1148,7 +1153,7 @@
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;
           editingProcessId = view.id;
-          el('processWorkspaceBtn').hidden = false;
+          el('processWorkspaceBtn')?.setAttribute('hidden', '');
           if (isNewProcess) newProcessIdempotencyKey = null;
           // Um pré-lançamento só é concluído após o processo definitivo ser
           // persistido. Em falha de rede, ele continua na agenda do analista.
