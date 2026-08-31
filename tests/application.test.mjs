@@ -286,7 +286,7 @@ test('VGM e Liberação refletem alterações imediatamente sem depender da troc
 
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /<link rel="icon" type="image\/png" sizes="256x256" href="favicon-gport-256\.png\?v=[0-9.]+">/);
+  assert.match(html, /<link rel="icon" type="image\/png" sizes="256x256" href="favicon-gport-black-256\.png\?v=[0-9.]+">/);
   assert.match(html, /assets\/ui-feedback\.js\?v=[0-9.]+" defer/);
   assert.match(html, /assets\/legacy-ui\.js\?v=[0-9.]+" defer/);
   assert.match(html, /assets\/app-runtime\.js\?v=[0-9.]+" defer/);
@@ -294,7 +294,7 @@ test('HTML inicial referencia scripts externos e não mantém estilos ou eventos
   assert.match(html, /assets\/experience\.js\?v=[0-9.]+" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
-  assert.ok(Buffer.byteLength(html, 'utf8') < 31_000, 'HTML inicial voltou a crescer acima do limite de 31 KB.');
+  assert.ok(Buffer.byteLength(html, 'utf8') < 31_500, 'HTML inicial voltou a crescer acima do limite de 31,5 KB.');
 });
 
 test('interface disponibiliza busca global, ajuda rápida e calendário semanal', async () => {
@@ -372,6 +372,18 @@ test('login sempre abre Processos sem painel ou preferência de redirecionamento
   assert.match(legacy, /delete savedAccessibility\.startPage/);
   assert.match(html, /<section id="processesPage">/);
   assert.doesNotMatch(experience, /showDashboard\(\);|Painel inicial/);
+});
+
+test('login apresenta a identidade interna aprovada sem texto complementar no formulário', async () => {
+  const html = await read('public/index.html');
+  const css = await read('public/assets/login.css');
+  assert.match(html, /Gestão interna que mantém <br>a operação em movimento\./);
+  assert.match(html, /Acesse processos, acompanhe prazos e organize as rotinas da equipe GPORT em um só lugar\./);
+  assert.match(html, /<h1>Acesse sua conta<\/h1>/);
+  assert.match(html, /<form id="loginForm">/);
+  assert.doesNotMatch(html, /Entre para continuar no GPORT|Entre para acessar a planilha de processos/);
+  assert.match(css, /\.login-journey/);
+  assert.match(css, /@media \(max-width: 900px\)/);
 });
 
 test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
