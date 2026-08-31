@@ -67,7 +67,7 @@ body:has(#loginDialog[open]) { overflow: hidden; }
   right: -1px;
   bottom: clamp(16px, 2.6vh, 28px);
   left: 0;
-  height: min(31vh, 300px);
+  height: min(42vh, 380px);
   background: bottom center / contain no-repeat url("../login-harbor.svg");
   opacity: .7;
   pointer-events: none;
@@ -343,7 +343,7 @@ body.theme-dark #loginDialog .login-security { color: #6b7c90; }
   .login-welcome-content > p { max-width: 620px; }
   .login-journey { max-width: 610px; margin-top: 30px; }
   .login-capabilities { margin-top: 27px; }
-  .login-welcome::before { right: -32%; bottom: 12px; left: 43%; height: 190px; opacity: .45; }
+  .login-welcome::before { right: -32%; bottom: 12px; left: 36%; height: 220px; opacity: .45; }
   .login-panel { min-height: auto; padding: 36px 22px 52px; }
   .login-card { width: min(100%, 570px); }
 }
@@ -370,7 +370,7 @@ body.theme-dark #loginDialog .login-security { color: #6b7c90; }
   .login-welcome-content > p { margin-top: 16px; }
   .login-journey { margin-top: 27px; }
   .login-capabilities { margin-top: 24px; }
-  .login-welcome::before { bottom: 10px; height: 175px; }
+  .login-welcome::before { bottom: 8px; height: 230px; }
   .login-card { padding-top: 38px; padding-bottom: 34px; }
   .login-card .grid { margin-top: 32px; gap: 17px; }
   .login-card input { height: 51px; }

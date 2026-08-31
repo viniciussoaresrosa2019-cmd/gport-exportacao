@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-31T04:13:40.532Z",
+  "generatedAt": "2026-08-31T04:25:33.695Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 323899,
-    "gzipBytes": 86364,
+    "bytes": 323898,
+    "gzipBytes": 86368,
     "files": [
       {
         "file": "accessibility.js",
@@ -43,8 +43,8 @@
       },
       {
         "file": "login.css",
-        "bytes": 10393,
-        "gzipBytes": 2968
+        "bytes": 10392,
+        "gzipBytes": 2972
       },
       {
         "file": "module-loader.js",
@@ -74,7 +74,7 @@
     ]
   },
   "output": {
-    "bytes": 241936,
+    "bytes": 241935,
     "gzipBytes": 70108,
     "files": [
       {
@@ -113,8 +113,8 @@
         "gzipBytes": 12317
       },
       {
-        "file": "login-DC038FE9EA9F.css",
-        "bytes": 8572,
+        "file": "login-DDE4B7A490C6.css",
+        "bytes": 8571,
         "gzipBytes": 2699
       },
       {
@@ -145,9 +145,9 @@
     ]
   },
   "initial": {
-    "sourceBytes": 318927,
-    "sourceGzipBytes": 84570,
-    "outputBytes": 238762,
+    "sourceBytes": 318926,
+    "sourceGzipBytes": 84574,
+    "outputBytes": 238761,
     "outputGzipBytes": 68846,
     "deferred": [
       "reports.js"
