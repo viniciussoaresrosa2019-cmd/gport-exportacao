@@ -21,7 +21,6 @@
       makeMapaSealOptional();
       const pendingToast = sessionStorage.getItem('gport_toast_notice');
       if (pendingToast) { sessionStorage.removeItem('gport_toast_notice'); window.setTimeout(() => toast.info(pendingToast), 50); }
-      const csrfToken = () => document.cookie.split('; ').find(value => value.startsWith('gport_csrf='))?.split('=').slice(1).join('') || '';
       let availableAssignees = [];
       let realtimeSource = null;
       let realtimeRefreshTimer = null;
@@ -43,28 +42,23 @@
         autoSaveTimers.set(key, setTimeout(async () => { try { await task(); } catch (error) { toast.error(error.message); } }, 350));
       };
       const showProcessesPage = () => {
-        el('processesPage').hidden = false; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = true;
-        el('processNav').classList.add('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
+        window.gportPageNavigation.activate('processes');
       };
       const showVgmPage = () => {
-        el('processesPage').hidden = true; el('vgmPage').hidden = false; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = true;
-        el('processNav').classList.remove('active'); el('vgmNav').classList.add('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
+        window.gportPageNavigation.activate('vgm');
         renderVgm(); void refreshSectionData('vgm', { page:sectionSearchStates.vgm.pagination.page || 1 });
       };
       const showVgmReportPage = () => {
         if (!['admin', 'vgm'].includes(currentUser?.role)) { toast.warning('Acesso restrito a VGM e Administrador.'); return; }
-        el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = false; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = true;
-        el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.add('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
+        window.gportPageNavigation.activate('vgmReport');
         renderVgmReport();
       };
       const showReleasePage = () => {
-        el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = false; el('followupPage').hidden = true; el('reportsPage').hidden = true;
-        el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.add('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.remove('active');
+        window.gportPageNavigation.activate('release');
         renderRelease(); void refreshSectionData('release', { page:sectionSearchStates.release.pagination.page || 1 });
       };
       const showFollowupPage = () => {
-        el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = false; el('reportsPage').hidden = true;
-        el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.add('active'); el('reportsNav').classList.remove('active');
+        window.gportPageNavigation.activate('followup');
         renderFollowup(); void refreshSectionData('followup', { page:sectionSearchStates.followup.pagination.page || 1 });
       };
       const formatStorageSize = bytes => {
@@ -99,11 +93,19 @@
           el('databaseUsageMeasuredAt').textContent = 'Os demais relatórios continuam disponíveis.';
         }
       };
-      const showReportsPage = () => {
+      const showReportsPage = async () => {
         if (currentUser?.role !== 'admin') { toast.warning('Apenas administradores podem acessar os relatórios.'); return; }
-        el('processesPage').hidden = true; el('vgmPage').hidden = true; el('vgmReportPage').hidden = true; el('releasePage').hidden = true; el('followupPage').hidden = true; el('reportsPage').hidden = false;
-        el('processNav').classList.remove('active'); el('vgmNav').classList.remove('active'); el('vgmReportNav').classList.remove('active'); el('releaseNav').classList.remove('active'); el('followupNav').classList.remove('active'); el('reportsNav').classList.add('active');
-        const now = new Date(); if (!el('reportMonth').value) el('reportMonth').value = now.toISOString().slice(0,7); if (!el('reportYear').value) el('reportYear').value = now.getFullYear(); syncReportView(); void loadDatabaseUsage();
+        window.gportPageNavigation.activate('reports');
+        el('reportsPage').setAttribute('aria-busy', 'true');
+        try {
+          await window.gportModules.loadReports();
+          const now = new Date(); if (!el('reportMonth').value) el('reportMonth').value = now.toISOString().slice(0,7); if (!el('reportYear').value) el('reportYear').value = now.getFullYear(); syncReportView(); void loadDatabaseUsage();
+        } catch (error) {
+          toast.error(error.message || 'Não foi possível carregar os relatórios.');
+          showProcessesPage();
+        } finally {
+          el('reportsPage').removeAttribute('aria-busy');
+        }
       };
       window.showProcessesPage = showProcessesPage;
       window.showReportsPage = showReportsPage;
@@ -160,6 +162,75 @@
       // busca dessas áreas não fica limitada aos 50 processos da planilha.
       const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'followup'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
       const sectionItems = name => sectionSearchStates[name]?.items || [];
+      // As páginas operacionais usam listas próprias e paginadas. Atualizar
+      // somente `data` (a lista da página Processos) fazia VGM e Liberação
+      // continuarem exibindo o valor anterior até o usuário trocar de aba.
+      // Estes helpers mantêm as duas cópias sincronizadas sem recarregar a
+      // página inteira e serializam alterações rápidas do mesmo processo.
+      const sectionMutationQueues = new Map();
+      const sectionMutationVersions = new Map();
+      const localProcessMutationQuietUntil = new Map();
+      const renderSectionView = name => {
+        if (name === 'vgm') renderVgm();
+        else if (name === 'release') renderRelease();
+        else if (name === 'followup') renderFollowup();
+      };
+      const snapshotVisibleProcess = (name, id) => ({
+        section:sectionSearchStates[name]?.items?.find(item => item.id === id) || null,
+        main:data.find(item => item.id === id) || null
+      });
+      const updateVisibleProcess = (name, id, patch, { renderView=true } = {}) => {
+        const state = sectionSearchStates[name];
+        if (state?.items) state.items = state.items.map(item => item.id === id ? { ...item, ...patch } : item);
+        data = data.map(item => item.id === id ? { ...item, ...patch } : item);
+        if (renderView) renderSectionView(name);
+      };
+      const restoreVisibleProcess = (name, id, snapshot, { renderView=true } = {}) => {
+        const state = sectionSearchStates[name];
+        if (state?.items && snapshot.section) state.items = state.items.map(item => item.id === id ? snapshot.section : item);
+        if (snapshot.main) data = data.map(item => item.id === id ? snapshot.main : item);
+        if (renderView) renderSectionView(name);
+      };
+      const reconcileVisibleProcess = (name, id, updated, { renderView=true } = {}) => {
+        const current = sectionSearchStates[name]?.items?.find(item => item.id === id) || data.find(item => item.id === id) || {};
+        const view = toViewProcess({
+          ...updated,
+          exporter:current.exportador,
+          analyst:current.analista,
+          client_ovacao:current.ovacao
+        });
+        updateVisibleProcess(name, id, {
+          ...view,
+          createdAt:current.createdAt || updated.created_at || '',
+          updatedAt:updated.updated_at || current.updatedAt || '',
+          releaseDeadlineOrder:updated.release_deadline || current.releaseDeadlineOrder || ''
+        }, { renderView });
+      };
+      const beginSectionMutation = id => {
+        const version = Number(sectionMutationVersions.get(id) || 0) + 1;
+        sectionMutationVersions.set(id, version);
+        // O SSE gerado pela própria alteração não deve reconstruir o campo
+        // enquanto o usuário ainda está editando a mesma linha.
+        localProcessMutationQuietUntil.set(id, Number.POSITIVE_INFINITY);
+        return version;
+      };
+      const isLatestSectionMutation = (id, version) => sectionMutationVersions.get(id) === version;
+      const finishSectionMutation = (id, version) => {
+        if (!isLatestSectionMutation(id, version)) return;
+        const quietUntil = Date.now() + 1_500;
+        localProcessMutationQuietUntil.set(id, quietUntil);
+        setTimeout(() => {
+          if (localProcessMutationQuietUntil.get(id) === quietUntil) localProcessMutationQuietUntil.delete(id);
+        }, 1_600);
+      };
+      const enqueueProcessMutation = (id, task) => {
+        const previous = sectionMutationQueues.get(id) || Promise.resolve();
+        const queued = previous.catch(() => {}).then(task);
+        sectionMutationQueues.set(id, queued);
+        return queued.finally(() => {
+          if (sectionMutationQueues.get(id) === queued) sectionMutationQueues.delete(id);
+        });
+      };
       const renderSectionPagination = (name, anchor) => {
         const state = sectionSearchStates[name]; if (!state || !anchor) return;
         let navigation = el(`${name}SearchPagination`);
@@ -179,7 +250,7 @@
         const state = sectionSearchStates[name]; if (!state) return false;
         state.controller?.abort(); const controller = new AbortController(); state.controller = controller; const version = ++state.version; state.loading = true;
         if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
-        const params = new URLSearchParams({ view:name, limit:String(state.pagination.limit || 50), offset:String((page - 1) * Number(state.pagination.limit || 50)) });
+        const params = new URLSearchParams({ view:name, projection:name, limit:String(state.pagination.limit || 50), offset:String((page - 1) * Number(state.pagination.limit || 50)) });
         const filter = state.filter;
         if (filter?.value) { params.set('field', filter.field || 'booking'); params.set('search', filter.value); }
         if (name === 'vgm' && vgmFilter !== 'all') params.set('vgmStatus', vgmFilter);
@@ -271,7 +342,9 @@
             const schedule = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
             const deadline = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDate = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
             if ((schedule && !dateForDatabase(schedule, true)) || (deadline && !dateForDatabase(deadline, true)) || (releaseDate && !dateForDatabase(releaseDate))) return;
-            scheduleAutoSave(`release-${id}`, () => saveReleaseRow(id));
+            // O valor já está visível no próprio input. Salvar sem reconstruir
+            // a tabela mantém o foco e permite continuar digitando normalmente.
+            scheduleAutoSave(`release-${id}`, () => saveReleaseRow(id, { renderView:false }));
           }));
         }
       };
@@ -349,21 +422,10 @@
         if (!el('loginDialog').open) el('loginDialog').showModal();
         toast.warning('Sessão expirada. Entre novamente para continuar sem perder o formulário.');
       };
-      const request = async (url, options = {}) => {
-        const response = await fetch(url, {
-          ...options,
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', ...(['POST','PATCH','DELETE'].includes(options.method || 'GET') ? { 'X-CSRF-Token': csrfToken() } : {}), ...(options.headers || {}) }
-        });
-        const body = response.status === 204 ? null : await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const error = new Error(body.error || 'Não foi possível concluir a operação.');
-          error.status = response.status;
-          if (response.status === 401 && currentUser && !String(url).startsWith('/api/auth/')) requireSessionLogin();
-          throw error;
-        }
-        return body;
-      };
+      const request = window.gportApi.create({
+        isAuthenticated: () => Boolean(currentUser),
+        onUnauthorized: requireSessionLogin
+      });
       window.gportRequest = request;
       const ensureSessionActive = async ({ force = false } = {}) => {
         if (!currentUser) return false;
@@ -583,6 +645,30 @@
         form.dispatchEvent(new Event('gport:review-update'));
         form.dispatchEvent(new CustomEvent('gport:process-form-opened', { detail:{ mode:'edit' } }));
       };
+      // A listagem usa uma projeção enxuta. Edição e capa buscam o contrato
+      // completo somente quando o usuário executa a ação correspondente.
+      const loadPersistedProcess = async id => toViewProcess(await request(`/api/processes/${id}`));
+      el('rows').onclick = async event => {
+        const pdfButton = event.target.closest('[data-pdf]');
+        const row = event.target.closest('tr[data-id]');
+        const id = pdfButton?.dataset.pdf || row?.dataset.id;
+        if (!id) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const processTable = el('rows').closest('table');
+        processTable?.setAttribute('aria-busy', 'true');
+        if (pdfButton) pdfButton.disabled = true;
+        try {
+          const process = await loadPersistedProcess(id);
+          if (pdfButton) printCover(process);
+          else open(process);
+        } catch (error) {
+          toast.error(error.message || 'Não foi possível carregar os detalhes do processo.');
+        } finally {
+          processTable?.removeAttribute('aria-busy');
+          if (pdfButton?.isConnected) pdfButton.disabled = false;
+        }
+      };
       // Calendário operacional: consulta somente o intervalo exibido e não
       // interfere na lista principal nem nos filtros que o usuário já aplicou.
       const isoDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -635,12 +721,21 @@
         }
         el('calendarSummary').textContent = 'Carregando prazos…'; el('calendarGrid').innerHTML = '';
         try {
-          const calendar = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}`);
-          // Durante uma atualização, o navegador pode receber o JavaScript
-          // novo antes de o servidor responder no formato novo. Aceite a
-          // lista legada também para que o calendário nunca deixe de abrir.
-          const rows = Array.isArray(calendar) ? calendar : (calendar.processes || []);
-          const prelaunches = Array.isArray(calendar) ? [] : (calendar.prelaunches || []);
+          const rows = [], prelaunches = [];
+          const calendarPageSize = 200, calendarVisibleLimit = 1_000;
+          let offset = 0, total = 0, truncated = false;
+          while (offset < calendarVisibleLimit) {
+            const calendar = await request(`/api/calendar?from=${isoDate(from)}&to=${isoDate(to)}&limit=${calendarPageSize}&offset=${offset}`);
+            // Compatibilidade temporária com a resposta antiga durante deploy.
+            if (Array.isArray(calendar)) { rows.push(...calendar); total = calendar.length; break; }
+            rows.push(...(calendar.processes || []));
+            if (offset === 0) prelaunches.push(...(calendar.prelaunches || []));
+            total = Number(calendar.pagination?.total || rows.length);
+            el('calendarSummary').textContent = `Carregando agenda… ${rows.length} de ${total} processo(s).`;
+            if (!calendar.pagination?.hasMore || !(calendar.processes || []).length) break;
+            offset += (calendar.processes || []).length;
+          }
+          truncated = total > rows.length;
           const events = new Map();
           rows.forEach(process => ['deadline', 'container_collection_date', 'release_schedule', 'release_deadline'].forEach(field => {
             const key = String(process[field] || '').slice(0, 10);
@@ -657,7 +752,7 @@
             days.push(`<article class="calendar-day ${dayEvents.length ? 'has-events' : ''}"><button type="button" class="calendar-day-number" data-calendar-day="${key}" aria-label="Ver prazos de ${calendarDateLabel(key)}">${day}</button><div>${dayEvents.slice(0, 4).map(({ process, label, type }) => `<button type="button" class="calendar-event ${type === 'prelaunch' ? 'is-prelaunch' : ''}" data-calendar-${type}="${esc(process.id)}" title="${esc(`${label}: ${process.booking || 'Sem booking'}`)}"><span>${esc(label)}</span>${esc(process.booking || '—')}</button>`).join('')}${dayEvents.length > 4 ? `<small>+${dayEvents.length - 4} prazos</small>` : ''}</div></article>`);
           }
           el('calendarGrid').innerHTML = '<div class="calendar-weekdays"><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span></div><div class="calendar-days">' + days.join('') + '</div>';
-          el('calendarSummary').textContent = `${rows.length} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${periodLabel}.`;
+          el('calendarSummary').textContent = `${rows.length}${truncated ? ` de ${total}` : ''} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${periodLabel}.${truncated ? ' Refine o período para visualizar todos os itens.' : ''}`;
           const openCalendarProcess = async id => {
             const process = data.find(item => item.id === id);
             if (process) { returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(process); return; }
@@ -913,7 +1008,7 @@
         const scope = JSON.stringify({ filter:requestedFilter, client:processClientFilter });
         const requestedPage = page || (scope !== lastProcessListScope ? 1 : Math.max(1, Number(processPagination.page || 1)));
         const offset = (requestedPage - 1) * Number(processPagination.limit || 50);
-        const searchParams = new URLSearchParams({ limit:String(processPagination.limit || 50), offset:String(offset) });
+        const searchParams = new URLSearchParams({ limit:String(processPagination.limit || 50), offset:String(offset), projection:'summary' });
         if (requestedFilter) {
           searchParams.set('field', requestedFilter.field);
           searchParams.set('search', requestedFilter.value || '');
@@ -1007,6 +1102,10 @@
       };
       const applyProcessRealtimeChange = async event => {
         if (!currentUser || processSaveBusy || !event?.id) return;
+        // Alterações locais já foram aplicadas de forma otimista na página de
+        // VGM/Liberação. Ignorar o eco imediato do SSE evita uma nova consulta
+        // e impede que inputs sejam reconstruídos durante a digitação.
+        if (Number(localProcessMutationQuietUntil.get(event.id) || 0) > Date.now()) return;
         const position = data.findIndex(item => item.id === event.id);
         if (event.change === 'deleted') {
           if (position >= 0) data = data.filter(item => item.id !== event.id);
@@ -1383,20 +1482,25 @@
         const releaseDeadline = dateForDatabase(deadlineValue, true);
         if (scheduleValue && !releaseSchedule) throw new Error('Informe o deadline de agendamento no formato dd/mm hh:mm.');
         if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.');
-        const before = data;
+        const snapshot = snapshotVisibleProcess('vgm', id);
+        const mutationVersion = beginSectionMutation(id);
         // A tela responde imediatamente. Se o servidor recusar a alteração,
         // restauramos a lista exatamente como estava antes do envio.
-        data = data.map(item => item.id === id ? { ...item, vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' } : item);
-        render(); renderVgm();
+        updateVisibleProcess('vgm', id, { vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' });
         try {
-          const updated = await request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst, releaseSchedule, releaseDeadline }) });
-          const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
-          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderVgm(); toast.success('Status de VGM atualizado.');
+          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst, releaseSchedule, releaseDeadline }) }));
+          if (!isLatestSectionMutation(id, mutationVersion)) return;
+          reconcileVisibleProcess('vgm', id, updated);
+          toast.success('Status de VGM atualizado.');
         } catch (error) {
-          data = before; render(); renderVgm(); throw error;
+          if (!isLatestSectionMutation(id, mutationVersion)) return;
+          restoreVisibleProcess('vgm', id, snapshot);
+          throw error;
+        } finally {
+          finishSectionMutation(id, mutationVersion);
         }
       };
-      const saveReleaseRow = async id => {
+      const saveReleaseRow = async (id, { renderView=true } = {}) => {
         let releaseStatus = el('releaseList').querySelector(`[data-release-status="${id}"]`)?.value;
         const releaseChannel = el('releaseList').querySelector(`[data-release-channel="${id}"]`)?.value;
         if (releaseChannel === 'Verde') { releaseStatus = 'Sim'; const statusInput = el('releaseList').querySelector(`[data-release-status="${id}"]`); if (statusInput) statusInput.value = 'Sim'; }
@@ -1407,15 +1511,21 @@
         const releaseDeadline = dateForDatabase(deadlineValue, true); const releaseDate = dateForDatabase(releaseDateValue);
         if (scheduleValue && !releaseSchedule) throw new Error('Informe o agendamento no formato dd/mm hh:mm.');
         if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.'); if (releaseDateValue && !releaseDate) throw new Error('Informe a data de liberação no formato dd/mm.');
-        const before = data;
-        data = data.map(item => item.id === id ? { ...item, liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseDateValue || item.dataLiberacao } : item);
-        render(); renderRelease();
+        const snapshot = snapshotVisibleProcess('release', id);
+        const mutationVersion = beginSectionMutation(id);
+        const currentReleaseDate = snapshot.section?.dataLiberacao || snapshot.main?.dataLiberacao || '';
+        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseDateValue || currentReleaseDate }, { renderView });
         try {
-          const updated = await request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) });
-          const current = before.find(item => item.id === id) || {}; const view = toViewProcess({ ...updated, exporter:current.exportador, analyst:current.analista });
-          data = data.map(item => item.id === id ? { ...item, ...view } : item); render(); renderRelease(); toast.success('Status de liberação atualizado.');
+          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) }));
+          if (!isLatestSectionMutation(id, mutationVersion)) return;
+          reconcileVisibleProcess('release', id, updated, { renderView });
+          toast.success('Status de liberação atualizado.');
         } catch (error) {
-          data = before; render(); renderRelease(); throw error;
+          if (!isLatestSectionMutation(id, mutationVersion)) return;
+          restoreVisibleProcess('release', id, snapshot);
+          throw error;
+        } finally {
+          finishSectionMutation(id, mutationVersion);
         }
       };
       el('followupPdfList').onclick = async e => {

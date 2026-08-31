@@ -1,0 +1,146 @@
+{
+  "generatedAt": "2026-08-31T02:54:13.659Z",
+  "deployEnvironment": "development",
+  "sourceMaps": false,
+  "source": {
+    "bytes": 313506,
+    "gzipBytes": 83396,
+    "files": [
+      {
+        "file": "accessibility.js",
+        "bytes": 5141,
+        "gzipBytes": 1682
+      },
+      {
+        "file": "api-client.js",
+        "bytes": 1205,
+        "gzipBytes": 655
+      },
+      {
+        "file": "app-runtime.js",
+        "bytes": 165728,
+        "gzipBytes": 42670
+      },
+      {
+        "file": "experience.css",
+        "bytes": 13295,
+        "gzipBytes": 3650
+      },
+      {
+        "file": "experience.js",
+        "bytes": 11663,
+        "gzipBytes": 4100
+      },
+      {
+        "file": "gport.css",
+        "bytes": 58021,
+        "gzipBytes": 11486
+      },
+      {
+        "file": "legacy-ui.js",
+        "bytes": 42777,
+        "gzipBytes": 13314
+      },
+      {
+        "file": "module-loader.js",
+        "bytes": 1401,
+        "gzipBytes": 628
+      },
+      {
+        "file": "page-navigation.js",
+        "bytes": 1008,
+        "gzipBytes": 447
+      },
+      {
+        "file": "reports.js",
+        "bytes": 4972,
+        "gzipBytes": 1794
+      },
+      {
+        "file": "toasts.css",
+        "bytes": 3956,
+        "gzipBytes": 1356
+      },
+      {
+        "file": "ui-feedback.js",
+        "bytes": 4339,
+        "gzipBytes": 1614
+      }
+    ]
+  },
+  "output": {
+    "bytes": 233364,
+    "gzipBytes": 67409,
+    "files": [
+      {
+        "file": "accessibility-9E2CA78A94D1.js",
+        "bytes": 3250,
+        "gzipBytes": 1320
+      },
+      {
+        "file": "api-client-E0F4F564C144.js",
+        "bytes": 687,
+        "gzipBytes": 501
+      },
+      {
+        "file": "app-runtime-E77B1CE20CFF.js",
+        "bytes": 102530,
+        "gzipBytes": 31498
+      },
+      {
+        "file": "experience-29C65ACAC4FF.css",
+        "bytes": 12863,
+        "gzipBytes": 3342
+      },
+      {
+        "file": "experience-3BC7E1A7AF6C.js",
+        "bytes": 6953,
+        "gzipBytes": 2831
+      },
+      {
+        "file": "gport-A01E41E770A6.css",
+        "bytes": 57269,
+        "gzipBytes": 11095
+      },
+      {
+        "file": "legacy-ui-8587CAB2F95A.js",
+        "bytes": 38854,
+        "gzipBytes": 12317
+      },
+      {
+        "file": "module-loader-0C618DDBF0EB.js",
+        "bytes": 854,
+        "gzipBytes": 487
+      },
+      {
+        "file": "page-navigation-215A9B59B7B6.js",
+        "bytes": 649,
+        "gzipBytes": 337
+      },
+      {
+        "file": "reports-97E32C33F346.js",
+        "bytes": 3174,
+        "gzipBytes": 1262
+      },
+      {
+        "file": "toasts-3FBF6625D80A.css",
+        "bytes": 3489,
+        "gzipBytes": 1151
+      },
+      {
+        "file": "ui-feedback-F1E89DFD883C.js",
+        "bytes": 2792,
+        "gzipBytes": 1268
+      }
+    ]
+  },
+  "initial": {
+    "sourceBytes": 308534,
+    "sourceGzipBytes": 81602,
+    "outputBytes": 230190,
+    "outputGzipBytes": 66147,
+    "deferred": [
+      "reports.js"
+    ]
+  }
+}
