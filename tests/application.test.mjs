@@ -377,13 +377,20 @@ test('login sempre abre Processos sem painel ou preferência de redirecionamento
 test('login apresenta a identidade interna aprovada sem texto complementar no formulário', async () => {
   const html = await read('public/index.html');
   const css = await read('public/assets/login.css');
+  const harbor = await read('public/login-harbor.svg');
   assert.match(html, /Gestão interna que mantém <br>a operação em movimento\./);
   assert.match(html, /Acesse processos, acompanhe prazos e organize as rotinas da equipe GPORT em um só lugar\./);
   assert.match(html, /<h1>Acesse sua conta<\/h1>/);
   assert.match(html, /<form id="loginForm">/);
   assert.doesNotMatch(html, /Entre para continuar no GPORT|Entre para acessar a planilha de processos/);
   assert.match(css, /\.login-journey/);
+  assert.match(css, /bottom: clamp\(16px, 2\.6vh, 28px\)/);
+  assert.match(css, /background: bottom center \/ contain no-repeat url\("\.\.\/login-harbor\.svg"\)/);
   assert.match(css, /@media \(max-width: 900px\)/);
+  assert.match(harbor, /id="cargo-ship"/);
+  assert.match(harbor, /id="container-stacks"/);
+  assert.match(harbor, /id="terminal-crane"/);
+  assert.match(harbor, /id="wave-field"/);
 });
 
 test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
