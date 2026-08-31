@@ -68,7 +68,7 @@ body:has(#loginDialog[open]) { overflow: hidden; }
   bottom: clamp(16px, 2.6vh, 28px);
   left: 0;
   height: min(42vh, 380px);
-  background: bottom center / contain no-repeat url("../login-harbor.svg");
+  background: bottom center / contain no-repeat url("../login-harbor.svg?v=20260831.2");
   opacity: .7;
   pointer-events: none;
 }

@@ -385,7 +385,8 @@ test('login apresenta a identidade interna aprovada sem texto complementar no fo
   assert.doesNotMatch(html, /Entre para continuar no GPORT|Entre para acessar a planilha de processos/);
   assert.match(css, /\.login-journey/);
   assert.match(css, /bottom: clamp\(16px, 2\.6vh, 28px\)/);
-  assert.match(css, /background: bottom center \/ contain no-repeat url\("\.\.\/login-harbor\.svg"\)/);
+  assert.match(html, /assets\/login\.css\?v=20260831\.2/);
+  assert.match(css, /background: bottom center \/ contain no-repeat url\("\.\.\/login-harbor\.svg\?v=20260831\.2"\)/);
   assert.match(css, /@media \(max-width: 900px\)/);
   assert.match(harbor, /id="cargo-ship"/);
   assert.match(harbor, /id="container-stacks"/);
