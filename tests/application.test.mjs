@@ -272,8 +272,21 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
 });
 
+test('VGM e Liberação refletem alterações imediatamente sem depender da troca de aba', async () => {
+  const html = await readInterface();
+  assert.match(html, /const updateVisibleProcess = \(name, id, patch/);
+  assert.match(html, /state\.items = state\.items\.map\(item => item\.id === id \? \{ \.\.\.item, \.\.\.patch \} : item\)/);
+  assert.match(html, /updateVisibleProcess\('vgm', id, \{ vgmStatus:status/);
+  assert.match(html, /updateVisibleProcess\('release', id, \{ liberacaoStatus:releaseStatus/);
+  assert.match(html, /enqueueProcessMutation\(id, \(\) => request\(`\/api\/processes\/\$\{id\}\/vgm`/);
+  assert.match(html, /enqueueProcessMutation\(id, \(\) => request\(`\/api\/processes\/\$\{id\}\/release`/);
+  assert.match(html, /saveReleaseRow\(id, \{ renderView:false \}\)/);
+  assert.match(html, /localProcessMutationQuietUntil\.get\(event\.id\)/);
+});
+
 test('HTML inicial referencia scripts externos e não mantém estilos ou eventos inline', async () => {
   const html = await read('public/index.html');
+  assert.match(html, /<link rel="icon" type="image\/png" sizes="256x256" href="favicon-gport-256\.png\?v=[0-9.]+">/);
   assert.match(html, /assets\/ui-feedback\.js\?v=[0-9.]+" defer/);
   assert.match(html, /assets\/legacy-ui\.js\?v=[0-9.]+" defer/);
   assert.match(html, /assets\/app-runtime\.js\?v=[0-9.]+" defer/);
@@ -473,8 +486,9 @@ test('atualização em tempo real respeita a autorização de leitura', async ()
   assert.match(html, /setTimeout\(startRealtimeFallback, 10_000\)/);
   assert.match(html, /request\(`\/api\/processes\/\$\{event\.id\}`\)/);
   assert.match(html, /if \(isNewProcess\) processPagination\.total \+= 1/);
-  assert.match(html, /data = before; render\(\); renderVgm\(\); throw error;/);
-  assert.match(html, /data = before; render\(\); renderRelease\(\); throw error;/);
+  assert.match(html, /restoreVisibleProcess\('vgm', id, snapshot\)/);
+  assert.match(html, /restoreVisibleProcess\('release', id, snapshot\)/);
+  assert.match(html, /if \(Number\(localProcessMutationQuietUntil\.get\(event\.id\) \|\| 0\) > Date\.now\(\)\) return/);
 });
 
 test('painel inicial e notificações permanecem removidos da interface operacional', async () => {
