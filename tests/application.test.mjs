@@ -136,13 +136,14 @@ test('cadastro do exportador controla Sim ou Não no campo Ovação da capa', as
   const server = await read('src/server.js');
   const index = await read('public/index.html');
   const runtime = await read('public/assets/app-runtime.js');
+  const projections = await read('src/process-projections.js');
   const migration = await read('database/migrations/2026-08-12-client-ovacao.sql');
   assert.match(index, /id="clientOvacao" name="ovacao" type="checkbox"/);
   assert.match(index, /class="client-options-row"/);
   assert.match(await read('public/assets/experience.css'), /\.client-options-row\{grid-column:span 2;display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(server, /ovacao: body\.ovacao === true/);
   assert.match(server, /ADD COLUMN IF NOT EXISTS ovacao BOOLEAN NOT NULL DEFAULT FALSE/);
-  assert.match(server, /COALESCE\(c\.ovacao,false\) AS client_ovacao/);
+  assert.match(projections, /COALESCE\(c\.ovacao,false\) AS client_ovacao/);
   assert.match(runtime, /ovacao: c\.ovacao === true/);
   assert.match(runtime, /ovacao:v\.ovacao === 'on'/);
   assert.match(runtime, /const ovacao = \(client\.ovacao \?\? p\.ovacao\) === true \? 'Sim' : 'Não'/);
@@ -342,6 +343,7 @@ test('destino do VGM permite digitação contínua e salva somente ao concluir o
 test('CSP da página usa nonce e não depende de unsafe-inline', async () => {
   const server = await read('src/server.js');
   const runtime = await read('public/assets/app-runtime.js');
+  const apiClient = await read('public/assets/api-client.js');
   assert.doesNotMatch(server, /style-src 'self' 'unsafe-inline'/);
   assert.match(server, /style-src 'self' 'nonce-\$\{nonce\}'/);
   assert.match(runtime, /securePrintHtml/);
@@ -376,6 +378,19 @@ test('migração de estabilidade está disponível', async () => {
   assert.match(migration, /release_channel/);
 });
 
+test('DDL versionado não é executado durante o boot da aplicação', async () => {
+  const server = await read('src/server.js');
+  const migrations = await read('src/migrations.js');
+  const sql = await read('database/migrations/2026-08-28-001-runtime-schema-baseline.sql');
+  const pkg = JSON.parse(await read('package.json'));
+  assert.match(server, /verifySchemaCompatibility\(\{ query \}\)/);
+  assert.doesNotMatch(server, /ensureProcessFields\(\)\s*\n\s*\.then/);
+  assert.match(migrations, /app_schema_migrations/);
+  assert.match(migrations, /checksum/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS process_attachments/);
+  assert.equal(pkg.scripts.migrate, 'node scripts/migrate.mjs');
+});
+
 test('pipeline de produção bloqueia segredos e dependências inseguras', async () => {
   const packageJson = JSON.parse(await read('package.json'));
   const workflow = await read('.github/workflows/security.yml');
@@ -389,6 +404,7 @@ test('pipeline de produção bloqueia segredos e dependências inseguras', async
 
 test('rotas sensíveis exigem autenticação, CSRF e autorização no servidor', async () => {
   const server = await read('src/server.js');
+  const errorHandler = await read('src/error-handler.js');
   for (const route of [
     "app.patch('/api/processes/:id', authenticate, processEditorOnly",
     "app.delete('/api/processes/:id', authenticate",
@@ -401,9 +417,9 @@ test('rotas sensíveis exigem autenticação, CSRF e autorização no servidor',
   assert.match(server, /const processCreatorOnly = \(_req, _res, next\) => next\(\)/);
   assert.match(server, /app\.post\('\/api\/processes', authenticate, processCreatorOnly/);
   assert.match(server, /app\.use\('\/api', csrfProtection\)/);
-  assert.match(server, /Solicitação muito grande/);
-  assert.match(server, /entity\.parse\.failed/);
-  assert.match(server, /JSON inválido/);
+  assert.match(errorHandler, /Solicitação muito grande/);
+  assert.match(errorHandler, /entity\.parse\.failed/);
+  assert.match(errorHandler, /JSON inválido/);
 });
 
 test('exclusão de exportador preserva processos vinculados', async () => {
@@ -419,11 +435,25 @@ test('exclusão de exportador preserva processos vinculados', async () => {
 
 test('listagem paginada compartilha processos entre usuários autenticados', async () => {
   const server = await read('src/server.js');
+  const search = await read('src/process-search.js');
   assert.match(server, /const canReadAllProcesses = \(\) => true/);
-  assert.match(server, /const scope = ''/);
-  assert.ok(server.includes('LIMIT $${next} OFFSET $${next + 1}'));
-  assert.match(server, /pagination: \{ limit, offset, total:/);
-  assert.match(server, /processSearchFields/);
+  assert.ok(search.includes('LIMIT $${next} OFFSET $${next + 1}'));
+  assert.match(server, /pagination:\{ limit:search\.limit, offset:search\.offset, total:/);
+  assert.match(search, /processSearchFields/);
+});
+
+test('planilha usa projeção resumida e detalhes continuam no endpoint individual', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const projections = await read('src/process-projections.js');
+  const search = await read('src/process-search.js');
+  assert.match(runtime, /projection:'summary'/);
+  assert.match(runtime, /loadPersistedProcess = async id => toViewProcess\(await request\(`\/api\/processes\/\$\{id\}`\)\)/);
+  assert.match(server, /buildProcessSearchQuery\(req\.query\)/);
+  assert.match(search, /processProjection\(projection\)/);
+  assert.match(search, /supportedProcessProjections\.has\(projection\)/);
+  assert.match(projections, /processDetailSelect = `SELECT p\.\*/);
+  assert.doesNotMatch(projections.match(/processSummarySelect[\s\S]*?`;\n/)[0], /container_details/);
 });
 
 test('atualização em tempo real respeita a autorização de leitura', async () => {
@@ -517,13 +547,13 @@ test('filtro de processos é persistido somente durante a sessão do navegador',
 });
 
 test('processos permitem filtrar pelo período em que foram lançados', async () => {
-  const server = await read('src/server.js');
+  const search = await read('src/process-search.js');
   const html = await readInterface();
   const css = await read('public/assets/gport.css');
-  assert.match(server, /const launchedFrom = String\(req\.query\.launchedFrom \|\| ''\)\.trim\(\)/);
-  assert.match(server, /const launchedTo = String\(req\.query\.launchedTo \|\| ''\)\.trim\(\)/);
-  assert.match(server, /p\.created_at >= \$5::date/);
-  assert.match(server, /p\.created_at < \(\$6::date \+ INTERVAL '1 day'\)/);
+  assert.match(search, /const launchedFrom = String\(query\.launchedFrom \|\| ''\)\.trim\(\)/);
+  assert.match(search, /const launchedTo = String\(query\.launchedTo \|\| ''\)\.trim\(\)/);
+  assert.match(search, /p\.created_at >= \$5::date/);
+  assert.match(search, /p\.created_at < \(\$6::date \+ INTERVAL '1 day'\)/);
   assert.match(html, /id="processLaunchedFrom" type="date"/);
   assert.match(html, /id="processLaunchedTo" type="date"/);
   assert.match(html, /searchParams\.set\('launchedFrom', requestedFilter\.launchedFrom\)/);
@@ -543,6 +573,47 @@ test('relatórios consideram processos lançados no período, e não deadlines o
   assert.match(legacy, /params\.set\('all','true'\)/);
   assert.match(legacy, /Processos lançados no mês/);
   assert.match(html, /Processos cadastrados no período selecionado\./);
+});
+
+test('relatórios possuem módulo próprio sem alterar o contrato da interface atual', async () => {
+  const html = await readInterface();
+  const index = await read('public/index.html');
+  const reports = await read('public/assets/reports.js');
+  const loader = await read('public/assets/module-loader.js');
+
+  assert.match(index, /name="gport-reports-asset" content="assets\/reports\.js\?v=[0-9.]+"/);
+  assert.doesNotMatch(index, /<script src="assets\/reports\.js/);
+  assert.match(loader, /loadReports/);
+  assert.match(loader, /pending = new Map\(\)/);
+  assert.match(html, /await window\.gportModules\.loadReports\(\)/);
+  assert.match(html, /reportsPage'\)\.setAttribute\('aria-busy', 'true'\)/);
+  assert.match(reports, /window\.gportRequest\(`\/api\/reports\?\$\{params\}`\)/);
+  assert.match(reports, /window\.gportReports = \{ render: renderReports, syncView: syncReportView \}/);
+  assert.match(reports, /window\.renderReports = renderReports/);
+});
+
+test('ativos versionados usam cache imutável sem tornar o HTML persistente', async () => {
+  const server = await read('src/server.js');
+
+  assert.match(server, /filePath\.endsWith\('\.html'\)/);
+  assert.match(server, /'no-cache'/);
+  assert.match(server, /\[\?&\]v=\[A-Za-z0-9\._-\]\+/);
+  assert.match(server, /public, max-age=31536000, immutable/);
+  assert.match(server, /public, max-age=86400/);
+});
+
+test('cliente de API centraliza CSRF, credenciais e expiração de sessão', async () => {
+  const html = await readInterface();
+  const apiClient = await read('public/assets/api-client.js');
+  const runtime = await read('public/assets/app-runtime.js');
+
+  assert.match(html, /assets\/api-client\.js\?v=[0-9.]+" defer/);
+  assert.match(apiClient, /credentials: 'same-origin'/);
+  assert.match(apiClient, /'X-CSRF-Token': csrfToken\(\)/);
+  assert.match(apiClient, /response\.status === 401/);
+  assert.match(apiClient, /window\.gportApi = \{ create \}/);
+  assert.match(runtime, /window\.gportApi\.create\(\{/);
+  assert.match(runtime, /onUnauthorized: requireSessionLogin/);
 });
 
 test('Prazos e Financeiro permanecem reversíveis, mas fora da navegação operacional atual', async () => {
@@ -606,13 +677,13 @@ test('liberação permite filtrar por porto e ordena pelo deadline crescente', a
 });
 
 test('processos podem ser filtrados por cliente e ordenados por cliente e lançamento', async () => {
-  const server = await read('src/server.js');
+  const search = await read('src/process-search.js');
   const html = await readInterface();
   const css = await read('public/assets/gport.css');
-  assert.match(server, /const clientId = String\(req\.query\.client \|\| ''\)\.trim\(\)/);
-  assert.match(server, /const clientName = String\(req\.query\.clientName \|\| ''\)\.trim\(\)/);
-  assert.match(server, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
-  assert.match(server, /processes:'c\.name ASC,p\.created_at DESC,p\.id DESC'/);
+  assert.match(search, /const clientId = String\(query\.client \|\| ''\)\.trim\(\)/);
+  assert.match(search, /const clientName = String\(query\.clientName \|\| ''\)\.trim\(\)/);
+  assert.match(search, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
+  assert.match(search, /processes:'c\.name ASC,p\.created_at DESC,p\.id DESC'/);
   assert.match(html, /processClientFilter='all'/);
   assert.match(html, /processClientFilters/);
   assert.match(html, /client-filter-popover/);
@@ -650,18 +721,19 @@ test('pesquisas atualizam automaticamente sem exigir clique no botão Filtrar', 
 
 test('busca operacional é normalizada, paginada no servidor e cancela consultas antigas', async () => {
   const server = await read('src/server.js');
+  const search = await read('src/process-search.js');
   const html = await readInterface();
-  assert.match(server, /const normalizeSearchTerm/);
-  assert.match(server, /const escapeLikeTerm/);
-  assert.match(server, /p\.due_number,p\.ruc_number/);
-  assert.match(server, /p\.container_details::text/);
-  assert.match(server, /vgmStatus/);
-  assert.match(server, /releaseStatus/);
-  assert.match(server, /originPort/);
+  assert.match(search, /normalizeSearchTerm/);
+  assert.match(search, /escapeLikeTerm/);
+  assert.match(search, /p\.due_number,p\.ruc_number/);
+  assert.match(search, /p\.container_details::text/);
+  assert.match(search, /vgmStatus/);
+  assert.match(search, /releaseStatus/);
+  assert.match(search, /originPort/);
   assert.match(server, /processes_vgm_sent_date_idx/);
   assert.match(server, /processes_release_origin_deadline_idx/);
-  assert.match(server, /req\.query\.view \|\| 'processes'/);
-  assert.match(server, /ESCAPE E'\\\\\\\\'/);
+  assert.match(search, /query\.view \|\| 'processes'/);
+  assert.match(search, /ESCAPE E'\\\\\\\\'/);
   assert.match(html, /processSearchController\?\.abort\(\)/);
   assert.match(html, /new AbortController\(\)/);
   assert.match(html, /const sectionSearchStates/);
@@ -675,18 +747,20 @@ test('busca operacional é normalizada, paginada no servidor e cancela consultas
 
 test('processos históricos não somem quando referências falham e qualquer usuário autenticado pode cadastrar exportador', async () => {
   const server = await read('src/server.js');
+  const search = await read('src/process-search.js');
   const html = await readInterface();
   assert.match(server, /app\.post\('\/api\/clients', authenticate, clientCreatorOnly/);
-  assert.match(server, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
+  assert.match(search, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
   assert.match(html, /remoteProcesses = await processRequest/);
   assert.match(html, /Promise\.allSettled\(\[\s*request\('\/api\/clients'\), request\('\/api\/assignees'\)/);
 });
 
 test('cadastro de exportador reativa registro excluído e trata duplicidade sem erro interno', async () => {
   const server = await read('src/server.js');
+  const errorHandler = await read('src/error-handler.js');
   assert.match(server, /SELECT id,active FROM clients WHERE LOWER\(name\)=LOWER\(\$1\) LIMIT 1/);
   assert.match(server, /client\.reactivated/);
-  assert.match(server, /error\?\.code === '23505'/);
+  assert.match(errorHandler, /error\?\.code === '23505'/);
 });
 
 test('canal verde libera o processo automaticamente no servidor e na interface', async () => {
@@ -793,11 +867,15 @@ test('histórico de edição apresenta campos e valores anterior e novo sem inse
 
 test('observabilidade agrega somente métricas técnicas e protege o endpoint para administradores', async () => {
   const server = await read('src/server.js');
+  const observability = await read('src/observability.js');
   const env = await read('.env.example');
-  assert.match(server, /const observability = \{ startedAt/);
-  assert.match(server, /recordApiMetric/);
+  assert.match(server, /createObservability\(\{[\s\S]*slowRequestMs,[\s\S]*onThreshold/);
+  assert.match(server, /createResourceMonitor\(\{ alerts \}\)/);
+  assert.match(server, /createErrorHandler\(\{[\s\S]*logger, alerts/);
+  assert.match(observability, /state = \{ startedAt/);
+  assert.match(observability, /correlationId/);
   assert.match(server, /app\.get\('\/api\/observability\/metrics', authenticate, adminOnly/);
-  assert.match(server, /averageMs/);
+  assert.match(observability, /averageMs/);
   assert.match(server, /OBSERVABILITY_SLOW_REQUEST_MS/);
   assert.match(env, /OBSERVABILITY_SLOW_REQUEST_MS=1000/);
 });
@@ -830,6 +908,7 @@ test('roteiro de medição de homologação é passivo e não transmite credenci
 test('sessão ativa é renovada e expiração permite novo login sem recarregar o formulário', async () => {
   const server = await read('src/server.js');
   const runtime = await read('public/assets/app-runtime.js');
+  const apiClient = await read('public/assets/api-client.js');
   const env = await read('.env.example');
   assert.match(server, /SESSION_MAX_AGE_HOURS \|\| '8'/);
   assert.match(server, /setSession\(res, user, req\.user\.csrfToken\)/);
@@ -838,25 +917,35 @@ test('sessão ativa é renovada e expiração permite novo login sem recarregar 
   assert.match(runtime, /const ensureSessionActive = async/);
   assert.match(runtime, /document\.addEventListener\('visibilitychange'/);
   assert.match(runtime, /setInterval\(\(\) => \{/);
-  assert.match(runtime, /response\.status === 401/);
+  assert.match(apiClient, /response\.status === 401/);
+  assert.match(apiClient, /onUnauthorized\(\)/);
   assert.match(runtime, /os dados preenchidos foram mantidos/);
   assert.doesNotMatch(runtime, /requireSessionLogin[\s\S]{0,700}location\.reload/);
 });
 
 test('planejamento usa APIs autenticadas e o acompanhamento detalhado não aparece no fluxo', async () => {
   const server = await read('src/server.js');
+  const workspaceRoutes = await read('src/routes/process-workspace.js');
+  const attachmentValidator = await read('src/attachment-validator.js');
   const runtime = await read('public/assets/app-runtime.js');
   const html = await read('public/index.html');
   assert.match(server, /app\.get\('\/api\/calendar', authenticate/);
   assert.match(server, /AND p\.analyst_id=\$3/);
+  assert.match(server, /processCalendarSelect/);
+  assert.match(server, /limit > 500/);
+  assert.match(server, /pagination:\{ limit, offset, total:totalCount/);
+  assert.doesNotMatch(server, /ORDER BY COALESCE\(p\.release_deadline,p\.deadline,p\.container_collection_date\) ASC LIMIT 500/);
   assert.match(server, /process_prelaunches/);
   assert.match(server, /app\.post\('\/api\/prelaunches', authenticate, processCreatorOnly/);
-  assert.match(server, /process_checklist_items/);
-  assert.match(server, /process_comments/);
-  assert.match(server, /process_attachments/);
-  assert.match(server, /allowedAttachmentTypes/);
-  assert.match(server, /attachmentMaxBytes/);
-  assert.match(server, /application\/pdf/);
+  assert.match(server, /registerProcessWorkspaceRoutes/);
+  assert.match(workspaceRoutes, /process_checklist_items/);
+  assert.match(workspaceRoutes, /process_comments/);
+  assert.match(workspaceRoutes, /process_attachments/);
+  assert.match(workspaceRoutes, /validateAttachmentInput/);
+  assert.match(workspaceRoutes, /scan_status !== 'approved'/);
+  assert.match(attachmentValidator, /maxBytes = 4 \* 1024 \* 1024/);
+  assert.match(attachmentValidator, /application\/pdf/);
+  assert.match(attachmentValidator, /basic-signature/);
   assert.match(html, /id="calendarDialog"/);
   assert.match(html, /id="prelaunchForm"/);
   assert.match(html, /id="prelaunchClient"/);
@@ -864,7 +953,9 @@ test('planejamento usa APIs autenticadas e o acompanhamento detalhado não apare
   assert.doesNotMatch(html, /id="processWorkspaceDialog"|id="processWorkspaceBtn"/);
   assert.match(runtime, /const openCalendar/);
   assert.match(runtime, /data-calendar-prelaunch/);
-  assert.match(runtime, /Array\.isArray\(calendar\) \? calendar/);
+  assert.match(runtime, /if \(Array\.isArray\(calendar\)\)/);
+  assert.match(runtime, /calendarPageSize = 200/);
+  assert.match(runtime, /Refine o período para visualizar todos os itens/);
   assert.match(runtime, /form\.dataset\.prelaunchId/);
   assert.match(runtime, /openPrelaunchForm/);
   assert.match(runtime, /const refreshPersonalDeadlineStat = async/);

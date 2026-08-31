@@ -45,3 +45,12 @@ CREATE INDEX IF NOT EXISTS clients_name_trgm_idx
 CREATE INDEX IF NOT EXISTS processes_importer_trgm_idx
   ON processes USING gin (importer gin_trgm_ops);
 
+-- Filtros e ordenações das filas operacionais. A busca textual continua
+-- parametrizada no servidor e usa limite/paginação; estes índices reduzem o
+-- custo das telas de VGM, Liberação e Follow up à medida que a base cresce.
+CREATE INDEX IF NOT EXISTS processes_vgm_sent_date_idx
+  ON processes (vgm_sent_date DESC);
+CREATE INDEX IF NOT EXISTS processes_release_origin_deadline_idx
+  ON processes (origin_port, release_deadline ASC);
+CREATE INDEX IF NOT EXISTS processes_updated_at_idx
+  ON processes (updated_at DESC);

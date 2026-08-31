@@ -3,13 +3,15 @@ services:
     name: gport-exportacao
     runtime: node
     plan: free
-    buildCommand: npm ci
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: 24.18.0
       - key: NODE_ENV
+        value: production
+      - key: DEPLOY_ENV
         value: production
       - key: DATABASE_URL
         sync: false

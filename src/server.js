@@ -3,34 +3,48 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import path from 'node:path';
-import { appendFile, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { query } from './db.js';
+import { verifySchemaCompatibility } from './schema-compatibility.js';
+import { createObservability } from './observability.js';
+import { createErrorHandler } from './error-handler.js';
+import { validateAttachmentInput } from './attachment-validator.js';
+import { processCalendarSelect, processDetailSelect } from './process-projections.js';
+import { buildProcessSearchQuery } from './process-search.js';
+import { createStructuredLogger } from './structured-logger.js';
+import { createAlertDispatcher } from './alerts.js';
+import { createResourceMonitor } from './resource-monitor.js';
+import { registerProcessWorkspaceRoutes } from './routes/process-workspace.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const logger = createStructuredLogger();
+const alerts = createAlertDispatcher({ logger });
 // Métricas operacionais sem corpo de requisição, usuário, token ou parâmetros.
 // Permanecem em memória por instância; um provedor externo pode coletar o
 // endpoint administrativo caso seja configurado posteriormente.
 const slowRequestMs = Math.max(100, Number(process.env.OBSERVABILITY_SLOW_REQUEST_MS || 1000));
-const observability = { startedAt: new Date().toISOString(), total: 0, errors: 0, slow: 0, routes: new Map() };
+const observability = createObservability({
+  slowRequestMs,
+  onThreshold:event => alerts.send(event.type === 'error-rate' ? {
+    severity:'critical', category:'http-500-rate', title:'Aumento de erros 500 no GPORT',
+    summary:`Foram registrados ${event.errors} erros em ${Math.round(event.windowMs / 60000)} minuto(s).`, correlationId:event.correlationId
+  } : {
+    severity:'warning', category:'latency', title:'Latência elevada na API do GPORT',
+    summary:`${event.route} levou ${event.durationMs} ms.`, correlationId:event.correlationId
+  })
+});
+const resourceMonitor = createResourceMonitor({ alerts });
+if (alerts.enabled) resourceMonitor.start();
 const configuredDatabaseCapacityMb = Number(process.env.DATABASE_CAPACITY_MB || 500);
 const databaseCapacityBytes = (Number.isFinite(configuredDatabaseCapacityMb) && configuredDatabaseCapacityMb > 0
   ? configuredDatabaseCapacityMb
   : 500) * 1024 * 1024;
 const databaseUsageCache = { expiresAt: 0, value: null };
 const databaseUsageCacheMs = 10 * 60 * 1000;
-const metricRoute = request => String(request.route?.path || request.path || 'unknown')
-  .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/:id');
-const recordApiMetric = (request, status, durationMs) => {
-  const route = metricRoute(request);
-  const current = observability.routes.get(route) || { count: 0, errors: 0, slow: 0, totalMs: 0, maxMs: 0 };
-  current.count += 1; current.totalMs += durationMs; current.maxMs = Math.max(current.maxMs, durationMs);
-  if (status >= 500) { current.errors += 1; observability.errors += 1; }
-  if (durationMs >= slowRequestMs) { current.slow += 1; observability.slow += 1; }
-  observability.total += 1; observability.routes.set(route, current);
-};
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) throw new Error('Defina um JWT_SECRET forte com pelo menos 32 caracteres.');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -83,19 +97,16 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
-app.use((req, res, next) => {
-  if (!req.path.startsWith('/api/')) return next();
-  const startedAt = performance.now();
-  res.once('finish', () => recordApiMetric(req, res.statusCode, Math.round(performance.now() - startedAt)));
-  next();
-});
+app.use(observability.middleware);
 // Anexos operacionais são enviados em base64 pelo navegador e têm limite
 // individual estrito na rota. O limite global cobre somente esse caso, sem
 // aceitar corpos arbitrariamente grandes.
 app.use(express.json({ limit: '6mb', strict: true, type: 'application/json' }));
 const asyncRoute = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const here = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(here, '../public');
+const sourceWebRoot = path.resolve(here, '../public');
+const productionWebRoot = path.join(sourceWebRoot, 'dist');
+const webRoot = isProduction && existsSync(path.join(productionWebRoot, 'index.html')) ? productionWebRoot : sourceWebRoot;
 let indexHtmlPromise;
 const renderIndex = asyncRoute(async (_req, res) => {
   indexHtmlPromise ||= readFile(path.join(webRoot, 'index.html'), 'utf8');
@@ -115,7 +126,18 @@ app.use(express.static(webRoot, {
   maxAge: '1d',
   setHeaders: (res, filePath) => {
     // O HTML deve sempre ser validado para que uma atualização publicada apareça logo.
-    res.setHeader('Cache-Control', filePath.endsWith('.html') ? 'no-cache' : 'public, max-age=86400');
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+      return;
+    }
+    // CSS e JavaScript publicados pelo GPORT usam `?v=...` no HTML. Como a
+    // versão muda em cada alteração, o navegador pode mantê-los por mais
+    // tempo sem risco de receber uma interface antiga. Arquivos sem revisão
+    // explícita, como imagens, preservam a revalidação diária.
+    const requestUrl = String(res.req?.originalUrl || '');
+    const versionedAsset = /[?&]v=[A-Za-z0-9._-]+(?:&|$)/.test(requestUrl)
+      || /-[A-Z0-9]{8,}\.(?:js|css)$/i.test(filePath);
+    res.setHeader('Cache-Control', versionedAsset ? 'public, max-age=31536000, immutable' : 'public, max-age=86400');
   }
 }));
 
@@ -134,8 +156,7 @@ const publicUser = user => ({ id: user.id, username: user.username, role: user.r
 const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao'];
 const isStrongPassword = password => typeof password === 'string' && password.length >= 12 && password.length <= 200 && /[A-Za-z]/.test(password) && /\d/.test(password);
 const validId = value => typeof value === 'string' && uuidPattern.test(value);
-const attachmentMaxBytes = 4 * 1024 * 1024;
-const allowedAttachmentTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const attachmentScanMode = process.env.ATTACHMENT_SCAN_MODE === 'external' ? 'external' : 'basic';
 const setSession = (res, user, csrfToken = randomBytes(32).toString('base64url')) => {
   res.cookie(sessionCookie, tokenFor(user, csrfToken), cookieOptions(true));
   res.cookie(csrfCookie, csrfToken, cookieOptions(false));
@@ -569,7 +590,7 @@ const processChanges = (previous, next) => Object.fromEntries(
 );
 // LEFT JOIN preserva a visualização de processos históricos mesmo se um
 // exportador ou usuário associado tiver sido desativado/removido no passado.
-const processSelect = `SELECT p.*,COALESCE(c.name, 'Exportador não cadastrado') AS exporter,COALESCE(c.ovacao,false) AS client_ovacao,COALESCE(u.username, 'Usuário removido') AS analyst FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id`;
+const processSelect = processDetailSelect;
 const canReadAllProcesses = () => true;
 // Atualização em tempo quase real para a instância atual do serviço. Os
 // eventos carregam somente o tipo da mudança e o id do processo; os dados
@@ -611,12 +632,7 @@ app.get('/api/realtime/metrics', authenticate, adminOnly, (_req, res) => {
   res.json({ ...realtimeMetrics, activeConnections: realtimeSubscribers.size });
 });
 app.get('/api/observability/metrics', authenticate, adminOnly, (_req, res) => {
-  const routes = [...observability.routes.entries()].map(([route, value]) => ({
-    route, count: value.count, errors: value.errors, slow: value.slow,
-    averageMs: value.count ? Math.round(value.totalMs / value.count) : 0, maxMs: value.maxMs
-  })).sort((a, b) => b.count - a.count || b.averageMs - a.averageMs);
-  res.json({ startedAt: observability.startedAt, slowRequestMs, total: observability.total,
-    errors: observability.errors, slow: observability.slow, routes });
+  res.json(observability.snapshot());
 });
 app.get('/api/reports/database-usage', authenticate, adminOnly, asyncRoute(async (_req, res) => {
   const now = Date.now();
@@ -736,85 +752,47 @@ app.patch('/api/notifications/:id/read', authenticate, asyncRoute(async (req, re
   if (!result.rowCount) return res.status(404).json({ error:'Notificação não encontrada.' });
   res.status(204).end();
 }));
-const normalizeSearchTerm = value => String(value || '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .toLocaleLowerCase('pt-BR');
-const escapeLikeTerm = value => normalizeSearchTerm(value).replace(/[\\%_]/g, match => `\\${match}`);
-const normalizedSearchExpression = expression => `regexp_replace(translate(lower(COALESCE((${expression})::text,'')), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'), '\\s+', ' ', 'g')`;
-const processSearchFields = {
-  todos: "CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,p.status,c.name,p.importer,p.invoice,p.due_number,p.ruc_number,p.origin_port,p.destination_port,p.vessel,p.agency,p.carrier,p.bl_type,p.freight_type,p.vgm_status,p.release_status,p.release_channel,p.container_details::text,u.username)",
-  booking: 'p.booking', exportador: 'c.name', importador: 'p.importer', fatura: 'p.invoice',
-  origem: 'p.origin_port', destino: 'p.destination_port', porto: "CONCAT_WS(' ',p.origin_port,p.destination_port)", navio: 'p.vessel', analista: 'u.username',
-  prazo: "TO_CHAR(p.deadline,'DD/MM HH24:MI')", envio: "TO_CHAR(p.shipping_date,'DD/MM')", coleta: "TO_CHAR(p.container_collection_date,'DD/MM')",
-  agencia: 'p.agency', armador: 'p.carrier', tipoembarque: 'p.shipment_type', tipobl: 'p.bl_type', tipofrete: 'p.freight_type',
-  vistoriomapa: "CASE WHEN p.mapa_inspection THEN 'Sim' ELSE 'Não' END", incoterm: 'p.incoterm', containers: "p.container_details::text",
-  qtdcontainers: 'p.container_quantity::text', tipocontainer: 'p.container_type', terminal: 'p.collection_terminal', freetime: 'p.free_time_days::text',
-  metragem: 'p.cubic_meters::text', pesoliquido: 'p.net_weight_kg::text', pesobruto: 'p.gross_weight_kg::text', volumes: 'p.packages_quantity::text',
-  valor: 'p.cargo_value::text', moeda: 'p.currency', due: 'p.due_number', ruc: 'p.ruc_number'
-};
-
 app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
-  const rawTerm = normalizeSearchTerm(req.query.search);
-  const term = escapeLikeTerm(rawTerm);
-  const status = String(req.query.status || '').trim();
-  const field = String(req.query.field || 'todos').trim().toLowerCase();
-  const clientId = String(req.query.client || '').trim();
-  const clientName = String(req.query.clientName || '').trim();
-  const launchedFrom = String(req.query.launchedFrom || '').trim();
-  const launchedTo = String(req.query.launchedTo || '').trim();
-  const vgmStatus = String(req.query.vgmStatus || '').trim().toLowerCase();
-  const releaseStatus = String(req.query.releaseStatus || '').trim().toLowerCase();
-  const originPort = normalizeSearchTerm(req.query.originPort);
-  const view = String(req.query.view || 'processes').trim().toLowerCase();
-  const limit = Number(req.query.limit || 50);
-  const offset = Number(req.query.offset || 0);
-  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  if (rawTerm.length > 100 || status.length > 40 || clientName.length > 200 || originPort.length > 120 || !['processes', 'vgm', 'release', 'followup'].includes(view) || !['', 'sent', 'pending'].includes(vgmStatus) || !['', 'released', 'pending'].includes(releaseStatus) || (launchedFrom && !datePattern.test(launchedFrom)) || (launchedTo && !datePattern.test(launchedTo)) || (launchedFrom && launchedTo && launchedFrom > launchedTo) || (clientId && !validId(clientId)) || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) return res.status(400).json({ error: 'Filtro inválido.' });
-  const scope = '';
-  const params = [status, term, clientId, clientName, launchedFrom, launchedTo, vgmStatus, releaseStatus, originPort];
-  const next = params.length + 1;
-  // client_id é UUID no PostgreSQL. O parâmetro vem da URL como texto e,
-  // mesmo vazio, não pode ser comparado diretamente com UUID (erro 42883).
-  // NULLIF mantém o filtro opcional sem fazer coerção insegura de tipos.
-  // O nome é um fallback exclusivo para processos históricos cujo client_id
-  // ficou nulo, mas que ainda exibem o exportador pelo LEFT JOIN.
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||$2||'%' ESCAPE E'\\\\') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day')) AND ($7='' OR ($7='sent' AND p.vgm_status IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')) OR ($7='pending' AND COALESCE(p.vgm_status,'') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT'))) AND ($8='' OR ($8='released' AND p.release_status='Sim') OR ($8='pending' AND COALESCE(p.release_status,'Não')<>'Sim')) AND ($9='' OR ${normalizedSearchExpression('p.origin_port')}=$9)${scope}`;
-  const orderBy = {
-    processes:'c.name ASC,p.created_at DESC,p.id DESC',
-    vgm:'p.vgm_sent_date DESC NULLS LAST,p.created_at DESC,p.id DESC',
-    release:'p.origin_port ASC,p.release_deadline ASC NULLS LAST,p.created_at DESC,p.id DESC',
-    followup:'p.updated_at DESC,p.id DESC'
-  }[view];
+  const search = buildProcessSearchQuery(req.query);
   const [items, total] = await Promise.all([
-    query(`${processSelect} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`, [...params, limit, offset]),
-    query(`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`, params)
+    query(search.itemsSql, search.pageParams),
+    query(search.countSql, search.params)
   ]);
-  res.json({ items: items.rows, pagination: { limit, offset, total: total.rows[0].total, hasMore: offset + items.rowCount < total.rows[0].total } });
+  res.json({ items:items.rows, pagination:{ limit:search.limit, offset:search.offset, total:total.rows[0].total, hasMore:search.offset + items.rowCount < total.rows[0].total } });
 }));
 app.get('/api/calendar', authenticate, asyncRoute(async (req, res) => {
   const from = String(req.query.from || '').trim();
   const to = String(req.query.to || '').trim();
+  const limit = Number(req.query.limit || 200);
+  const offset = Number(req.query.offset || 0);
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  if (!datePattern.test(from) || !datePattern.test(to) || from > to) return res.status(400).json({ error:'Período do calendário inválido.' });
+  if (!datePattern.test(from) || !datePattern.test(to) || from > to || !Number.isInteger(limit) || limit < 1 || limit > 500 || !Number.isInteger(offset) || offset < 0 || offset > 5_000) return res.status(400).json({ error:'Período do calendário inválido.' });
   const rangeDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000;
   if (!Number.isFinite(rangeDays) || rangeDays > 93) return res.status(400).json({ error:'Selecione no máximo três meses no calendário.' });
   // O calendário é pessoal mesmo que a planilha seja compartilhada: evita
   // misturar a agenda operacional de analistas diferentes.
-  const result = await query(`${processSelect}
-    WHERE (p.deadline::date BETWEEN $1::date AND $2::date
+  const calendarWhere = `WHERE (p.deadline::date BETWEEN $1::date AND $2::date
       OR p.container_collection_date BETWEEN $1::date AND $2::date
       OR p.release_schedule::date BETWEEN $1::date AND $2::date
       OR p.release_deadline::date BETWEEN $1::date AND $2::date)
-      AND p.analyst_id=$3
-    ORDER BY COALESCE(p.release_deadline,p.deadline,p.container_collection_date) ASC LIMIT 500`, [from, to, req.user.sub]);
-  const prelaunches = await query(`SELECT pl.id,pl.client_id,pl.booking,pl.deadline,c.name AS exporter,pl.created_at
+      AND p.analyst_id=$3`;
+  const [result, total, prelaunches] = await Promise.all([
+    query(`${processCalendarSelect} ${calendarWhere}
+      ORDER BY COALESCE(p.release_deadline,p.deadline,p.container_collection_date) ASC,p.id ASC
+      LIMIT $4 OFFSET $5`, [from, to, req.user.sub, limit, offset]),
+    query(`SELECT COUNT(*)::int AS total FROM processes p ${calendarWhere}`, [from, to, req.user.sub]),
+    offset === 0 ? query(`SELECT pl.id,pl.client_id,pl.booking,pl.deadline,c.name AS exporter,pl.created_at
     FROM process_prelaunches pl JOIN clients c ON c.id=pl.client_id
     WHERE pl.analyst_id=$1 AND pl.deadline::date BETWEEN $2::date AND $3::date
-    ORDER BY pl.deadline ASC`, [req.user.sub, from, to]);
-  res.json({ processes: result.rows, prelaunches: prelaunches.rows });
+    ORDER BY pl.deadline ASC`, [req.user.sub, from, to]) : Promise.resolve({ rows:[] })
+  ]);
+  const totalCount = total.rows[0].total;
+  res.json({
+    processes:result.rows,
+    prelaunches:prelaunches.rows,
+    pagination:{ limit, offset, total:totalCount, hasMore:offset + result.rowCount < totalCount },
+    interval:{ from, to }
+  });
 }));
 app.get('/api/prelaunches', authenticate, asyncRoute(async (req, res) => {
   const result = await query(`SELECT pl.id,pl.client_id,pl.booking,pl.deadline,c.name AS exporter,pl.created_at
@@ -852,108 +830,10 @@ app.get('/api/processes/:id', authenticate, asyncRoute(async (req, res) => {
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
   res.json(result.rows[0]);
 }));
-// Acompanhamento do processo: itens pendentes, comunicação interna e anexos
-// ficam separados da ficha operacional. Nenhum item é obrigatório e esses
-// recursos não alteram o status do processo.
-const checklistDefaults = ['DUE', 'DRAFT', 'VGM', 'BL', 'NOTA FISCAL'];
-const assertExistingProcess = async processId => {
-  if (!validId(processId)) throw Object.assign(new Error('Identificador de processo inválido.'), { status: 400 });
-  const result = await query('SELECT id,analyst_id FROM processes WHERE id=$1', [processId]);
-  if (!result.rowCount) throw Object.assign(new Error('Processo não encontrado.'), { status: 404 });
-  return result.rows[0];
-};
-const checklistRows = processId => query(`SELECT i.id,i.label,i.completed,i.completed_at,u.username AS completed_by,i.created_at
-  FROM process_checklist_items i LEFT JOIN users u ON u.id=i.completed_by
-  WHERE i.process_id=$1 ORDER BY i.completed ASC,i.created_at ASC`, [processId]);
-app.post('/api/processes/:id/checklist/defaults', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  const existing = await query('SELECT 1 FROM process_checklist_items WHERE process_id=$1 LIMIT 1', [req.params.id]);
-  if (!existing.rowCount) {
-    await Promise.all(checklistDefaults.map(label => query('INSERT INTO process_checklist_items(process_id,label,created_by) VALUES($1,$2,$3)', [req.params.id, label, req.user.sub])));
-    await audit(req.user.sub, 'process.checklist_seeded', 'process', req.params.id);
-  }
-  res.json((await checklistRows(req.params.id)).rows);
-}));
-app.get('/api/processes/:id/checklist', authenticate, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  res.json((await checklistRows(req.params.id)).rows);
-}));
-app.post('/api/processes/:id/checklist', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  const label = upperText(cleanText(req.body.label, 120, 'Item do checklist', { required:true }));
-  const result = await query('INSERT INTO process_checklist_items(process_id,label,created_by) VALUES($1,$2,$3) RETURNING id,label,completed,completed_at,created_at', [req.params.id, label, req.user.sub]);
-  await audit(req.user.sub, 'process.checklist_item_created', 'process', req.params.id, { label });
-  res.status(201).json(result.rows[0]);
-}));
-app.patch('/api/processes/:id/checklist/:itemId', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  if (!validId(req.params.itemId) || typeof req.body.completed !== 'boolean') return res.status(400).json({ error:'Item do checklist inválido.' });
-  const result = await query(`UPDATE process_checklist_items SET completed=$1,completed_at=CASE WHEN $1 THEN NOW() ELSE NULL END,completed_by=CASE WHEN $1 THEN $2 ELSE NULL END
-    WHERE id=$3 AND process_id=$4 RETURNING id,label,completed,completed_at`, [req.body.completed, req.user.sub, req.params.itemId, req.params.id]);
-  if (!result.rowCount) return res.status(404).json({ error:'Item do checklist não encontrado.' });
-  await audit(req.user.sub, 'process.checklist_item_updated', 'process', req.params.id, { label:result.rows[0].label, completed:req.body.completed });
-  res.json(result.rows[0]);
-}));
-app.delete('/api/processes/:id/checklist/:itemId', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  if (!validId(req.params.itemId)) return res.status(400).json({ error:'Item do checklist inválido.' });
-  const result = await query('DELETE FROM process_checklist_items WHERE id=$1 AND process_id=$2 RETURNING label', [req.params.itemId, req.params.id]);
-  if (!result.rowCount) return res.status(404).json({ error:'Item do checklist não encontrado.' });
-  await audit(req.user.sub, 'process.checklist_item_deleted', 'process', req.params.id, { label:result.rows[0].label });
-  res.status(204).end();
-}));
-app.get('/api/processes/:id/comments', authenticate, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  const result = await query(`SELECT c.id,c.body,c.created_at,u.username FROM process_comments c JOIN users u ON u.id=c.user_id
-    WHERE c.process_id=$1 ORDER BY c.created_at DESC LIMIT 100`, [req.params.id]);
-  res.json(result.rows);
-}));
-app.post('/api/processes/:id/comments', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  const body = cleanText(req.body.body, 1000, 'Comentário', { required:true });
-  const result = await query(`INSERT INTO process_comments(process_id,user_id,body) VALUES($1,$2,$3)
-    RETURNING id,body,created_at`, [req.params.id, req.user.sub, body]);
-  await audit(req.user.sub, 'process.comment_created', 'process', req.params.id);
-  res.status(201).json({ ...result.rows[0], username:req.user.username });
-}));
-app.get('/api/processes/:id/attachments', authenticate, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  const result = await query(`SELECT a.id,a.file_name,a.mime_type,a.size_bytes,a.created_at,u.username FROM process_attachments a
-    JOIN users u ON u.id=a.uploaded_by WHERE a.process_id=$1 ORDER BY a.created_at DESC`, [req.params.id]);
-  res.json(result.rows);
-}));
-app.post('/api/processes/:id/attachments', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  const fileName = cleanText(req.body.fileName, 160, 'Nome do arquivo', { required:true });
-  const mimeType = String(req.body.mimeType || '').toLowerCase();
-  const encoded = String(req.body.contentBase64 || '');
-  if (!allowedAttachmentTypes.has(mimeType) || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return res.status(400).json({ error:'Envie somente PDF, PNG ou JPG válidos.' });
-  const content = Buffer.from(encoded, 'base64');
-  if (!content.length || content.length > attachmentMaxBytes) return res.status(400).json({ error:'O anexo deve ter no máximo 4 MB.' });
-  const result = await query(`INSERT INTO process_attachments(process_id,file_name,mime_type,size_bytes,content,uploaded_by)
-    VALUES($1,$2,$3,$4,$5,$6) RETURNING id,file_name,mime_type,size_bytes,created_at`, [req.params.id, fileName, mimeType, content.length, content, req.user.sub]);
-  await audit(req.user.sub, 'process.attachment_uploaded', 'process', req.params.id, { fileName, mimeType, sizeBytes:content.length });
-  res.status(201).json({ ...result.rows[0], username:req.user.username });
-}));
-app.get('/api/processes/:id/attachments/:attachmentId/download', authenticate, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  if (!validId(req.params.attachmentId)) return res.status(400).json({ error:'Anexo inválido.' });
-  const result = await query('SELECT file_name,mime_type,content FROM process_attachments WHERE id=$1 AND process_id=$2', [req.params.attachmentId, req.params.id]);
-  if (!result.rowCount) return res.status(404).json({ error:'Anexo não encontrado.' });
-  const attachment = result.rows[0];
-  res.setHeader('Content-Type', attachment.mime_type);
-  res.setHeader('Content-Disposition', `attachment; filename="${String(attachment.file_name).replace(/["\\\r\n]/g, '_')}"`);
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.send(attachment.content);
-}));
-app.delete('/api/processes/:id/attachments/:attachmentId', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
-  await assertExistingProcess(req.params.id);
-  if (!validId(req.params.attachmentId)) return res.status(400).json({ error:'Anexo inválido.' });
-  const result = await query('DELETE FROM process_attachments WHERE id=$1 AND process_id=$2 RETURNING file_name', [req.params.attachmentId, req.params.id]);
-  if (!result.rowCount) return res.status(404).json({ error:'Anexo não encontrado.' });
-  await audit(req.user.sub, 'process.attachment_deleted', 'process', req.params.id, { fileName:result.rows[0].file_name });
-  res.status(204).end();
-}));
+registerProcessWorkspaceRoutes({
+  app, authenticate, processEditorOnly, asyncRoute, query, audit, validId,
+  upperText, cleanText, validateAttachmentInput, attachmentScanMode
+});
 app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (req, res) => {
   const body = { ...req.body };
   // A chave é criada pelo navegador uma única vez por lançamento. Repetições
@@ -1199,30 +1079,11 @@ app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => 
   res.json({ year, month, allPeriods, total: total.rows[0].total, analysts: analysts.rows, exporters: exporters.rows });
 }));
 
-app.use((error, req, res, _next) => {
-  const status = Number.isInteger(error?.status)
-    ? error.status
-    : error?.code === '23505'
-      ? 409
-    : error?.type === 'entity.too.large'
-      ? 413
-      : error?.type === 'entity.parse.failed'
-        ? 400
-        : 500;
-  // Nunca escreva corpo, senha, token, query string ou pilha de banco nos logs.
-  const errorEntry = JSON.stringify({ time: new Date().toISOString(), method: req.method, path: req.path, status, code: error?.code || null }) + '\n';
-  appendFile(path.resolve(here, '../server-errors.log'), errorEntry, 'utf8').catch(() => {});
-  if (status >= 500) console.error(`[erro] ${req.method} ${req.path} ${error?.code || error?.name || 'internal'}`);
-  const message = status === 413
-    ? 'Solicitação muito grande.'
-    : error?.type === 'entity.parse.failed'
-      ? 'JSON inválido.'
-      : status < 500
-        ? error?.code === '23505' ? 'Registro já cadastrado.' : error.message
-        : 'Erro interno do servidor.';
-  res.status(status).json({ error: message });
-});
-const ensureProcessFields = async () => {
+app.use(createErrorHandler({ localLogPath:path.resolve(here, '../server-errors.log'), logger, alerts }));
+// Fallback histórico preservado temporariamente para conferência da migração.
+// Ele não é mais chamado no boot e será removido somente após a homologação da
+// migração 2026-08-28-001 em banco limpo e em cópia de banco existente.
+const legacyEnsureProcessFields = async () => {
   // Mantém o banco compatível com novos campos de capa, inclusive em projetos
   // que já estavam em uso antes dessas funcionalidades serem adicionadas.
   // A instalação foi evoluindo por etapas; por isso, todos os campos usados no
@@ -1364,9 +1225,10 @@ const ensureProcessFields = async () => {
   await query('CREATE INDEX IF NOT EXISTS process_prelaunches_analyst_deadline_idx ON process_prelaunches(analyst_id,deadline)');
 };
 
-ensureProcessFields()
+verifySchemaCompatibility({ query })
   .then(() => app.listen(port, () => console.log(`Atlas Export API em http://localhost:${port}`)))
   .catch(error => {
-    console.error('Não foi possível preparar o banco de dados:', error);
+    const code = error?.code || 'SCHEMA_CHECK_FAILED';
+    console.error(`Não foi possível validar o esquema do banco (${code}). Execute npm run migrate antes de iniciar a aplicação.`);
     process.exit(1);
   });

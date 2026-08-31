@@ -6,6 +6,15 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "migrate": "node scripts/migrate.mjs",
+    "migrate:check": "node scripts/migrate.mjs --dry-run",
+    "migrate:status": "node scripts/migration-status.mjs",
+    "alert:test": "node scripts/test-alert.mjs",
+    "backup:create": "node scripts/backup-postgres.mjs",
+    "restore:test": "node scripts/restore-test.mjs",
+    "restore:cleanup": "node scripts/cleanup-restore-test.mjs",
+    "benchmark:calendar": "node scripts/benchmark-calendar.mjs --items=500",
+    "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list",
@@ -23,6 +32,7 @@
     "pg": "^8.13.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "esbuild": "^0.25.0"
   }
 }
