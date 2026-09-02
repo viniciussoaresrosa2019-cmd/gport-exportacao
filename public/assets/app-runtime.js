@@ -548,7 +548,12 @@
         const seals = Array.isArray(details) ? details.map(x => x.seal).filter(Boolean).join(' / ') : '';
         const newSeals = Array.isArray(details) ? details.map(x => x.new_seal).filter(Boolean).join(' / ') : '';
         const notes = Array.isArray(details) ? details.map(x => x.invoice_number).filter(Boolean).join(' / ') : '';
-        return { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        // HTMLInputElement converte `undefined` para o texto literal
+        // "undefined". Normalize somente valores nulos da resposta; strings
+        // realmente armazenadas continuam visíveis para uma auditoria posterior.
+        Object.keys(view).forEach(key => { if (view[key] === null || view[key] === undefined) view[key] = ''; });
+        return view;
       };
       const toApiProcess = p => {
         const client = clients.find(c => c.id === p.exportador);
@@ -600,8 +605,12 @@
         }
         el('containerDetails').replaceChildren();
       };
+      let processFormHasPersistedDetails = true;
+      let editingProcessUpdatedAt = null;
       const nativeOpenProcess = open;
       open = p => {
+        processFormHasPersistedDetails = !p || p.__persistedDetails === true;
+        editingProcessUpdatedAt = p?.updatedAt || null;
         // Os campos dos contêineres são gerados dinamicamente. Limpe a tela
         // anterior antes de preencher o processo atual, evitando que valores
         // antigos apareçam mesmo quando o banco já possui os dados corretos.
@@ -647,7 +656,15 @@
       };
       // A listagem usa uma projeção enxuta. Edição e capa buscam o contrato
       // completo somente quando o usuário executa a ação correspondente.
-      const loadPersistedProcess = async id => toViewProcess(await request(`/api/processes/${id}`));
+      const loadPersistedProcess = async id => {
+        const persisted = await request(`/api/processes/${id}`);
+        return {
+          ...toViewProcess(persisted),
+          createdAt:persisted.created_at || '',
+          updatedAt:persisted.updated_at || '',
+          __persistedDetails:true
+        };
+      };
       el('rows').onclick = async event => {
         const pdfButton = event.target.closest('[data-pdf]');
         const row = event.target.closest('tr[data-id]');
@@ -660,7 +677,7 @@
         if (pdfButton) pdfButton.disabled = true;
         try {
           const process = await loadPersistedProcess(id);
-          if (pdfButton) printCover(process);
+          if (pdfButton) printCoverFromDocumentModel(process);
           else open(process);
         } catch (error) {
           toast.error(error.message || 'Não foi possível carregar os detalhes do processo.');
@@ -754,9 +771,7 @@
           el('calendarGrid').innerHTML = '<div class="calendar-weekdays"><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span><span>DOM</span></div><div class="calendar-days">' + days.join('') + '</div>';
           el('calendarSummary').textContent = `${rows.length}${truncated ? ` de ${total}` : ''} processo(s) e ${prelaunches.length} pré-lançamento(s) na sua agenda em ${periodLabel}.${truncated ? ' Refine o período para visualizar todos os itens.' : ''}`;
           const openCalendarProcess = async id => {
-            const process = data.find(item => item.id === id);
-            if (process) { returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(process); return; }
-            try { const item = toViewProcess(await request(`/api/processes/${id}`)); returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(item); }
+            try { const item = await loadPersistedProcess(id); returnToCalendarAfterProcess = true; el('calendarDialog').close(); open(item); }
             catch (error) { toast.error(error.message); }
           };
           const openCalendarPrelaunch = id => {
@@ -1363,6 +1378,10 @@
       const showProcessSaveState = text => { const button = form.querySelector('button[type="submit"]'); if (button) button.textContent = text; };
       const persistProcessForm = async ({ closeAfter = false, quiet = false } = {}) => {
         if (processSaveBusy) { processSavePending = true; return false; }
+        if (processIdFromForm() && !processFormHasPersistedDetails) {
+          if (!quiet) toast.error('Os detalhes completos do processo não foram carregados. Feche e abra o processo novamente.');
+          return false;
+        }
         syncContainerDetails();
         // Reforço no navegador: a API repete esta validação para impedir qualquer
         // salvamento por requisição manual ou navegador antigo.
@@ -1383,7 +1402,7 @@
         // Nunca permita que um ID residual de um formulário anterior seja
         // enviado em uma criação nova.
         if (!processId) values.id = '';
-        values.updatedAt = data.find(item => item.id === processId)?.updatedAt || null;
+        values.updatedAt = editingProcessUpdatedAt || data.find(item => item.id === processId)?.updatedAt || null;
         const isNewProcess = !processId;
         // Um autosave só existe na edição. Um lançamento novo é salvo apenas
         // pelo botão, evitando processos incompletos ou duplicados.
@@ -1407,6 +1426,8 @@
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;
           editingProcessId = view.id;
+          processFormHasPersistedDetails = true;
+          editingProcessUpdatedAt = view.updatedAt || null;
           el('processWorkspaceBtn')?.setAttribute('hidden', '');
           if (isNewProcess) newProcessIdempotencyKey = null;
           // Um pré-lançamento só é concluído após o processo definitivo ser
@@ -1729,7 +1750,6 @@
         printCoverFromDocumentModelBase(p);
       }
       el('printBtn').onclick = () => printCoverFromDocumentModel(Object.fromEntries(new FormData(form)));
-      el('rows').onclick = e => { const pdf = e.target.closest('[data-pdf]'); if (pdf) { e.stopPropagation(); printCoverFromDocumentModel(data.find(p => p.id === pdf.dataset.pdf)); return; } const row = e.target.closest('tr'); if (row) open(data.find(p => p.id === row.dataset.id)); };
       restoreSession().finally(() => { if (!currentUser) el('loginDialog').showModal(); });
     })();
   

@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-08-31T04:38:07.444Z",
+  "generatedAt": "2026-09-02T16:03:19.210Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 313506,
-    "gzipBytes": 83396,
+    "bytes": 314222,
+    "gzipBytes": 83626,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,8 +18,8 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 165728,
-        "gzipBytes": 42670
+        "bytes": 166440,
+        "gzipBytes": 42896
       },
       {
         "file": "experience.css",
@@ -38,8 +38,8 @@
       },
       {
         "file": "legacy-ui.js",
-        "bytes": 42777,
-        "gzipBytes": 13314
+        "bytes": 42781,
+        "gzipBytes": 13318
       },
       {
         "file": "module-loader.js",
@@ -69,8 +69,8 @@
     ]
   },
   "output": {
-    "bytes": 233364,
-    "gzipBytes": 67409,
+    "bytes": 233454,
+    "gzipBytes": 67483,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -83,9 +83,9 @@
         "gzipBytes": 501
       },
       {
-        "file": "app-runtime-E77B1CE20CFF.js",
-        "bytes": 102530,
-        "gzipBytes": 31498
+        "file": "app-runtime-ABC26CE5D807.js",
+        "bytes": 102616,
+        "gzipBytes": 31569
       },
       {
         "file": "experience-29C65ACAC4FF.css",
@@ -103,9 +103,9 @@
         "gzipBytes": 11095
       },
       {
-        "file": "legacy-ui-8587CAB2F95A.js",
-        "bytes": 38854,
-        "gzipBytes": 12317
+        "file": "legacy-ui-989AC998F887.js",
+        "bytes": 38858,
+        "gzipBytes": 12320
       },
       {
         "file": "module-loader-0C618DDBF0EB.js",
@@ -135,10 +135,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 308534,
-    "sourceGzipBytes": 81602,
-    "outputBytes": 230190,
-    "outputGzipBytes": 66147,
+    "sourceBytes": 309250,
+    "sourceGzipBytes": 81832,
+    "outputBytes": 230280,
+    "outputGzipBytes": 66221,
     "deferred": [
       "reports.js"
     ]

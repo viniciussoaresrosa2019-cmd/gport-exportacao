@@ -409,6 +409,10 @@ const cleanText = (value, max, field, { required = false } = {}) => {
     return null;
   }
   const result = String(value).trim().replace(/\s+/g, ' ');
+  // Valores sentinela produzidos por JavaScript nunca são dados válidos. Sem
+  // esta barreira, um formulário incompleto poderia gravar a palavra
+  // "undefined" no banco durante uma edição automática.
+  if (/^(?:undefined|null)$/i.test(result)) throw Object.assign(new Error(`${field} contém um valor inválido.`), { status: 400 });
   // Impede que marcadores visuais ("." ou "*") passem pela validação como dados.
   if (required && (!result || /^[.*]+$/.test(result))) throw Object.assign(new Error(`${field} é obrigatório.`), { status: 400 });
   if (!result) return null;

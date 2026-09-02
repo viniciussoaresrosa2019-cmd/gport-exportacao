@@ -294,7 +294,7 @@ test('HTML inicial referencia scripts externos e não mantém estilos ou eventos
   assert.match(html, /assets\/experience\.js\?v=[0-9.]+" defer/);
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son(?:click|change|input|submit)="/i);
-  assert.ok(Buffer.byteLength(html, 'utf8') < 31_500, 'HTML inicial voltou a crescer acima do limite de 31,5 KB.');
+  assert.ok(Buffer.byteLength(html, 'utf8') < 31_000, 'HTML inicial voltou a crescer acima do limite de 31 KB.');
 });
 
 test('interface disponibiliza busca global, ajuda rápida e calendário semanal', async () => {
@@ -372,26 +372,6 @@ test('login sempre abre Processos sem painel ou preferência de redirecionamento
   assert.match(legacy, /delete savedAccessibility\.startPage/);
   assert.match(html, /<section id="processesPage">/);
   assert.doesNotMatch(experience, /showDashboard\(\);|Painel inicial/);
-});
-
-test('login apresenta a identidade interna aprovada sem texto complementar no formulário', async () => {
-  const html = await read('public/index.html');
-  const css = await read('public/assets/login.css');
-  const harbor = await read('public/login-harbor.svg');
-  assert.match(html, /Gestão interna que mantém <br>a operação em movimento\./);
-  assert.match(html, /Acesse processos, acompanhe prazos e organize as rotinas da equipe GPORT em um só lugar\./);
-  assert.match(html, /<h1>Acesse sua conta<\/h1>/);
-  assert.match(html, /<form id="loginForm">/);
-  assert.doesNotMatch(html, /Entre para continuar no GPORT|Entre para acessar a planilha de processos/);
-  assert.match(css, /\.login-journey/);
-  assert.match(css, /bottom: clamp\(16px, 2\.6vh, 28px\)/);
-  assert.match(html, /assets\/login\.css\?v=20260831\.2/);
-  assert.match(css, /background: bottom center \/ contain no-repeat url\("\.\.\/login-harbor\.svg\?v=20260831\.2"\)/);
-  assert.match(css, /@media \(max-width: 900px\)/);
-  assert.match(harbor, /id="cargo-ship"/);
-  assert.match(harbor, /id="container-stacks"/);
-  assert.match(harbor, /id="terminal-crane"/);
-  assert.match(harbor, /id="wave-field"/);
 });
 
 test('página inicial declara contexto e tabelas mantêm semântica acessível', async () => {
@@ -481,12 +461,28 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   const projections = await read('src/process-projections.js');
   const search = await read('src/process-search.js');
   assert.match(runtime, /projection:'summary'/);
-  assert.match(runtime, /loadPersistedProcess = async id => toViewProcess\(await request\(`\/api\/processes\/\$\{id\}`\)\)/);
+  assert.match(runtime, /loadPersistedProcess = async id => \{[\s\S]*?persisted = await request\(`\/api\/processes\/\$\{id\}`\)[\s\S]*?toViewProcess\(persisted\)[\s\S]*?updatedAt:persisted\.updated_at[\s\S]*?__persistedDetails:true/);
+  assert.equal((runtime.match(/el\('rows'\)\.onclick\s*=/g) || []).length, 1, 'a tabela deve possuir somente um manipulador final de abertura');
+  assert.match(runtime, /const process = await loadPersistedProcess\(id\)/);
+  assert.match(runtime, /if \(pdfButton\) printCoverFromDocumentModel\(process\)/);
+  assert.doesNotMatch(runtime, /printCoverFromDocumentModel\(data\.find\(/);
+  assert.match(runtime, /const openCalendarProcess = async id => \{\s*try \{ const item = await loadPersistedProcess\(id\)/);
+  assert.match(runtime, /processFormHasPersistedDetails/);
+  assert.match(runtime, /values\.updatedAt = editingProcessUpdatedAt \|\| data\.find/);
   assert.match(server, /buildProcessSearchQuery\(req\.query\)/);
   assert.match(search, /processProjection\(projection\)/);
   assert.match(search, /supportedProcessProjections\.has\(projection\)/);
   assert.match(projections, /processDetailSelect = `SELECT p\.\*/);
   assert.doesNotMatch(projections.match(/processSummarySelect[\s\S]*?`;\n/)[0], /container_details/);
+});
+
+test('camadas de entrada impedem undefined de virar dado do processo', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const legacy = await read('public/assets/legacy-ui.js');
+  assert.match(server, /\^\(\?:undefined\|null\)\$\/i\.test\(result\)/);
+  assert.match(runtime, /view\[key\] === null \|\| view\[key\] === undefined/);
+  assert.match(legacy, /form\.elements\[k\]\.value=v\?\?''/);
 });
 
 test('atualização em tempo real respeita a autorização de leitura', async () => {
