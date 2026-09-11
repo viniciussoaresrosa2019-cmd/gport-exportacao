@@ -1276,7 +1276,7 @@
       window.initializeTurnstile = () => {
         if (!turnstileSiteKey || !window.turnstile || turnstileWidgetId !== null) return;
         turnstileWidget.hidden = false;
-        turnstileWidgetId = window.turnstile.render(turnstileWidget, { sitekey: turnstileSiteKey, theme: 'auto', callback: token => { turnstileToken = token; }, 'expired-callback': () => { turnstileToken = ''; }, 'error-callback': () => { turnstileToken = ''; } });
+        turnstileWidgetId = window.turnstile.render(turnstileWidget, { sitekey: turnstileSiteKey, theme: 'light', language:'pt-BR', appearance:'always', callback: token => { turnstileToken = token; }, 'expired-callback': () => { turnstileToken = ''; }, 'error-callback': () => { turnstileToken = ''; } });
       };
       async function signIn(credentials, persist) {
         if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
@@ -1304,9 +1304,17 @@
         } catch { currentUser = null; }
       }
       el('loginForm').onsubmit = async e => {
-        e.preventDefault(); const v = Object.fromEntries(new FormData(e.currentTarget));
+        e.preventDefault();
+        const loginForm = e.currentTarget;
+        const submitButton = loginForm.querySelector('button[type="submit"]');
+        loginForm.elements.username.value = loginForm.elements.username.value.trim();
+        if (!loginForm.checkValidity()) { loginForm.reportValidity(); return; }
+        const v = Object.fromEntries(new FormData(loginForm));
+        loginForm.setAttribute('aria-busy', 'true');
+        submitButton.disabled = true;
         try { await signIn(v, !!v.remember); el('loginError').hidden = true; }
         catch (error) { resetTurnstile(); el('loginError').textContent = safeToastMessage(error.message, 'Não foi possível entrar. Verifique seus dados e tente novamente.'); el('loginError').hidden = false; toast.error('Não foi possível entrar. Verifique seus dados e tente novamente.'); }
+        finally { loginForm.removeAttribute('aria-busy'); submitButton.disabled = false; }
       };
       const registrationCodeField = document.createElement('div');
       registrationCodeField.className = 'field';

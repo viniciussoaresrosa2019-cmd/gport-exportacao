@@ -1,0 +1,59 @@
+import { expect, test } from '@playwright/test';
+
+test('login aprovado mantém a arte, animação e campos funcionais', async ({ page }) => {
+  await page.goto('/');
+
+  const dialog = page.locator('#loginDialog');
+  const stage = page.locator('#gportLoginStage');
+  const form = page.locator('form#loginForm');
+  const username = form.locator('[name="username"]');
+  const password = form.locator('[name="password"]');
+
+  await expect(dialog).toBeVisible();
+  await expect(stage).toHaveClass(/ready/);
+  await expect(page.locator('img.original')).toHaveAttribute('src', /login-animation\/login-reference\.png/);
+  await expect(form).toHaveCount(1);
+  await expect(username).toHaveAttribute('required', '');
+  await expect(username).toHaveAttribute('minlength', '3');
+  await expect(username).toHaveAttribute('maxlength', '80');
+  await expect(password).toHaveAttribute('required', '');
+  await expect(password).toHaveAttribute('maxlength', '200');
+
+  await form.locator('button[type="submit"]').click();
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('loginUsername');
+  expect(await form.evaluate(element => element.checkValidity())).toBe(false);
+
+  await password.fill('test-only-password');
+  await page.locator('#loginPasswordToggle').click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await page.locator('#loginPasswordToggle').click();
+  await expect(password).toHaveAttribute('type', 'password');
+
+  const routeBefore = await page.locator('#traveller').getAttribute('transform');
+  await page.waitForTimeout(250);
+  const routeAfter = await page.locator('#traveller').getAttribute('transform');
+  expect(routeAfter).not.toBe(routeBefore);
+
+  const horizontalFit = await dialog.evaluate(element => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth
+  }));
+  expect(horizontalFit.scrollWidth).toBeLessThanOrEqual(horizontalFit.clientWidth + 1);
+});
+
+test('Turnstile usa a configuração pública injetada pelo servidor', async ({ page }) => {
+  await page.goto('/');
+  const state = await page.evaluate(() => {
+    const meta = document.querySelector('meta[name="gport-turnstile-site-key"]');
+    const widget = document.querySelector('#turnstileWidget');
+    return {
+      meta: meta?.content || '',
+      widget: widget?.dataset.sitekey || '',
+      hasScript: Boolean(document.querySelector('script[src^="https://challenges.cloudflare.com/turnstile/"]'))
+    };
+  });
+
+  expect(state.widget).toBe(state.meta);
+  expect(state.widget).not.toBe('__TURNSTILE_SITE_KEY__');
+  expect(state.hasScript).toBe(Boolean(state.meta));
+});

@@ -6,11 +6,16 @@ import test from 'node:test';
 const read = file => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
 const interfaceFiles = [
   'public/index.html',
+  'public/assets/login-view.js',
   'public/assets/ui-feedback.js',
   'public/assets/legacy-ui.js',
   'public/assets/app-runtime.js',
   'public/assets/accessibility.js',
-  'public/assets/experience.js'
+  'public/assets/experience.js',
+  'public/assets/login-route-data.js',
+  'public/assets/login-motion.js',
+  'public/assets/login-animation.js',
+  'public/assets/login-controls.js'
 ];
 const readInterface = async () => (await Promise.all(interfaceFiles.map(read))).join('\n');
 
