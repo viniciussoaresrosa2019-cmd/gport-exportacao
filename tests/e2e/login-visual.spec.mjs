@@ -91,4 +91,12 @@ test('login cabe integralmente na área útil de uma tela 1920×1080', async ({ 
   expect(fit.left).toBeGreaterThanOrEqual(-1);
   expect(fit.right).toBeLessThanOrEqual(fit.viewportWidth + 1);
   expect(fit.bottom).toBeLessThanOrEqual(fit.viewportHeight + 1);
+
+  await page.setViewportSize({ width:2560, height:1440 });
+  const nativeSize = await page.locator('.animated-login-root').evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return { width:rect.width, height:rect.height };
+  });
+  expect(nativeSize.width).toBeLessThanOrEqual(1672);
+  expect(nativeSize.height).toBeLessThanOrEqual(941);
 });

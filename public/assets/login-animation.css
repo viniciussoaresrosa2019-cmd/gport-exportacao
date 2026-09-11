@@ -19,7 +19,7 @@ body:has(#loginDialog[open]) { overflow: hidden; }
 
 .animated-login-root {
   position: relative;
-  width: 100vw;
+  width: min(100vw, 1672px);
   max-width: 177.6833156vh;
   max-height: 100vh;
   aspect-ratio: 1672 / 941;
