@@ -36,9 +36,21 @@ test('login aprovado mantém a arte, animação e campos funcionais', async ({ p
 
   const horizontalFit = await dialog.evaluate(element => ({
     clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth
+    scrollWidth: element.scrollWidth,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    viewportWidth:window.innerWidth
   }));
   expect(horizontalFit.scrollWidth).toBeLessThanOrEqual(horizontalFit.clientWidth + 1);
+  if (horizontalFit.viewportWidth > 640) {
+    expect(horizontalFit.scrollHeight).toBeLessThanOrEqual(horizontalFit.clientHeight + 1);
+    const rootFit = await page.locator('.animated-login-root').evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return { bottom:rect.bottom, height:rect.height, viewportHeight:window.innerHeight };
+    });
+    expect(rootFit.bottom).toBeLessThanOrEqual(rootFit.viewportHeight + 1);
+    expect(rootFit.height).toBeLessThanOrEqual(rootFit.viewportHeight + 1);
+  }
 });
 
 test('Turnstile usa a configuração pública injetada pelo servidor', async ({ page }) => {
@@ -56,4 +68,27 @@ test('Turnstile usa a configuração pública injetada pelo servidor', async ({ 
   expect(state.widget).toBe(state.meta);
   expect(state.widget).not.toBe('__TURNSTILE_SITE_KEY__');
   expect(state.hasScript).toBe(Boolean(state.meta));
+});
+
+test('login cabe integralmente na área útil de uma tela 1920×1080', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chrome');
+  await page.setViewportSize({ width:1920, height:931 });
+  await page.goto('/');
+  await expect(page.locator('#gportLoginStage')).toHaveClass(/ready/);
+
+  const fit = await page.locator('.animated-login-root').evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top:rect.top,
+      right:rect.right,
+      bottom:rect.bottom,
+      left:rect.left,
+      viewportWidth:window.innerWidth,
+      viewportHeight:window.innerHeight
+    };
+  });
+  expect(fit.top).toBeGreaterThanOrEqual(-1);
+  expect(fit.left).toBeGreaterThanOrEqual(-1);
+  expect(fit.right).toBeLessThanOrEqual(fit.viewportWidth + 1);
+  expect(fit.bottom).toBeLessThanOrEqual(fit.viewportHeight + 1);
 });

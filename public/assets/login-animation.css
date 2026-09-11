@@ -19,7 +19,9 @@ body:has(#loginDialog[open]) { overflow: hidden; }
 
 .animated-login-root {
   position: relative;
-  width: min(100vw, calc(100svh * 1672 / 941));
+  width: 100vw;
+  max-width: 177.6833156vh;
+  max-height: 100vh;
   aspect-ratio: 1672 / 941;
   overflow: hidden;
   background: #020b18;
@@ -85,15 +87,29 @@ body:has(#loginDialog[open]) { overflow: hidden; }
   border-radius: clamp(5px, .65vw, 10px);
   outline: 0;
   background: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
   box-shadow: none;
   color: #0b1426;
+  -webkit-text-fill-color: #0b1426;
   caret-color: #0b1426;
+  transition: background-color 100000s ease-in-out 0s;
   font: 500 clamp(14px, 1.04vw, 18px) "Segoe UI", Arial, sans-serif;
   pointer-events: auto;
 }
 
 #loginDialog .login-credential:focus-visible {
-  box-shadow: inset 0 0 0 2px #315f8e;
+  outline: 2px solid #315f8e;
+  outline-offset: -2px;
+}
+
+#loginDialog .login-credential:-webkit-autofill,
+#loginDialog .login-credential:-webkit-autofill:hover,
+#loginDialog .login-credential:-webkit-autofill:focus {
+  background-color: transparent !important;
+  -webkit-text-fill-color: #0b1426 !important;
+  -webkit-background-clip: text !important;
+  caret-color: #0b1426;
 }
 
 #loginDialog .login-username { padding-right: 1.2%; }
@@ -179,9 +195,9 @@ body:has(#loginDialog[open]) { overflow: hidden; }
 }
 
 .login-animation-controls {
-  position: fixed;
+  position: absolute;
   z-index: 8;
-  right: 12px;
+  left: 12px;
   bottom: 12px;
 }
 
@@ -221,7 +237,7 @@ body:has(#loginDialog[open]) { overflow: hidden; }
   .login-submit-overlay { left: 12.41%; top: 68.31%; width: 75.52%; height: 8.92%; border-radius: 8px; }
   #loginDialog #loginError { left: 12.41%; top: 78.2%; width: 75.52%; font-size: clamp(10px, 3vw, 13px); }
   #loginDialog #turnstileWidget { left: 50%; top: 87.7%; }
-  .login-animation-controls { position: absolute; right: 10px; bottom: 10px; }
+  .login-animation-controls { left: auto; right: 10px; top: 10px; bottom: auto; }
   .login-animation-controls button { font-size: 12px; }
 }
 

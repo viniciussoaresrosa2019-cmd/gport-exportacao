@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-11T23:19:14.941Z",
+  "generatedAt": "2026-09-11T23:28:34.189Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 334603,
-    "gzipBytes": 90973,
+    "bytes": 335111,
+    "gzipBytes": 91057,
     "files": [
       {
         "file": "accessibility.js",
@@ -43,8 +43,8 @@
       },
       {
         "file": "login-animation.css",
-        "bytes": 5935,
-        "gzipBytes": 1616
+        "bytes": 6443,
+        "gzipBytes": 1700
       },
       {
         "file": "login-animation.js",
@@ -99,8 +99,8 @@
     ]
   },
   "output": {
-    "bytes": 249844,
-    "gzipBytes": 73869,
+    "bytes": 250281,
+    "gzipBytes": 73951,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -138,9 +138,9 @@
         "gzipBytes": 12320
       },
       {
-        "file": "login-animation-07FA3B4BF8CD.css",
-        "bytes": 4945,
-        "gzipBytes": 1467
+        "file": "login-animation-025C786F8F83.css",
+        "bytes": 5382,
+        "gzipBytes": 1549
       },
       {
         "file": "login-animation-98DF21F57EB7.js",
@@ -195,10 +195,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 329631,
-    "sourceGzipBytes": 89179,
-    "outputBytes": 246670,
-    "outputGzipBytes": 72607,
+    "sourceBytes": 330139,
+    "sourceGzipBytes": 89263,
+    "outputBytes": 247107,
+    "outputGzipBytes": 72689,
     "deferred": [
       "reports.js"
     ]

@@ -76,6 +76,8 @@ test('a composição responsiva mantém a arte exata no desktop e no celular', a
   assert.match(html, /viewBox="0 0 1672 941"/);
   assert.match(html, /viewBox="1020 145 580 650"/);
   assert.match(css, /aspect-ratio: 1672 \/ 941/);
+  assert.match(css, /max-width: 177\.6833156vh/);
+  assert.doesNotMatch(css, /100svh\s*\*/);
   assert.match(css, /body:has\(#loginDialog\[open\]\) \{ overflow: hidden; \}/);
   assert.match(css, /@media \(max-width: 640px\) and \(orientation: portrait\)/);
   assert.match(controls, /ResizeObserver/);
