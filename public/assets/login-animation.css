@@ -162,6 +162,13 @@ body:has(#loginDialog[open]) { position: fixed; inset: 0; }
   pointer-events: none;
 }
 
+/* The harbor artwork keeps its source aspect ratio; only the right-side
+   crane assembly moves into unused width on wide browser windows. */
+.login-harbor-art .terminal-lines,
+.login-harbor-art .water-lines { display: none; }
+.login-harbor-art .crane-illustration { opacity: .38; filter: saturate(.45) brightness(1.35); }
+.login-harbor-art .water-detail { opacity: .38; }
+
 .login-access-layer {
   position: relative;
   z-index: 4;

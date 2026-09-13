@@ -22,7 +22,8 @@ test('a tela animada usa ativos independentes e não depende de uma captura da t
   assert.match(html, /class="login-brand"/);
   assert.match(html, /class="login-hero-copy"/);
   assert.match(html, /class="login-card"/);
-  assert.match(html, /class="terminal-lines"/);
+  assert.match(html, /class="crane-illustration"[^>]*crane-detail-v3\.png/);
+  assert.match(html, /class="water-detail"/);
 });
 
 test('movimento original de 14 segundos e rota permanecem ligados à tela de login', async () => {
@@ -80,6 +81,8 @@ test('a composição responsiva mantém elementos reais no desktop e no celular'
   ]);
 
   assert.match(html, /viewBox="0 0 955 941"/);
+  assert.match(html, /preserveAspectRatio="xMinYMax meet"/);
+  assert.match(html, /id="craneAssembly"/);
   assert.match(html, />Gestão interna que mantém<br>a operação em movimento\.<\/h1>/);
   assert.match(html, /<label for="loginUsername">Usuário<\/label>/);
   assert.match(html, /<button class="login-submit" type="submit">Entrar<\/button>/);
@@ -92,4 +95,19 @@ test('a composição responsiva mantém elementos reais no desktop e no celular'
   assert.match(controls, /ResizeObserver/);
   assert.match(controls, /--login-turnstile-scale/);
   assert.match(controls, /password\.type = visible \? 'password' : 'text'/);
+});
+
+test('arte portuária preserva proporções ao redimensionar o navegador', async () => {
+  const [html, css, animation, crane] = await Promise.all([
+    readText('public/assets/login-view.js'),
+    readText('public/assets/login-animation.css'),
+    readText('public/assets/login-animation.js'),
+    readBinary('public/login-animation/crane-detail-v3.png')
+  ]);
+  assert.ok(crane.length > 100_000, 'guindaste de alta resolução deve estar disponível');
+  assert.match(html, /preserveAspectRatio="xMinYMax meet"/);
+  assert.match(html, /class="crane-illustration"/);
+  assert.match(css, /\.login-harbor-art \.terminal-lines,\s*\.login-harbor-art \.water-lines \{ display: none; \}/);
+  assert.match(animation, /new ResizeObserver\(alignHarbor\)/);
+  assert.match(animation, /width \/ scale - 955/);
 });

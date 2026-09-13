@@ -4,12 +4,13 @@
   const stage = document.getElementById('gportLoginStage');
   const dialog = document.getElementById('loginDialog');
   const ship = document.getElementById('ship');
+  const craneAssembly = document.getElementById('craneAssembly');
   const cargo = document.getElementById('cargo');
   const cable = document.getElementById('cable');
   const traveller = document.getElementById('traveller');
   const route = document.getElementById('route');
   const button = document.getElementById('pause');
-  if (!stage || !dialog || !ship || !cargo || !cable || !traveller || !route || !button) return;
+  if (!stage || !dialog || !ship || !craneAssembly || !cargo || !cable || !traveller || !route || !button) return;
 
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const params = new URLSearchParams(location.search);
@@ -21,6 +22,15 @@
   let last = null;
   let raf = null;
   let routeLength = 0;
+
+  function alignHarbor() {
+    const { width, height } = stage.getBoundingClientRect();
+    const scale = Math.min(width / 955, height / 941);
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    const freeWidth = Math.max(0, width / scale - 955);
+    craneAssembly.setAttribute('transform', `translate(${freeWidth.toFixed(2)} 0)`);
+    if (auditing) stage.dataset.artScale = scale.toFixed(4);
+  }
 
   function render(seconds) {
     const state = window.GportMotion.at(seconds);
@@ -76,6 +86,7 @@
     if (!window.GPORT_ROUTE || !window.GportMotion) throw new Error('Dados da animação indisponíveis.');
     route.setAttribute('d', window.GPORT_ROUTE);
     routeLength = route.getTotalLength();
+    alignHarbor();
     render(reviewTime === null ? 0 : reviewTime);
     stage.classList.add('ready');
   } catch (error) {
@@ -89,6 +100,8 @@
   document.addEventListener('visibilitychange', () => { stop(); start(); });
   window.addEventListener('pagehide', stop);
   window.addEventListener('pageshow', start);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(alignHarbor).observe(stage);
+  else window.addEventListener('resize', alignHarbor);
   new MutationObserver(() => { stop(); start(); }).observe(dialog, { attributes:true, attributeFilter:['open'] });
   updateButton();
   start();

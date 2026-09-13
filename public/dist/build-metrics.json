@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-12T00:12:09.469Z",
+  "generatedAt": "2026-09-13T01:29:35.191Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 341973,
-    "gzipBytes": 92610,
+    "bytes": 344811,
+    "gzipBytes": 93739,
     "files": [
       {
         "file": "accessibility.js",
@@ -43,13 +43,13 @@
       },
       {
         "file": "login-animation.css",
-        "bytes": 11235,
-        "gzipBytes": 3029
+        "bytes": 11610,
+        "gzipBytes": 3199
       },
       {
         "file": "login-animation.js",
-        "bytes": 3646,
-        "gzipBytes": 1316
+        "bytes": 4301,
+        "gzipBytes": 1518
       },
       {
         "file": "login-controls.js",
@@ -68,8 +68,8 @@
       },
       {
         "file": "login-view.js",
-        "bytes": 7563,
-        "gzipBytes": 2515
+        "bytes": 9371,
+        "gzipBytes": 3272
       },
       {
         "file": "module-loader.js",
@@ -99,8 +99,8 @@
     ]
   },
   "output": {
-    "bytes": 256824,
-    "gzipBytes": 75610,
+    "bytes": 259243,
+    "gzipBytes": 76586,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -138,14 +138,14 @@
         "gzipBytes": 12320
       },
       {
-        "file": "login-animation-452C6CE8E813.css",
-        "bytes": 9337,
-        "gzipBytes": 2794
+        "file": "login-animation-0B02DAE416DD.js",
+        "bytes": 2714,
+        "gzipBytes": 1230
       },
       {
-        "file": "login-animation-8626912C2EDE.js",
-        "bytes": 2313,
-        "gzipBytes": 1075
+        "file": "login-animation-2DB06A84E127.css",
+        "bytes": 9547,
+        "gzipBytes": 2862
       },
       {
         "file": "login-controls-574B6633FA28.js",
@@ -163,9 +163,9 @@
         "gzipBytes": 997
       },
       {
-        "file": "login-view-436A4397183C.js",
-        "bytes": 7502,
-        "gzipBytes": 2482
+        "file": "login-view-F0F857FA97B3.js",
+        "bytes": 9310,
+        "gzipBytes": 3235
       },
       {
         "file": "module-loader-0C618DDBF0EB.js",
@@ -195,10 +195,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 337001,
-    "sourceGzipBytes": 90816,
-    "outputBytes": 253650,
-    "outputGzipBytes": 74348,
+    "sourceBytes": 339839,
+    "sourceGzipBytes": 91945,
+    "outputBytes": 256069,
+    "outputGzipBytes": 75324,
     "deferred": [
       "reports.js"
     ]
