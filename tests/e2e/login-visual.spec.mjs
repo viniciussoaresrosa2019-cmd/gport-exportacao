@@ -11,7 +11,14 @@ test('login aprovado mantém a arte, animação e campos funcionais', async ({ p
 
   await expect(dialog).toBeVisible();
   await expect(stage).toHaveClass(/ready/);
-  await expect(page.locator('img.original')).toHaveAttribute('src', /login-animation\/login-reference\.png/);
+  await expect(page.getByRole('heading', { name:'Gestão interna que mantém a operação em movimento.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name:'Acesse sua conta' })).toBeVisible();
+  await expect(page.locator('img.original')).toHaveCount(0);
+  await expect(page.locator('img[src*="login-reference.png"], image[href*="background.png"]')).toHaveCount(0);
+  const fullScreenImagesLoaded = await page.evaluate(() => performance.getEntriesByType('resource')
+    .map(entry => entry.name)
+    .filter(name => /login-reference\.png|background\.png/.test(name)));
+  expect(fullScreenImagesLoaded).toEqual([]);
   await expect(form).toHaveCount(1);
   await expect(username).toHaveAttribute('required', '');
   await expect(username).toHaveAttribute('minlength', '3');
@@ -39,9 +46,11 @@ test('login aprovado mantém a arte, animação e campos funcionais', async ({ p
     scrollWidth: element.scrollWidth,
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
-    viewportWidth:window.innerWidth
+    viewportWidth:window.innerWidth,
+    documentWidth:document.documentElement.scrollWidth
   }));
   expect(horizontalFit.scrollWidth).toBeLessThanOrEqual(horizontalFit.clientWidth + 1);
+  expect(horizontalFit.documentWidth).toBeLessThanOrEqual(horizontalFit.viewportWidth + 1);
   if (horizontalFit.viewportWidth > 640) {
     expect(horizontalFit.scrollHeight).toBeLessThanOrEqual(horizontalFit.clientHeight + 1);
     const rootFit = await page.locator('.animated-login-root').evaluate(element => {
@@ -92,11 +101,11 @@ test('login cabe integralmente na área útil de uma tela 1920×1080', async ({ 
   expect(fit.right).toBeLessThanOrEqual(fit.viewportWidth + 1);
   expect(fit.bottom).toBeLessThanOrEqual(fit.viewportHeight + 1);
 
-  await page.setViewportSize({ width:2560, height:1440 });
-  const nativeSize = await page.locator('.animated-login-root').evaluate(element => {
+  await page.setViewportSize({ width:7680, height:3724 });
+  const zoomedOutFit = await page.locator('.animated-login-root').evaluate(element => {
     const rect = element.getBoundingClientRect();
-    return { width:rect.width, height:rect.height };
+    return { width:rect.width, height:rect.height, viewportWidth:window.innerWidth, viewportHeight:window.innerHeight };
   });
-  expect(nativeSize.width).toBeLessThanOrEqual(1672);
-  expect(nativeSize.height).toBeLessThanOrEqual(941);
+  expect(zoomedOutFit.width).toBeGreaterThanOrEqual(zoomedOutFit.viewportWidth - 1);
+  expect(zoomedOutFit.height).toBeGreaterThanOrEqual(zoomedOutFit.viewportHeight - 1);
 });

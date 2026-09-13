@@ -1,11 +1,11 @@
 (() => {
   'use strict';
+
   const dialog = document.getElementById('loginDialog');
-  const stage = document.getElementById('gportLoginStage');
-  const access = dialog?.querySelector('.login-access-layer');
+  const card = dialog?.querySelector('.login-card');
   const password = document.getElementById('loginPassword');
   const toggle = document.getElementById('loginPasswordToggle');
-  if (!dialog || !stage || !access || !password || !toggle) return;
+  if (!dialog || !card || !password || !toggle) return;
 
   dialog.addEventListener('cancel', event => event.preventDefault());
   toggle.addEventListener('click', () => {
@@ -16,15 +16,12 @@
     password.focus();
   });
 
-  const portrait = matchMedia('(max-width: 640px) and (orientation: portrait)');
   const syncTurnstileScale = () => {
-    const reference = portrait.matches ? access : stage;
-    const referenceWidth = portrait.matches ? 580 : 1672;
-    const scale = Math.max(portrait.matches ? .68 : .5, reference.getBoundingClientRect().width / referenceWidth);
+    const available = Math.max(0, card.clientWidth - 32);
+    const scale = Math.min(1, Math.max(.72, available / 300));
     dialog.style.setProperty('--login-turnstile-scale', String(scale));
   };
-  new ResizeObserver(syncTurnstileScale).observe(stage);
-  new ResizeObserver(syncTurnstileScale).observe(access);
-  portrait.addEventListener('change', syncTurnstileScale);
+
+  new ResizeObserver(syncTurnstileScale).observe(card);
   syncTurnstileScale();
 })();
