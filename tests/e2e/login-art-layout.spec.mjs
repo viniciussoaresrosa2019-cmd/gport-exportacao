@@ -6,7 +6,7 @@ const loginUrl = pathToFileURL(fileURLToPath(new URL('../../public/index.html', 
 test('painéis, texto, cartão e cenário seguem a composição em desktop', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chrome');
 
-  for (const viewport of [{ width: 999, height: 572 }, { width: 1366, height: 768 }, { width: 1920, height: 931 }]) {
+  for (const viewport of [{ width: 999, height: 572 }, { width: 1366, height: 768 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(viewport);
     await page.goto(loginUrl);
     await expect(page.locator('#gportLoginStage')).toHaveClass(/ready/);
@@ -37,7 +37,7 @@ test('painéis, texto, cartão e cenário seguem a composição em desktop', asy
     expect(layout.card.top).toBeGreaterThanOrEqual(0);
     expect(layout.card.bottom).toBeLessThanOrEqual(layout.height);
     expect(layout.title.height / layout.titleLineHeight).toBeCloseTo(2, 0);
-    expect(layout.areas.bottom).toBeLessThanOrEqual(layout.ship.top + layout.ship.height * 20 / 135 + 2);
+    expect(layout.areas.bottom).toBeLessThanOrEqual(layout.ship.top + layout.ship.height * 29 / 165 + 2);
     expect(layout.terminal.right).toBeLessThanOrEqual(layout.stage.right + 2);
     expect(layout.documentWidth).toBeLessThanOrEqual(layout.width + 1);
 
@@ -65,7 +65,29 @@ test('navio, ondas e carga usam animações distintas sem romper os cabos', asyn
     waves: [...document.querySelectorAll('.login-wave-track')].map(element => getComputedStyle(element).animationDuration)
   }));
   expect(animations.ship).toBe('login-ship-bob');
-  expect(animations.waves).toEqual(['24s', '18s', '12s']);
+  expect(animations.waves).toEqual(['24s', '18s', '13s']);
+});
+
+test('preferência de texto ampliado não corta o login nem causa rolagem lateral', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chrome');
+  for (const viewport of [{ width: 1366, height: 768 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(loginUrl);
+    await page.evaluate(() => document.body.classList.add('accessibility-xlarge'));
+    const fit = await page.evaluate(() => {
+      const stage = document.querySelector('.login-stage').getBoundingClientRect();
+      const access = document.querySelector('.login-access').getBoundingClientRect();
+      const card = document.querySelector('.login-card').getBoundingClientRect();
+      const widget = document.querySelector('#turnstileWidget').getBoundingClientRect();
+      return { stageRight: stage.right, accessRight: access.right, cardLeft: card.left, cardRight: card.right, widgetRight: widget.right, viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth };
+    });
+    expect(fit.stageRight / fit.viewport).toBeCloseTo(.58, 2);
+    expect(fit.accessRight).toBeLessThanOrEqual(fit.viewport + 1);
+    expect(fit.cardLeft).toBeGreaterThan(fit.stageRight);
+    expect(fit.cardRight).toBeLessThan(fit.viewport);
+    expect(fit.widgetRight).toBeLessThanOrEqual(fit.cardRight);
+    expect(fit.scrollWidth).toBeLessThanOrEqual(fit.viewport + 1);
+  }
 });
 
 test('movimento reduzido desliga a animação decorativa', async ({ page }, testInfo) => {

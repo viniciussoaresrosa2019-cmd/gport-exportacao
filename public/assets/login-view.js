@@ -33,44 +33,79 @@
           <div class="login-port-scene" aria-hidden="true">
             <svg class="login-sea" viewBox="0 0 580 100" preserveAspectRatio="none">
               <defs>
-                <path id="loginWaveA" d="M0 14 C24 7 49 21 73 14 S121 7 145 14 S193 21 218 14 S266 7 290 14 S338 21 363 14 S411 7 435 14 S483 21 508 14 S555 7 580 14"></path>
-                <path id="loginWaveB" d="M0 33 C30 24 44 42 74 33 S118 25 145 33 S190 42 219 33 S263 25 290 33 S335 42 364 33 S408 25 435 33 S480 42 509 33 S553 25 580 33"></path>
-                <path id="loginWaveC" d="M0 54 C20 45 50 63 73 54 S123 45 145 54 S196 63 218 54 S268 45 290 54 S341 63 363 54 S413 45 435 54 S486 63 508 54 S558 45 580 54"></path>
-                <path id="loginWaveD" d="M0 78 C26 68 48 87 73 78 S120 69 145 78 S193 87 218 78 S265 69 290 78 S338 87 363 78 S410 69 435 78 S483 87 508 78 S554 69 580 78"></path>
+                <path id="loginWaveA" d="M0 11 C17 10 30 13 48 12 C70 10 86 14 107 13 C128 11 141 10 158 12 C181 15 194 11 212 11 C238 12 247 15 268 13 C292 10 310 11 328 12 C350 14 369 10 392 11 C419 13 429 14 450 12 C474 10 492 13 513 12 C537 10 558 13 580 11"></path>
+                <path id="loginWaveB" d="M0 22 C24 19 35 25 59 23 C82 19 104 22 119 24 C142 26 162 20 187 21 C217 23 228 27 253 23 C274 20 298 21 314 24 C337 26 355 21 382 22 C405 24 419 26 442 23 C470 20 487 22 510 24 C535 26 557 20 580 22"></path>
+                <path id="loginWaveC" d="M0 36 C22 32 41 39 64 37 C89 34 105 33 126 37 C151 41 172 35 195 34 C218 34 235 40 258 38 C281 35 300 32 322 36 C349 41 366 39 390 35 C411 32 434 35 456 38 C482 41 501 35 525 34 C545 34 563 38 580 36"></path>
+                <path id="loginWaveD" d="M0 51 C21 46 42 55 66 53 C91 50 112 46 137 51 C163 56 182 55 209 50 C236 45 255 49 277 53 C300 57 327 52 352 49 C377 46 395 50 419 54 C444 58 470 52 493 49 C522 46 549 53 580 51"></path>
+                <path id="loginWaveE" d="M0 69 C25 63 49 75 75 72 C102 69 119 63 149 67 C177 72 193 77 223 73 C248 69 267 64 291 67 C319 72 339 76 367 71 C397 66 412 64 437 69 C463 75 483 75 508 70 C536 65 556 65 580 69"></path>
+                <path id="loginWaveF" d="M0 86 C36 78 58 92 89 90 C120 88 139 79 170 82 C202 86 221 95 254 91 C289 86 300 79 331 82 C362 86 384 94 414 91 C449 87 468 80 499 82 C527 84 555 91 580 86"></path>
               </defs>
-              <g class="login-wave-track login-wave-back"><use href="#loginWaveA"></use><use href="#loginWaveA" x="580"></use><use href="#loginWaveB"></use><use href="#loginWaveB" x="580"></use></g>
-              <g class="login-wave-track login-wave-mid"><use href="#loginWaveC"></use><use href="#loginWaveC" x="580"></use></g>
-              <g class="login-wave-track login-wave-front"><use href="#loginWaveD"></use><use href="#loginWaveD" x="580"></use></g>
+              <g class="login-wave-bob"><g class="login-wave-track login-wave-back"><use href="#loginWaveA"></use><use href="#loginWaveA" x="580"></use><use href="#loginWaveB"></use><use href="#loginWaveB" x="580"></use></g></g>
+              <g class="login-wave-bob login-wave-bob-mid"><g class="login-wave-track login-wave-mid"><use href="#loginWaveC"></use><use href="#loginWaveC" x="580"></use><use href="#loginWaveD"></use><use href="#loginWaveD" x="580"></use></g></g>
+              <g class="login-wave-bob login-wave-bob-front"><g class="login-wave-track login-wave-front"><use href="#loginWaveE"></use><use href="#loginWaveE" x="580"></use><use href="#loginWaveF"></use><use href="#loginWaveF" x="580"></use></g></g>
             </svg>
 
-            <svg class="login-ship" viewBox="0 0 240 135" preserveAspectRatio="xMinYMax meet">
-              <defs><pattern id="shipRibs" width="7" height="30" patternUnits="userSpaceOnUse"><path d="M1 1v28" fill="none" stroke="#496682" stroke-width=".45"></path></pattern></defs>
+            <svg class="login-ship" viewBox="0 0 300 165" preserveAspectRatio="xMinYMax meet">
+              <defs>
+                <g id="loginShipBox">
+                  <path class="ship-container-top" d="M0 5 6 1 42 1 36 5Z"></path><path class="ship-container-front" d="M0 5h36v20H0z"></path><path class="ship-container-side" d="m36 5 6-4v20l-6 4Z"></path>
+                  <path class="ship-primary" d="M0 5 6 1h36v20l-6 4H0V5h36l6-4M36 5v20"></path>
+                  <path class="ship-detail" d="M3 7v16 M9 7v16 M15 7v16 M21 7v16 M27 7v16 M33 7v16 M38 5v17 M1 24h34 M1 6h34"></path>
+                  <path class="ship-distant" d="M1 5v3 M35 5v3 M1 22v3 M35 22v3"></path>
+                </g>
+              </defs>
               <g class="login-ship-moving">
-                <path class="ship-hull-fill" d="M4 91 L197 86 Q217 85 236 92 L220 119 Q211 130 193 132 H43 Q19 129 10 110 Z"></path>
-                <path class="ship-outline" d="M4 91 L197 86 Q217 85 236 92 L220 119 Q211 130 193 132 H43 Q19 129 10 110 Z M8 101 Q94 103 189 97 L230 94 M18 115 Q113 121 204 115 M38 132 H200"></path>
-                <path class="ship-outline" d="M13 88 H208 M28 70 H75 V89 H28 Z M30 58 H70 V70 H30 Z M35 47 H65 V58 H35 Z M37 40 H63 V47 H37 Z M42 40 V34 H58 V40 M48 34 V23 M43 28 H54 M50 23 V20 M48 30 H60"></path>
-                <path class="ship-fill" d="M77 66h43v22H77z M120 61h48v26h-48z M169 72h31v15h-31z M83 47h36v19H83z M123 43h43v18h-43z M169 54h29v18h-29z M91 34h25v13H91z"></path>
-                <path class="ship-outline" d="M77 66h43v22H77z M120 61h48v26h-48z M169 72h31v15h-31z M83 47h36v19H83z M123 43h43v18h-43z M169 54h29v18h-29z M91 34h25v13H91z M20 88 H203 M31 70 H70 M34 58 H67"></path>
-                <path class="ship-ribs" d="M78 67h41v20H78z M121 62h46v24h-46z M170 73h29v13h-29z M84 48h34v17H84z M124 44h41v16h-41z M170 55h27v16h-27z"></path>
-                <path class="ship-outline thin" d="M89 48v18 M101 48v18 M113 48v18 M130 44v17 M142 44v17 M154 44v17 M92 34v13 M103 34v13 M89 67v20 M101 67v20 M113 67v20 M131 62v24 M143 62v24 M155 62v24 M179 55v17 M189 55v17 M179 73v13 M189 73v13 M32 63h4m5 0h4m5 0h4m5 0h4 M37 52h4m5 0h4m5 0h4 M40 43h3m4 0h3m4 0h3 M203 93l-8 13 M14 96l18 1"></path>
-                <path class="ship-outline" d="M52 107h14l4 7H55z M181 102h8l3 5h-8z M19 120h200"></path>
+                <path class="ship-hull-fill" d="M7 109 Q77 109 176 105 L263 99 Q282 98 295 103 L277 138 Q271 149 251 152 L62 152 Q31 151 20 139 L8 121Z"></path>
+                <path class="ship-deck-fill" d="M10 101 238 99 263 96 277 99 269 105 11 110Z"></path>
+                <path class="ship-primary" d="M7 109 Q77 109 176 105 L263 99 Q282 98 295 103 L277 138 Q271 149 251 152 L62 152 Q31 151 20 139 L8 121Z M10 101 238 99 263 96 277 99 269 105 11 110 M12 117 Q99 121 198 114 L284 106 M23 136 Q86 141 176 139 L270 136"></path>
+                <path class="ship-detail" d="M22 124 Q126 130 225 119 M35 145 Q121 148 239 146 M14 104h248 M18 99h218 M36 108l4 11 M274 106l-8 27 M53 116h9m5 0h8m5 0h8m5 0h8m5 0h8m5 0h8m5 0h8m5 0h8m5 0h8 M50 129h5m9 1h5m9 0h5m9 0h5m9 0h5m9 0h5m9 0h5"></path>
+                <path class="ship-superstructure" d="M22 68h51l8 13v24H20V80Z M27 55h42l4 13H23Z M33 44h31l4 11H29Z M39 38h23v6H37Z"></path>
+                <path class="ship-primary" d="M20 105V80l2-12h51l8 13v24 M22 68h51 M23 55h46l4 13 M29 44h39l-4 11H27 M37 38h25v6H34 M18 81h65 M16 101h67"></path>
+                <path class="ship-detail" d="M29 80h43 M25 91h55 M31 69v36 M74 81v24 M38 55v13 M57 55v13 M43 44v11 M26 75h50 M22 101h62 M31 38v-3h38v3"></path>
+                <path class="ship-window" d="M33 47h7v4h-7z M44 47h7v4h-7z M55 47h7v4h-7z M30 58h7v5h-7z M42 58h7v5h-7z M54 58h7v5h-7z M65 58h5v5h-5z M26 71h6v5h-6z M37 71h6v5h-6z M48 71h6v5h-6z M59 71h6v5h-6z"></path>
+                <path class="ship-primary" d="M49 38V23 M45 27h8 M49 23v-5 M58 38V28 M55 31h7 M41 37v-8 M42 30h-4 M22 84v17 M77 85v18 M20 82h63 M21 97h62"></path>
+                <path class="ship-detail" d="M51 23h7 M38 30h8 M46 17h6 M16 94h11 M75 94h10 M20 86h63 M18 90h65 M30 101v5 M42 101v5 M55 101v5 M68 101v5"></path>
+                <use href="#loginShipBox" x="84" y="79"></use><use href="#loginShipBox" x="125" y="78"></use><use href="#loginShipBox" x="166" y="76"></use><use href="#loginShipBox" x="207" y="75"></use>
+                <use href="#loginShipBox" x="87" y="54"></use><use href="#loginShipBox" x="128" y="53"></use><use href="#loginShipBox" x="169" y="51"></use><use href="#loginShipBox" x="210" y="50"></use>
+                <use href="#loginShipBox" x="93" y="29"></use><use href="#loginShipBox" x="134" y="28"></use><use href="#loginShipBox" x="175" y="26"></use>
+                <path class="ship-primary" d="M80 105h177 M78 77h-4v27 M250 50h5v48 M14 101v-6 M21 101v-6 M28 101v-6 M266 98v-9 M274 99v-9"></path>
+                <path class="ship-detail" d="M84 104v4 M125 103v4 M166 102v4 M207 100v4 M84 77h164 M89 52h157 M96 27h119 M32 118l9 17 M191 117h15 M219 115h12 M255 108l-7 14"></path>
               </g>
             </svg>
 
             <svg class="login-terminal" viewBox="0 0 300 255" preserveAspectRatio="xMaxYMax meet">
-              <defs><pattern id="terminalRibs" width="6" height="28" patternUnits="userSpaceOnUse"><path d="M1 1v27" fill="none" stroke="#536d88" stroke-width=".5"></path></pattern></defs>
+              <defs>
+                <g id="loginTerminalBox">
+                  <path class="terminal-top" d="M0 4 5 1 41 1 36 4Z"></path><path class="terminal-fill" d="M0 4h36v17H0z"></path><path class="terminal-side" d="m36 4 5-3v17l-5 3Z"></path>
+                  <path class="terminal-primary" d="M0 4 5 1h36v17l-5 3H0V4h36l5-3M36 4v17"></path>
+                  <path class="terminal-detail" d="M3 6v13 M9 6v13 M15 6v13 M21 6v13 M27 6v13 M33 6v13 M2 20h32 M38 4v15"></path>
+                </g>
+              </defs>
               <g class="terminal-fixed">
-                <path class="terminal-outline" d="M1 239 H300 M8 245 H300 M12 231 H80 M83 231 H143 M179 231 H298"></path>
-                <path class="terminal-fill" d="M25 218h52v20H25z M39 199h42v19H39z M78 222h60v16H78z M215 215h47v23h-47z M245 193h50v45h-50z M260 175h36v18h-36z"></path>
-                <path class="terminal-outline" d="M25 218h52v20H25z M39 199h42v19H39z M78 222h60v16H78z M215 215h47v23h-47z M245 193h50v45h-50z M260 175h36v18h-36z M50 199v19 M65 199v19 M95 222v16 M112 222v16 M230 215v23 M248 215v23 M260 193v45 M276 193v45"></path>
-                <path class="terminal-ribs" d="M26 219h50v18H26z M40 200h40v17H40z M79 223h58v14H79z M216 216h45v21h-45z M246 194h48v43h-48z M261 176h34v16h-34z"></path>
-                <path class="terminal-outline" d="M189 21h11v7h-11z M190 28l-15 169 M199 28l21 169 M175 197h45v7h-45z M175 204l-5 34 M220 204l7 34 M170 238h57 M185 81h19 M189 28 L102 84 M199 28 L294 85 M102 84h198 M110 90h190 M102 84l-9 9 M112 84l-8 9 M125 84l-8 9 M138 84l-8 9 M151 84l-8 9 M164 84l-8 9 M177 84l-8 9 M190 84l-8 9 M203 84l-8 9 M216 84l-8 9 M229 84l-8 9 M242 84l-8 9 M255 84l-8 9 M268 84l-8 9 M281 84l-8 9"></path>
-                <path class="terminal-outline" d="M175 197l45-82 M220 197l-45-82 M182 115h31 M178 159h38 M179 159l38 38 M215 159l-40 38 M176 96h42 M179 96l36 19 M215 96l-36 19 M115 84 L195 34 M181 85 L195 34 M199 34 L263 84 M213 85 L199 34 M216 197h14v41 M168 238v-18h13 M224 238v-23h13 M251 193v-13h8"></path>
-                <path class="terminal-outline thin" d="M98 94h202 M114 78h80 M117 77l80-44 M209 42l76 43 M177 204h43 M171 229h56 M247 198h46 M248 207h46 M248 218h46 M262 180h33"></path>
-                <path class="terminal-fill" d="M156 91h26v7h-26z"></path><path class="terminal-outline" d="M156 91h26v7h-26z M162 98v4 M176 98v4"></path>
+                <path class="terminal-distant" d="M5 218h60 M10 213v-19h41v19 M16 194v-12h34v12 M15 182h35 M64 223v-15h40v15 M250 217v-45h36v45 M260 172v-13h32v13 M264 159v-9h25v9 M16 182l24-39 19 39 M35 143v-11 M43 154l27-13"></path>
+                <path class="terminal-fill" d="M0 235h300v14H0z"></path><path class="terminal-top" d="M0 232h300v4H0z"></path>
+                <path class="terminal-primary" d="M0 232h300 M0 236h300 M0 249h300 M10 242h290 M165 232v-8h11v8 M229 232v-8h11v8"></path>
+                <path class="terminal-detail" d="M8 236v13 M42 236v13 M76 236v13 M110 236v13 M144 236v13 M178 236v13 M212 236v13 M246 236v13 M280 236v13 M13 229h13 M86 229h15 M252 229h16 M21 222v10 M27 222v10 M56 222v10 M125 222v10 M269 222v10"></path>
+                <use href="#loginTerminalBox" x="23" y="211"></use><use href="#loginTerminalBox" x="61" y="211"></use><use href="#loginTerminalBox" x="36" y="190"></use>
+                <use href="#loginTerminalBox" x="92" y="211"></use><use href="#loginTerminalBox" x="240" y="211"></use><use href="#loginTerminalBox" x="262" y="190"></use><use href="#loginTerminalBox" x="250" y="169"></use>
+                <path class="terminal-fill" d="M179 24h13l-11 200h-15Z M199 24h13l20 200h-16Z M169 113h56v9h-56Z M164 220h72v6h-72Z"></path>
+                <path class="terminal-primary" d="M179 24h33 M184 17h24v7h-24z M189 12h14v5h-14z M179 24 166 224 M192 24 181 224 M199 24 216 224 M212 24 232 224 M166 224h66 M164 220h72v6h-72z M169 113h56v9h-56z M170 157h58 M168 190h62"></path>
+                <path class="terminal-detail" d="M179 24 199 53 183 79 213 113 M212 24 187 56 217 80 169 113 M172 122 224 157 169 190 232 224 M225 122 170 157 230 190 166 224 M185 80h27 M176 157h47 M172 190h56 M176 211h55 M174 224l-4 8 M228 224l4 8 M177 227h56"></path>
+                <path class="terminal-fill" d="M62 86h238v9H62z"></path><path class="terminal-top" d="M62 84h238v3H62z"></path>
+                <path class="terminal-primary" d="M62 84h238 M62 95h238 M62 84 185 30 M212 30 300 84 M62 84l-9 11 M300 84v11 M82 84l7-10 M101 84l8-18 M126 84l10-30 M154 84l10-43 M183 84l7-53 M216 84l-8-50 M243 84l-19-38 M270 84l-33-29 M296 84l-48-21"></path>
+                <path class="terminal-detail" d="M65 87 82 95 99 87 116 95 133 87 150 95 167 87 184 95 201 87 218 95 235 87 252 95 269 87 286 95 M75 84v11 M103 84v11 M131 84v11 M159 84v11 M187 84v11 M215 84v11 M243 84v11 M271 84v11 M193 26v57 M201 26v57 M198 34 100 84 M203 34 271 84 M68 95h229"></path>
+                <path class="terminal-primary" d="M169 122h58 M171 158h57 M167 191h64 M172 122l53 36 M224 122l-53 36 M170 158l60 33 M228 158l-61 33 M178 99h43 M182 99v12 M217 99v12 M174 123v7 M220 123v7 M175 172h50 M168 204h64 M178 225v7 M226 225v7"></path>
+                <path class="terminal-detail" d="M169 122h56 M171 157h57 M170 191h59 M166 203h67 M171 207h61 M176 106h47 M178 100l3 12 M215 100l-2 12 M165 221v11 M237 221v11 M179 224l-4 8 M229 224l4 8 M184 227h35 M78 81h51 M98 77h49 M230 76h56"></path>
+                <path class="terminal-fill" d="M151 89h35v8h-35z M158 97h21v5h-21z"></path>
+                <path class="terminal-primary" d="M151 89h35v8h-35z M158 97h21v5h-21z M153 92h31 M158 102v3 M179 102v3 M156 89v-5 M181 89v-5"></path>
+                <path class="terminal-detail" d="M155 88h27 M163 90v6 M174 90v6 M154 97h30 M145 84v-7 M190 84v-7 M146 77h43"></path>
               </g>
-              <path id="loginCargoCables" class="terminal-cables" d="M169 99 L153 154 M169 99 L183 154"></path>
-              <g id="loginSuspendedCargo"><path class="terminal-cargo-fill" d="M141 154h54v29h-54z"></path><path class="terminal-outline" d="M141 154h54v29h-54z M146 157v23 M152 157v23 M158 157v23 M164 157v23 M170 157v23 M176 157v23 M182 157v23 M188 157v23 M144 150h48 M153 150v4 M183 150v4"></path></g>
+              <path id="loginCargoCables" class="terminal-cables" d="M169 99 L153 148 M169 99 L183 148"></path>
+              <g id="loginSuspendedCargo">
+                <path class="terminal-top" d="M141 156 147 152h48l-6 4Z"></path><path class="terminal-cargo-fill" d="M141 156h48v29h-48z"></path><path class="terminal-side" d="m189 156 6-4v29l-6 4Z"></path>
+                <path class="terminal-primary" d="M141 156 147 152h48v29l-6 4h-48v-29h48l6-4 M189 156v29 M144 148h49v4h-49z M153 148v6 M183 148v6 M142 151v5 M194 151v5"></path>
+                <path class="terminal-detail" d="M145 159v23 M151 159v23 M157 159v23 M163 159v23 M169 159v23 M175 159v23 M181 159v23 M186 159v23 M191 156v25 M143 183h44 M143 158h44 M151 154v3 M183 154v3"></path>
+              </g>
             </svg>
           </div>
         </section>

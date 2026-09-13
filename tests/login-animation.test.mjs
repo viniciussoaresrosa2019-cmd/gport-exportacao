@@ -13,7 +13,7 @@ test('login novo usa dois painéis e cenário vetorial próprio sem imagens anti
   assert.match(view, /class="login-screen"/);
   assert.match(view, /class="login-stage"/);
   assert.match(view, /class="login-access"/);
-  assert.match(view, /class="login-ship" viewBox="0 0 240 135"/);
+  assert.match(view, /class="login-ship" viewBox="0 0 300 165"/);
   assert.match(view, /class="login-terminal" viewBox="0 0 300 255"/);
   assert.match(view, /class="login-sea" viewBox="0 0 580 100"/);
   assert.match(view, /class="login-logo" src="logo-gport\.png"/);
@@ -56,13 +56,13 @@ test('animações discretas mantêm cabos conectados e respeitam movimento reduz
   assert.match(view, /id="loginSuspendedCargo"/);
   assert.match(view, /id="loginCargoCables"/);
   assert.match(view, /id="loginJourneyTraveller"/);
-  assert.match(css, /login-ship-bob 8s/);
+  assert.match(css, /login-ship-bob 9s/);
   assert.match(css, /login-wave-back \{ animation-duration: 24s/);
   assert.match(css, /login-wave-mid \{ animation-duration: 18s/);
-  assert.match(css, /login-wave-front \{ animation-duration: 12s/);
+  assert.match(css, /login-wave-front \{ animation-duration: 13s/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(animation, /cargoAnchor\(153, 154/);
-  assert.match(animation, /cargoAnchor\(183, 154/);
+  assert.match(animation, /cargoAnchor\(153, 148/);
+  assert.match(animation, /cargoAnchor\(183, 148/);
   assert.match(animation, /cables\.setAttribute\('d'/);
   assert.match(animation, /reducedMotion\.matches/);
   assert.doesNotMatch(animation, /GportMotion|GPORT_ROUTE|login-harbor-art/);
@@ -70,7 +70,7 @@ test('animações discretas mantêm cabos conectados e respeitam movimento reduz
 
 test('layout não depende de canvas fixo e empilha painéis no celular', async () => {
   const css = await readText('public/assets/login-animation.css');
-  assert.match(css, /width: 100vw/);
+  assert.match(css, /#loginDialog \{[\s\S]*?width: 100%/);
   assert.match(css, /height: 100dvh/);
   assert.match(css, /@media \(max-width: 800px\)/);
   assert.match(css, /\.login-screen \{ display: block; height: auto; min-height: 100dvh; \}/);

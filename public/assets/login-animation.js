@@ -31,8 +31,8 @@
     const shiftX = Math.sin(slow) * .7;
     const shiftY = Math.sin(slow - .4) * 2.2;
     const angle = Math.sin(slow + .6) * .25;
-    const left = cargoAnchor(153, 154, shiftX, shiftY, angle * degrees);
-    const right = cargoAnchor(183, 154, shiftX, shiftY, angle * degrees);
+    const left = cargoAnchor(153, 148, shiftX, shiftY, angle * degrees);
+    const right = cargoAnchor(183, 148, shiftX, shiftY, angle * degrees);
 
     cargo.setAttribute('transform', `translate(${shiftX.toFixed(3)} ${shiftY.toFixed(3)}) rotate(${angle.toFixed(3)} 169 168)`);
     cables.setAttribute('d', `M169 99 L${left.x.toFixed(3)} ${left.y.toFixed(3)} M169 99 L${right.x.toFixed(3)} ${right.y.toFixed(3)}`);
@@ -49,7 +49,7 @@
     startedAt = null;
     if (reducedMotion.matches) {
       cargo.removeAttribute('transform');
-      cables.setAttribute('d', 'M169 99 L153 154 M169 99 L183 154');
+      cables.setAttribute('d', 'M169 99 L153 148 M169 99 L183 148');
     }
   }
 
