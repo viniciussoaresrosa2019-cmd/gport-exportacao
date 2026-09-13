@@ -17,7 +17,8 @@
   });
 
   const syncTurnstileScale = () => {
-    const available = Math.max(0, card.clientWidth - 32);
+    const style = getComputedStyle(card);
+    const available = Math.max(0, card.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
     const scale = Math.min(1, Math.max(.72, available / 300));
     dialog.style.setProperty('--login-turnstile-scale', String(scale));
   };

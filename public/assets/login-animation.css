@@ -6,419 +6,283 @@
   max-height: none;
   margin: 0;
   padding: 0;
-  overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: #020b18;
-  color: #0b1426;
+  overflow: hidden;
+  background: #020b15;
+  color: #101b2b;
 }
 
-#loginDialog::backdrop { background: #020b18; }
+#loginDialog::backdrop { background: #020b15; }
 #loginDialog[open] { display: block; }
-html:has(#loginDialog[open]),
-body:has(#loginDialog[open]) {
-  width: 100vw;
-  max-width: 100vw;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-}
+html:has(#loginDialog[open]), body:has(#loginDialog[open]) { overflow: hidden; }
 
-body:has(#loginDialog[open]) { position: fixed; inset: 0; }
-
-.animated-login-root {
-  position: relative;
+.login-screen {
   display: grid;
-  grid-template-columns: minmax(0, 57.12fr) minmax(0, 42.88fr);
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  width: 100%;
+  height: 100%;
   min-height: 0;
-  overflow: hidden;
-  background: #020b18;
-  font-family: "Segoe UI", Inter, Arial, sans-serif;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
-.animated-login-stage {
+.login-stage {
   position: relative;
   isolation: isolate;
   min-width: 0;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 72% 28%, rgba(22, 53, 80, .58), transparent 32%),
-    radial-gradient(circle at 13% 86%, rgba(10, 32, 53, .82), transparent 35%),
-    linear-gradient(135deg, #020a16 0%, #031426 58%, #071a2c 100%);
+  background: #020b15;
   color: #fff;
 }
 
-.animated-login-stage::before {
-  content: "G";
+.login-watermark {
   position: absolute;
+  top: 6%;
+  right: 11%;
   z-index: -1;
-  top: 4%;
-  right: 3%;
-  color: rgba(39, 75, 106, .16);
-  font-size: min(31vw, 55vh);
+  color: #21384e;
+  font-size: clamp(210px, 25vw, 430px);
   font-weight: 900;
   line-height: 1;
-  transform: skewX(-7deg);
+  letter-spacing: -.12em;
+  opacity: .11;
+  transform: skewX(-9deg);
+  user-select: none;
 }
 
-.login-hero-copy {
+.login-stage-content {
   position: relative;
-  z-index: 3;
-  width: 100%;
-  height: 100%;
-  padding: min(5.5vw, 6vh) min(3.45vw, 5.9vh);
+  z-index: 2;
+  padding: clamp(24px, min(3.6vw, 6.3vh), 60px) clamp(32px, 3.2vw, 58px);
+  animation: login-enter .4s ease-out both;
 }
 
-.login-brand {
+.login-logo {
   display: block;
-  width: min(19vw, 31vh);
+  width: clamp(150px, min(17.5vw, 31vh), 285px);
   height: auto;
   object-fit: contain;
 }
 
-.login-hero-copy h1 {
-  max-width: 90%;
-  margin: min(6.7vh, 4.8vw) 0 0;
+.login-stage h1 {
+  max-width: 100%;
+  margin: clamp(28px, min(4vw, 7vh), 65px) 0 0;
   color: #fff;
-  font-size: min(3.55vw, 6vh);
-  font-weight: 750;
+  font-size: clamp(28px, min(3.4vw, 6vh), 55px);
+  font-weight: 700;
   letter-spacing: -.035em;
-  line-height: 1.1;
+  line-height: 1.2;
 }
 
-.login-hero-copy > p {
-  margin: min(2.5vh, 1.4vw) 0 0;
-  color: #a9bfd6;
-  font-size: min(1.35vw, 2.25vh);
+.login-description {
+  margin: clamp(10px, 1.2vw, 19px) 0 0;
+  color: #aab9c9;
+  font-size: clamp(13px, min(1.4vw, 2.45vh), 22px);
   font-weight: 400;
   line-height: 1.5;
 }
 
-.login-route {
-  width: min(78%, 68vh);
-  margin-top: min(2.4vh, 1.5vw);
+.login-journey {
+  width: clamp(300px, min(35vw, 61vh), 560px);
+  max-width: 90%;
+  margin-top: clamp(16px, min(1.8vw, 3.2vh), 30px);
 }
 
-.login-route-art {
+.login-journey-line {
   display: block;
   width: 100%;
-  height: min(5.8vh, 3.4vw);
+  height: auto;
   overflow: visible;
 }
 
-.login-route-art #route {
-  fill: none;
-  stroke: #7ea4c9;
-  stroke-width: 2.25;
-  vector-effect: non-scaling-stroke;
-}
+#loginJourneyPath { fill: none; stroke: #8ca1b4; stroke-width: 1.15; }
+.login-journey-halos circle { fill: #87a8c8; opacity: .18; transform-box: fill-box; transform-origin: center; animation: login-halo 3.6s ease-in-out infinite; }
+.login-journey-halos circle:nth-child(2) { animation-delay: -1.2s; }
+.login-journey-halos circle:nth-child(3) { animation-delay: -2.4s; }
+.login-journey-points circle { fill: #f6fbff; }
+#loginJourneyTraveller { fill: #f6fbff; opacity: .8; }
 
-.login-route-points circle:not(.route-halo) { fill: #e6f2ff; }
-.login-route-points .route-halo { fill: rgba(151, 199, 243, .28); filter: url(#routeGlow); }
-
-.login-route-labels {
+.login-journey-labels {
   display: flex;
   justify-content: space-between;
-  margin-top: .35vh;
-  color: #d9e6f3;
-  font-size: min(1.05vw, 1.9vh);
+  margin-top: 5px;
+  color: #cfdae6;
+  font-size: clamp(11px, min(1.1vw, 1.9vh), 17px);
+  line-height: 1.2;
 }
 
-.login-features {
+.login-areas {
   display: flex;
   align-items: center;
-  gap: min(2.1vw, 3.6vh);
-  margin: min(3.3vh, 2vw) 0 0 min(3vw, 5vh);
+  flex-wrap: nowrap;
+  gap: clamp(10px, 1.6vw, 25px);
+  margin: clamp(19px, min(2vw, 3.5vh), 33px) 0 0;
   padding: 0;
-  color: #b8cee2;
-  font-size: min(1.05vw, 1.9vh);
-  font-weight: 700;
+  color: #b6c5d3;
+  font-size: clamp(11px, min(1.2vw, 2.1vh), 19px);
+  font-weight: 600;
   letter-spacing: .035em;
   list-style: none;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.login-features li + li::before {
+.login-areas li + li::before {
   content: "";
   display: inline-block;
-  width: min(.46vw, .8vh);
-  height: min(.46vw, .8vh);
-  margin-right: min(2.1vw, 3.6vh);
+  width: 5px;
+  height: 5px;
+  margin-right: clamp(10px, 1.6vw, 25px);
   border-radius: 50%;
-  background: #df1421;
-  vertical-align: .12em;
+  background: #b60008;
+  vertical-align: .18em;
 }
 
-.login-harbor-art {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
+.login-port-scene { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.login-port-scene svg { display: block; overflow: visible; }
+.login-sea { position: absolute; right: 0; bottom: 0; left: 0; width: 100%; height: clamp(95px, 17.5vh, 165px); overflow: hidden !important; }
+.login-wave-track { fill: none; stroke: #294761; stroke-width: .75; opacity: .52; transform-box: fill-box; transform-origin: left center; animation: login-wave-drift 18s linear infinite; }
+.login-wave-back { animation-duration: 24s; opacity: .32; }
+.login-wave-mid { animation-duration: 18s; opacity: .46; }
+.login-wave-front { animation-duration: 12s; opacity: .56; }
 
-/* The harbor artwork keeps its source aspect ratio; only the right-side
-   crane assembly moves into unused width on wide browser windows. */
-.login-harbor-art .terminal-lines,
-.login-harbor-art .water-lines { display: none; }
-.login-harbor-art .crane-illustration { opacity: .38; filter: saturate(.45) brightness(1.35); }
-.login-harbor-art .water-detail { opacity: .38; }
+.login-ship { position: absolute; left: 5.5%; bottom: 15.8%; width: 38%; height: auto; }
+.login-ship-moving { transform-box: fill-box; transform-origin: 48% 74%; animation: login-ship-bob 8s ease-in-out infinite; }
+.ship-hull-fill { fill: #0b1c2d; }
+.ship-fill { fill: #10263a; }
+.ship-outline, .terminal-outline { fill: none; stroke: #4a657e; stroke-width: .8; stroke-linecap: round; stroke-linejoin: round; opacity: .69; }
+.ship-outline.thin, .terminal-outline.thin { stroke-width: .5; opacity: .56; }
+.ship-ribs { fill: url(#shipRibs); opacity: .54; }
 
-.login-access-layer {
-  position: relative;
-  z-index: 4;
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  padding: min(4vw, 7vh);
-  overflow: auto;
-  background:
-    radial-gradient(circle at 92% 10%, rgba(245, 239, 232, .78), transparent 36%),
-    radial-gradient(circle at 15% 82%, rgba(240, 235, 230, .62), transparent 42%),
-    #fbfaf8;
-}
+.login-terminal { position: absolute; right: -1px; bottom: 15.8%; width: 52%; height: auto; }
+.terminal-fill { fill: #102437; opacity: .58; }
+.terminal-ribs { fill: url(#terminalRibs); opacity: .56; }
+.terminal-cables { fill: none; stroke: #6a7d91; stroke-width: .65; opacity: .62; }
+.terminal-cargo-fill { fill: #102439; }
 
-.login-card {
-  width: min(82%, 57vh);
-  padding: min(4vw, 7.2vh) min(3.25vw, 5.2vh);
-  border: 1px solid rgba(23, 47, 70, .07);
-  border-radius: min(1.8vw, 3.1vh);
-  background: rgba(255, 255, 255, .88);
-  box-shadow: 0 min(1.7vw, 3vh) min(4vw, 7vh) rgba(14, 30, 45, .13);
-  backdrop-filter: blur(8px);
-}
-
-.login-card h2 {
-  margin: 0 0 min(6.5vh, 3.5vw);
-  color: #0b1426;
-  font-size: min(2.35vw, 4.25vh);
-  font-weight: 750;
-  letter-spacing: -.035em;
-  line-height: 1.1;
-  text-align: center;
-}
-
-#loginDialog .login-form {
-  display: grid;
-  gap: min(2.55vh, 1.45vw);
-  margin: 0;
-  padding: 0 !important;
-}
-
-#loginDialog .login-field { min-width: 0; }
-
-#loginDialog .login-field label {
-  display: block;
-  margin: 0 0 min(.8vh, .45vw);
-  color: #17324f;
-  font-size: min(1.05vw, 1.85vh);
-  font-weight: 650;
-}
-
-#loginDialog .login-control {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: min(3.75vw, 6.2vh);
-  min-height: 42px;
-  border: 1px solid #cad4df;
-  border-radius: min(.72vw, 1.3vh);
-  background: #fff;
-  box-shadow: inset 0 1px 2px rgba(21, 45, 67, .025);
-  transition: border-color .18s ease, box-shadow .18s ease;
-}
-
-#loginDialog .login-control:focus-within {
-  border-color: #315f8e;
-  box-shadow: 0 0 0 3px rgba(49, 95, 142, .15);
-}
-
-#loginDialog .login-control > svg,
-#loginDialog .login-password-toggle svg,
-.login-security svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-}
-
-#loginDialog .login-control > svg {
-  position: absolute;
-  left: min(1.25vw, 2.1vh);
-  width: min(1.5vw, 2.7vh);
-  height: min(1.5vw, 2.7vh);
-  color: #71849b;
-  pointer-events: none;
-}
-
-#loginDialog .login-control input {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0 min(1.2vw, 2vh) 0 min(3.65vw, 6.3vh);
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #0b1426;
-  font: 500 min(1.05vw, 1.9vh) "Segoe UI", Inter, Arial, sans-serif;
-}
-
-#loginDialog .login-control input:-webkit-autofill,
-#loginDialog .login-control input:-webkit-autofill:hover,
-#loginDialog .login-control input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #0b1426;
-  box-shadow: 0 0 0 1000px #fff inset;
-}
-
-#loginDialog .login-password-control input { padding-right: min(3.9vw, 6.5vh); }
-
-#loginDialog .login-password-toggle {
-  position: absolute;
-  right: min(.7vw, 1.2vh);
-  display: grid;
-  place-items: center;
-  width: min(2.75vw, 4.7vh);
-  height: min(2.75vw, 4.7vh);
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #71849b;
-  cursor: pointer;
-}
-
-#loginDialog .login-password-toggle:hover { background: #eef3f7; color: #315f8e; }
-#loginDialog .login-password-toggle:focus-visible { outline: 2px solid #315f8e; outline-offset: 1px; }
-#loginDialog .login-password-toggle svg { width: 58%; height: 58%; }
-#loginDialog .login-password-toggle .eye-closed { display: none; }
-#loginDialog .login-password-toggle[aria-pressed="true"] .eye-open { display: none; }
-#loginDialog .login-password-toggle[aria-pressed="true"] .eye-closed { display: block; }
-
-#loginDialog .login-submit {
-  width: 100%;
-  height: min(3.75vw, 6.2vh);
-  min-height: 42px;
-  margin-top: min(.7vh, .4vw);
-  padding: 0 min(1.2vw, 2vh);
-  border: 0;
-  border-radius: min(.62vw, 1.1vh);
-  background: linear-gradient(180deg, #d10c15 0%, #bd050c 100%);
-  box-shadow: 0 8px 20px rgba(190, 5, 12, .18);
-  color: #fff;
-  font: 700 min(1.25vw, 2.2vh) "Segoe UI", Inter, Arial, sans-serif;
-  cursor: pointer;
-  transition: filter .18s ease, transform .18s ease;
-}
-
-#loginDialog .login-submit:hover { filter: brightness(1.07); }
-#loginDialog .login-submit:active { transform: translateY(1px); }
-#loginDialog .login-submit:focus-visible { outline: 3px solid #315f8e; outline-offset: 3px; }
-#loginDialog .login-submit:disabled { cursor: progress; opacity: .7; }
-
-.login-security {
+.login-access {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: min(.65vw, 1.1vh);
-  margin-top: min(1vh, .55vw);
-  color: #708097;
-  font-size: min(1.02vw, 1.82vh);
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+  background: #f8f6f3;
 }
 
-.login-security svg { width: min(1.55vw, 2.7vh); height: min(1.55vw, 2.7vh); stroke-width: 1.8; }
-
-.login-turnstile-frame {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  min-height: calc(65px * var(--login-turnstile-scale, 1));
-  overflow: visible;
+#loginDialog .login-card {
+  flex: none;
+  width: clamp(324px, 32.4vw, 540px);
+  max-width: 100%;
+  min-height: clamp(370px, 37vw, 590px);
+  margin: auto;
+  padding: clamp(34px, min(3.6vw, 6vh), 58px) clamp(29px, 2.9vw, 48px) clamp(28px, 3vw, 48px);
+  border: 1px solid #e9e7e5;
+  border-radius: clamp(20px, 2vw, 28px);
+  background: #fff;
+  color: #101b2b;
+  box-shadow: 0 18px 42px rgba(23, 29, 36, .09);
+  animation: login-enter .4s ease-out both;
 }
 
-.login-turnstile-frame:has(#turnstileWidget[hidden]) { display: none; }
-
-#loginDialog #turnstileWidget {
-  width: 300px;
-  height: 65px;
-  transform: scale(var(--login-turnstile-scale, 1));
-  transform-origin: top center;
-}
-
-#loginDialog #loginError {
-  margin: 0;
-  color: #a30d18;
-  text-align: center;
-  font-size: min(.9vw, 1.55vh);
+#loginDialog .login-card h2 {
+  margin: 0 0 clamp(37px, min(3.8vw, 6.7vh), 61px);
+  color: #101b2b;
+  font-size: clamp(24px, min(2.4vw, 4.2vh), 38px);
   font-weight: 700;
-  line-height: 1.3;
+  letter-spacing: -.035em;
+  line-height: 1.2;
+  text-align: center;
 }
 
-.login-animation-controls {
-  position: absolute;
-  z-index: 8;
-  left: min(1vw, 1.8vh);
-  bottom: min(1vw, 1.8vh);
+#loginDialog .login-form { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; }
+#loginDialog .login-field + .login-field { margin-top: clamp(16px, 1.6vw, 25px); }
+#loginDialog .login-field label { display: block; margin-bottom: clamp(6px, .7vw, 10px); color: #263d56; font-size: clamp(11px, min(1.1vw, 1.9vh), 16px); font-weight: 600; }
+
+#loginDialog .login-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: clamp(38px, min(3.8vw, 6.65vh), 58px);
+  border: 1px solid #d4dbe3;
+  border-radius: 5px;
+  background: #fff;
+  transition: border-color .18s ease, box-shadow .18s ease;
 }
 
-.login-animation-controls button {
-  padding: min(.55vw, 1vh) min(.8vw, 1.4vh);
-  border: 1px solid #7892ae;
-  border-radius: 6px;
-  background: rgba(9, 22, 38, .9);
-  color: #e4edf7;
-  font: min(.82vw, 1.45vh) "Segoe UI", Arial, sans-serif;
-  cursor: pointer;
+#loginDialog .login-input-wrap:focus-within { border-color: #375f84; box-shadow: 0 0 0 2px rgba(55, 95, 132, .15); }
+#loginDialog .login-input-wrap > svg, #loginDialog .login-password-toggle svg, .login-security svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+#loginDialog .login-input-wrap > svg { position: absolute; left: 12px; width: clamp(16px, 1.6vw, 23px); height: clamp(16px, 1.6vw, 23px); color: #75879b; pointer-events: none; }
+#loginDialog .login-input-wrap input { display: block; width: 100%; height: 100%; min-width: 0; margin: 0; padding: 0 12px 0 clamp(38px, 3.7vw, 56px); border: 0; outline: 0; border-radius: 5px; background: transparent; color: #101b2b; font: 500 clamp(13px, min(1.3vw, 2.1vh), 18px) Inter, "Segoe UI", Arial, sans-serif; }
+#loginDialog .login-input-wrap input:-webkit-autofill, #loginDialog .login-input-wrap input:-webkit-autofill:hover, #loginDialog .login-input-wrap input:-webkit-autofill:focus { -webkit-text-fill-color: #101b2b; box-shadow: 0 0 0 1000px #fff inset; }
+#loginDialog .login-password-wrap input { padding-right: 43px; }
+#loginDialog .login-password-toggle { position: absolute; right: 4px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #75879b; cursor: pointer; }
+#loginDialog .login-password-toggle:hover { color: #375f84; background: #f2f5f8; }
+#loginDialog .login-password-toggle:focus-visible { outline: 2px solid #375f84; outline-offset: 1px; }
+#loginDialog .login-password-toggle svg { width: 18px; height: 18px; }
+#loginDialog .login-password-toggle .eye-closed, #loginDialog .login-password-toggle[aria-pressed="true"] .eye-open { display: none; }
+#loginDialog .login-password-toggle[aria-pressed="true"] .eye-closed { display: block; }
+
+#loginDialog .login-submit { width: 100%; height: clamp(38px, min(3.8vw, 6.65vh), 58px); margin-top: clamp(20px, 2vw, 32px); padding: 0 12px; border: 0; border-radius: 5px; background: #b60008; color: #fff; font: 600 clamp(14px, min(1.4vw, 2.45vh), 20px) Inter, "Segoe UI", Arial, sans-serif; cursor: pointer; transition: background-color .18s ease; }
+#loginDialog .login-submit:hover { background: #9c0008; }
+#loginDialog .login-submit:focus-visible { outline: 3px solid #375f84; outline-offset: 3px; }
+#loginDialog .login-submit:disabled { opacity: .65; cursor: progress; }
+
+.login-security { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: clamp(20px, 2vw, 32px); color: #708297; font-size: clamp(11px, min(1.1vw, 1.9vh), 16px); white-space: nowrap; }
+.login-security svg { flex: none; width: clamp(15px, 1.5vw, 22px); height: clamp(15px, 1.5vw, 22px); }
+.login-turnstile-frame { display: grid; place-items: center; width: 100%; min-height: calc(65px * var(--login-turnstile-scale, 1)); margin-top: 14px; }
+.login-turnstile-frame:has(#turnstileWidget[hidden]) { display: none; }
+#loginDialog #turnstileWidget { width: 300px; height: 65px; transform: scale(var(--login-turnstile-scale, 1)); transform-origin: top center; }
+#loginDialog #loginError { margin: 12px 0 0; color: #a00009; font-size: 12px; font-weight: 600; line-height: 1.4; text-align: center; }
+
+@keyframes login-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes login-halo { 50% { opacity: .32; transform: scale(1.18); } }
+@keyframes login-ship-bob { 0%, 100% { transform: translateY(0) rotate(-.2deg); } 50% { transform: translateY(2.5px) rotate(.2deg); } }
+@keyframes login-wave-drift { to { transform: translateX(-50%); } }
+
+@media (min-width: 1400px) {
+  .login-stage h1 { margin-top: 50px; }
+  .login-description { margin-top: 12px; }
+  .login-journey { margin-top: 18px; }
+  .login-areas { margin-top: 19px; }
 }
 
-.login-animation-controls button:focus-visible { outline: 2px solid #c7e6ff; outline-offset: 3px; }
-
-@media (max-width: 760px) and (orientation: portrait) {
-  #loginDialog { height: 100dvh; overflow: auto; }
-  #loginDialog[open] { display: block; }
-  html:has(#loginDialog[open]), body:has(#loginDialog[open]) { overflow: hidden; }
-  .animated-login-root { display: block; width: 100%; height: auto; min-height: 100dvh; overflow: visible; }
-  .animated-login-stage { min-height: 53dvh; }
-  .login-hero-copy { min-height: 53dvh; padding: 24px 24px 44px; }
-  .login-brand { width: min(210px, 58vw); }
-  .login-hero-copy h1 { max-width: 100%; margin-top: 34px; font-size: clamp(29px, 8.5vw, 42px); }
-  .login-hero-copy > p { font-size: clamp(14px, 4vw, 18px); }
-  .login-copy-break { display: none; }
-  .login-route { width: 100%; margin-top: 24px; }
-  .login-route-art { height: 36px; }
-  .login-route-labels { font-size: 13px; }
-  .login-features { gap: 12px; margin: 22px 0 0; font-size: clamp(10px, 2.85vw, 13px); }
-  .login-features li + li::before { width: 5px; height: 5px; margin-right: 12px; }
-  .login-harbor-art { opacity: .62; }
-  .login-access-layer { min-height: 55dvh; padding: 24px 16px 36px; overflow: visible; }
-  .login-card { width: min(100%, 520px); padding: 30px 24px; border-radius: 20px; }
-  .login-card h2 { margin-bottom: 28px; font-size: 30px; }
-  #loginDialog .login-form { gap: 16px; }
-  #loginDialog .login-field label { margin-bottom: 7px; font-size: 14px; }
-  #loginDialog .login-control { height: 54px; border-radius: 9px; }
-  #loginDialog .login-control > svg { left: 15px; width: 21px; height: 21px; }
-  #loginDialog .login-control input { padding: 0 15px 0 48px; font-size: 16px; }
-  #loginDialog .login-password-control input { padding-right: 52px; }
-  #loginDialog .login-password-toggle { right: 8px; width: 40px; height: 40px; }
-  #loginDialog .login-submit { height: 54px; margin-top: 2px; border-radius: 9px; font-size: 17px; }
-  .login-security { gap: 8px; margin-top: 5px; font-size: 14px; }
-  .login-security svg { width: 21px; height: 21px; }
-  #loginDialog #loginError { font-size: 13px; }
-  .login-animation-controls { display: none; }
+@media (max-width: 800px) {
+  #loginDialog { overflow-y: auto; }
+  .login-screen { display: block; height: auto; min-height: 100dvh; }
+  .login-stage { min-height: 520px; }
+  .login-stage-content { padding: 28px 24px 30px; }
+  .login-logo { width: 175px; }
+  .login-stage h1 { margin-top: 34px; font-size: clamp(27px, 6.6vw, 34px); }
+  .login-description { font-size: 14px; }
+  .login-description br { display: none; }
+  .login-journey { width: min(350px, 100%); margin-top: 22px; }
+  .login-journey-labels { font-size: 11px; }
+  .login-areas { gap: 9px; margin-top: 21px; font-size: clamp(9px, 2.7vw, 12px); letter-spacing: 0; }
+  .login-areas li + li::before { width: 4px; height: 4px; margin-right: 9px; }
+  .login-ship { width: 40%; }
+  .login-terminal { width: 54%; }
+  .login-access { min-height: 440px; padding: 24px 16px 36px; overflow: visible; }
+  #loginDialog .login-card { width: min(100%, 420px); min-height: 370px; padding: 34px 28px 30px; }
+  #loginDialog .login-card h2 { font-size: 24px; margin-bottom: 38px; }
+  #loginDialog .login-field label { font-size: 12px; }
+  #loginDialog .login-input-wrap { height: 44px; }
+  #loginDialog .login-input-wrap input { font-size: 16px; }
+  #loginDialog .login-submit { height: 44px; font-size: 15px; }
+  .login-security { font-size: 11px; }
 }
 
-@media (max-height: 650px) and (min-width: 761px) {
-  .login-card { width: min(82%, 70vh); padding-top: 3.2vh; padding-bottom: 3.2vh; }
-  .login-card h2 { margin-bottom: 3.2vh; }
-  #loginDialog .login-form { gap: 1.45vh; }
+@media (max-width: 420px) {
+  .login-stage { min-height: 555px; }
+  .login-stage h1 { font-size: 27px; }
+  .login-areas { gap: 6px; font-size: 9px; }
+  .login-areas li + li::before { margin-right: 6px; }
+  .login-watermark { right: 3%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-animation-controls { display: none; }
+  .login-stage-content, #loginDialog .login-card, .login-journey-halos circle, .login-ship-moving, .login-wave-track { animation: none !important; }
+  #loginJourneyTraveller { opacity: 0; }
 }

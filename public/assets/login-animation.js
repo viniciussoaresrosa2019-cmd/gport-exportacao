@@ -1,108 +1,68 @@
 (() => {
   'use strict';
 
-  const stage = document.getElementById('gportLoginStage');
   const dialog = document.getElementById('loginDialog');
-  const ship = document.getElementById('ship');
-  const craneAssembly = document.getElementById('craneAssembly');
-  const cargo = document.getElementById('cargo');
-  const cable = document.getElementById('cable');
-  const traveller = document.getElementById('traveller');
-  const route = document.getElementById('route');
-  const button = document.getElementById('pause');
-  if (!stage || !dialog || !ship || !craneAssembly || !cargo || !cable || !traveller || !route || !button) return;
+  const stage = document.getElementById('gportLoginStage');
+  const cargo = document.getElementById('loginSuspendedCargo');
+  const cables = document.getElementById('loginCargoCables');
+  const journey = document.getElementById('loginJourneyPath');
+  const traveller = document.getElementById('loginJourneyTraveller');
+  if (!dialog || !stage || !cargo || !cables || !journey || !traveller) return;
 
-  const preference = matchMedia('(prefers-reduced-motion: reduce)');
-  const params = new URLSearchParams(location.search);
-  const requestedFrame = Number(params.get('frame'));
-  const reviewTime = params.has('frame') && Number.isFinite(requestedFrame) ? Math.max(0, requestedFrame) : null;
-  const auditing = params.has('audit');
-  let paused = preference.matches;
-  let elapsed = 0;
-  let last = null;
-  let raf = null;
-  let routeLength = 0;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const journeyLength = journey.getTotalLength();
+  const degrees = Math.PI / 180;
+  let startedAt = null;
+  let frame = null;
 
-  function alignHarbor() {
-    const { width, height } = stage.getBoundingClientRect();
-    const scale = Math.min(width / 955, height / 941);
-    if (!Number.isFinite(scale) || scale <= 0) return;
-    const freeWidth = Math.max(0, width / scale - 955);
-    craneAssembly.setAttribute('transform', `translate(${freeWidth.toFixed(2)} 0)`);
-    if (auditing) stage.dataset.artScale = scale.toFixed(4);
+  function cargoAnchor(x, y, shiftX, shiftY, angle) {
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    return {
+      x: 169 + (x - 169) * cosine - (y - 168) * sine + shiftX,
+      y: 168 + (x - 169) * sine + (y - 168) * cosine + shiftY
+    };
   }
 
-  function render(seconds) {
-    const state = window.GportMotion.at(seconds);
-    ship.setAttribute('transform', `translate(${state.shipX} ${state.shipY})`);
-    cargo.setAttribute('transform', `translate(${state.cargoX} ${state.cargoY}) rotate(${state.cargoAngle} 688.5 612)`);
-    cable.setAttribute('d', `M687 562 L${687 + state.cargoX} ${610 + state.cargoY} M690 562 L${690 + state.cargoX} ${610 + state.cargoY}`);
-    const point = route.getPointAtLength(state.routeProgress * routeLength);
-    traveller.setAttribute('transform', `translate(${point.x} ${point.y})`);
-    traveller.setAttribute('opacity', state.routeOpacity);
-    if (auditing) {
-      stage.dataset.time = seconds.toFixed(4);
-      stage.dataset.loop = state.time.toFixed(4);
-    }
+  function render(now) {
+    if (startedAt === null) startedAt = now;
+    const seconds = (now - startedAt) / 1000;
+    const slow = seconds * Math.PI * 2 / 12;
+    const shiftX = Math.sin(slow) * .7;
+    const shiftY = Math.sin(slow - .4) * 2.2;
+    const angle = Math.sin(slow + .6) * .25;
+    const left = cargoAnchor(153, 154, shiftX, shiftY, angle * degrees);
+    const right = cargoAnchor(183, 154, shiftX, shiftY, angle * degrees);
+
+    cargo.setAttribute('transform', `translate(${shiftX.toFixed(3)} ${shiftY.toFixed(3)}) rotate(${angle.toFixed(3)} 169 168)`);
+    cables.setAttribute('d', `M169 99 L${left.x.toFixed(3)} ${left.y.toFixed(3)} M169 99 L${right.x.toFixed(3)} ${right.y.toFixed(3)}`);
+
+    const point = journey.getPointAtLength((seconds % 8) / 8 * journeyLength);
+    traveller.setAttribute('cx', point.x.toFixed(3));
+    traveller.setAttribute('cy', point.y.toFixed(3));
+    frame = requestAnimationFrame(render);
   }
 
   function stop() {
-    if (raf !== null) cancelAnimationFrame(raf);
-    raf = null;
-    last = null;
-  }
-
-  function start() {
-    if (!paused && !document.hidden && dialog.open && reviewTime === null && raf === null) raf = requestAnimationFrame(tick);
-  }
-
-  function tick(now) {
-    raf = null;
-    if (paused || document.hidden) return;
-    if (last !== null) elapsed += (now - last) / 1000;
-    last = now;
-    const before = performance.now();
-    render(elapsed);
-    if (auditing) {
-      stage.dataset.frames = String(Number(stage.dataset.frames || 0) + 1);
-      stage.dataset.maxRenderMs = Math.max(Number(stage.dataset.maxRenderMs || 0), performance.now() - before).toFixed(3);
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    startedAt = null;
+    if (reducedMotion.matches) {
+      cargo.removeAttribute('transform');
+      cables.setAttribute('d', 'M169 99 L153 154 M169 99 L183 154');
     }
-    raf = requestAnimationFrame(tick);
   }
 
-  function updateButton() {
-    button.textContent = paused ? 'Reproduzir animação' : 'Pausar animação';
-    button.setAttribute('aria-pressed', String(paused));
+  function sync() {
+    if (reducedMotion.matches || document.hidden || !dialog.open) { stop(); return; }
+    if (frame === null) frame = requestAnimationFrame(render);
   }
 
-  function setPaused(value) {
-    paused = value;
-    stop();
-    updateButton();
-    start();
-  }
-
-  try {
-    if (!window.GPORT_ROUTE || !window.GportMotion) throw new Error('Dados da animação indisponíveis.');
-    route.setAttribute('d', window.GPORT_ROUTE);
-    routeLength = route.getTotalLength();
-    alignHarbor();
-    render(reviewTime === null ? 0 : reviewTime);
-    stage.classList.add('ready');
-  } catch (error) {
-    button.disabled = true;
-    button.textContent = 'Animação indisponível';
-    console.error(error);
-  }
-
-  button.addEventListener('click', () => setPaused(!paused));
-  preference.addEventListener('change', event => setPaused(event.matches));
-  document.addEventListener('visibilitychange', () => { stop(); start(); });
+  stage.classList.add('ready');
+  reducedMotion.addEventListener('change', sync);
+  document.addEventListener('visibilitychange', sync);
   window.addEventListener('pagehide', stop);
-  window.addEventListener('pageshow', start);
-  if (typeof ResizeObserver === 'function') new ResizeObserver(alignHarbor).observe(stage);
-  else window.addEventListener('resize', alignHarbor);
-  new MutationObserver(() => { stop(); start(); }).observe(dialog, { attributes:true, attributeFilter:['open'] });
-  updateButton();
-  start();
+  window.addEventListener('pageshow', sync);
+  new MutationObserver(sync).observe(dialog, { attributes: true, attributeFilter: ['open'] });
+  sync();
 })();

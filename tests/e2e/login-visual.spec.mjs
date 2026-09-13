@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('login aprovado mantém a arte, animação e campos funcionais', async ({ page }) => {
+test('login mantém a arte vetorial, animação e campos funcionais', async ({ page }) => {
   await page.goto('/');
 
   const dialog = page.locator('#loginDialog');
@@ -13,8 +13,8 @@ test('login aprovado mantém a arte, animação e campos funcionais', async ({ p
   await expect(stage).toHaveClass(/ready/);
   await expect(page.getByRole('heading', { name:'Gestão interna que mantém a operação em movimento.' })).toBeVisible();
   await expect(page.getByRole('heading', { name:'Acesse sua conta' })).toBeVisible();
-  await expect(page.locator('img.original')).toHaveCount(0);
-  await expect(page.locator('img[src*="login-reference.png"], image[href*="background.png"]')).toHaveCount(0);
+  await expect(page.locator('.login-ship, .login-terminal, .login-sea')).toHaveCount(3);
+  await expect(page.locator('img[src*="login-reference.png"], img[src*="ship.png"], img[src*="cargo.png"]')).toHaveCount(0);
   const fullScreenImagesLoaded = await page.evaluate(() => performance.getEntriesByType('resource')
     .map(entry => entry.name)
     .filter(name => /login-reference\.png|background\.png/.test(name)));
@@ -36,9 +36,9 @@ test('login aprovado mantém a arte, animação e campos funcionais', async ({ p
   await page.locator('#loginPasswordToggle').click();
   await expect(password).toHaveAttribute('type', 'password');
 
-  const routeBefore = await page.locator('#traveller').getAttribute('transform');
+  const routeBefore = await page.locator('#loginJourneyTraveller').getAttribute('cx');
   await page.waitForTimeout(250);
-  const routeAfter = await page.locator('#traveller').getAttribute('transform');
+  const routeAfter = await page.locator('#loginJourneyTraveller').getAttribute('cx');
   expect(routeAfter).not.toBe(routeBefore);
 
   const horizontalFit = await dialog.evaluate(element => ({
@@ -53,7 +53,7 @@ test('login aprovado mantém a arte, animação e campos funcionais', async ({ p
   expect(horizontalFit.documentWidth).toBeLessThanOrEqual(horizontalFit.viewportWidth + 1);
   if (horizontalFit.viewportWidth > 640) {
     expect(horizontalFit.scrollHeight).toBeLessThanOrEqual(horizontalFit.clientHeight + 1);
-    const rootFit = await page.locator('.animated-login-root').evaluate(element => {
+    const rootFit = await page.locator('.login-screen').evaluate(element => {
       const rect = element.getBoundingClientRect();
       return { bottom:rect.bottom, height:rect.height, viewportHeight:window.innerHeight };
     });
@@ -85,7 +85,7 @@ test('login cabe integralmente na área útil de uma tela 1920×1080', async ({ 
   await page.goto('/');
   await expect(page.locator('#gportLoginStage')).toHaveClass(/ready/);
 
-  const fit = await page.locator('.animated-login-root').evaluate(element => {
+  const fit = await page.locator('.login-screen').evaluate(element => {
     const rect = element.getBoundingClientRect();
     return {
       top:rect.top,
@@ -102,7 +102,7 @@ test('login cabe integralmente na área útil de uma tela 1920×1080', async ({ 
   expect(fit.bottom).toBeLessThanOrEqual(fit.viewportHeight + 1);
 
   await page.setViewportSize({ width:7680, height:3724 });
-  const zoomedOutFit = await page.locator('.animated-login-root').evaluate(element => {
+  const zoomedOutFit = await page.locator('.login-screen').evaluate(element => {
     const rect = element.getBoundingClientRect();
     return { width:rect.width, height:rect.height, viewportWidth:window.innerWidth, viewportHeight:window.innerHeight };
   });
