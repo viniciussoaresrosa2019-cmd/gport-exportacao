@@ -16,13 +16,17 @@
     password.focus();
   });
 
-  const syncTurnstileScale = () => {
+  const widget = document.getElementById('turnstileWidget');
+  const syncTurnstileSize = () => {
+    if (!widget || !card.clientWidth) return;
     const style = getComputedStyle(card);
     const available = Math.max(0, card.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
-    const scale = Math.min(1, Math.max(.72, available / 300));
-    dialog.style.setProperty('--login-turnstile-scale', String(scale));
+    const size = available < 300 ? 'compact' : 'normal';
+    if (widget.dataset.size === size) return;
+    widget.dataset.size = size;
+    widget.dispatchEvent(new Event('gport:security-size'));
   };
 
-  new ResizeObserver(syncTurnstileScale).observe(card);
-  syncTurnstileScale();
+  new ResizeObserver(syncTurnstileSize).observe(card);
+  syncTurnstileSize();
 })();

@@ -1276,8 +1276,15 @@
       window.initializeTurnstile = () => {
         if (!turnstileSiteKey || !window.turnstile || turnstileWidgetId !== null) return;
         turnstileWidget.hidden = false;
-        turnstileWidgetId = window.turnstile.render(turnstileWidget, { sitekey: turnstileSiteKey, theme: 'light', language:'pt-BR', appearance:'always', callback: token => { turnstileToken = token; }, 'expired-callback': () => { turnstileToken = ''; }, 'error-callback': () => { turnstileToken = ''; } });
+        turnstileWidgetId = window.turnstile.render(turnstileWidget, { sitekey: turnstileSiteKey, size: turnstileWidget.dataset.size || 'compact', theme: 'light', language:'pt-BR', appearance:'always', callback: token => { turnstileToken = token; }, 'expired-callback': () => { turnstileToken = ''; }, 'error-callback': () => { turnstileToken = ''; } });
       };
+      turnstileWidget?.addEventListener('gport:security-size', () => {
+        if (turnstileWidgetId === null || !window.turnstile) return;
+        turnstileToken = '';
+        window.turnstile.remove(turnstileWidgetId);
+        turnstileWidgetId = null;
+        window.initializeTurnstile();
+      });
       async function signIn(credentials, persist) {
         if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
         if (turnstileSiteKey) credentials.turnstileToken = turnstileToken;

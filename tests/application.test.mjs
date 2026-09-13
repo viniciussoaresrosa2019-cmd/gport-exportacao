@@ -12,7 +12,7 @@ const interfaceFiles = [
   'public/assets/app-runtime.js',
   'public/assets/accessibility.js',
   'public/assets/experience.js',
-  'public/assets/login-animation.js',
+  'public/assets/login-terminal-animation.js',
   'public/assets/login-controls.js'
 ];
 const readInterface = async () => (await Promise.all(interfaceFiles.map(read))).join('\n');

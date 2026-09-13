@@ -13,7 +13,7 @@ test('login mantém a arte vetorial, animação e campos funcionais', async ({ p
   await expect(stage).toHaveClass(/ready/);
   await expect(page.getByRole('heading', { name:'Gestão interna que mantém a operação em movimento.' })).toBeVisible();
   await expect(page.getByRole('heading', { name:'Acesse sua conta' })).toBeVisible();
-  await expect(page.locator('.login-ship, .login-terminal, .login-sea')).toHaveCount(3);
+  await expect(page.locator('#loginShipMoving, .scene-terminal, #loginWaterFront')).toHaveCount(3);
   await expect(page.locator('img[src*="login-reference.png"], img[src*="ship.png"], img[src*="cargo.png"]')).toHaveCount(0);
   const fullScreenImagesLoaded = await page.evaluate(() => performance.getEntriesByType('resource')
     .map(entry => entry.name)

@@ -1,10 +1,4 @@
-(() => {
-  'use strict';
-
-  const mount = document.getElementById('loginMount');
-  if (!mount) return;
-
-  mount.outerHTML = `
+(()=>{"use strict";const i=document.getElementById("loginMount");if(!i)return;i.outerHTML=`
     <dialog id="loginDialog" aria-labelledby="loginTitle">
       <div class="login-screen">
         <section id="gportLoginStage" class="login-stage" aria-labelledby="loginHeroTitle">
@@ -59,8 +53,4 @@
           </div>
         </section>
       </div>
-    </dialog>`;
-
-  const siteKey = document.querySelector('meta[name="gport-turnstile-site-key"]')?.content || '';
-  document.getElementById('turnstileWidget').dataset.sitekey = siteKey;
-})();
+    </dialog>`;const e=document.querySelector('meta[name="gport-turnstile-site-key"]')?.content||"";document.getElementById("turnstileWidget").dataset.sitekey=e})();
