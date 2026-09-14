@@ -151,9 +151,27 @@ const secureEqual = (left, right) => {
   const a = Buffer.from(left), b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
 };
-const tokenFor = (user, csrfToken) => jwt.sign({ sub: user.id, username: user.username, role: user.role, ver: user.token_version || 0, csrf: csrfToken }, jwtSecret, { expiresIn: Math.floor(sessionMaxAge / 1000), issuer: 'gport-export', audience: 'gport-web' });
-const publicUser = user => ({ id: user.id, username: user.username, role: user.role, active: user.active, createdAt: user.created_at });
 const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao'];
+const normalizeRoles = (value, fallback = 'analyst') => {
+  const entries = Array.isArray(value) ? value : value == null ? [fallback] : [value];
+  const roles = [...new Set(entries.map(item => String(item || '').trim()).filter(Boolean))];
+  if (!roles.length || roles.length > 2 || roles.some(role => !validRoles.includes(role))) return null;
+  return roles;
+};
+const rolesFor = user => normalizeRoles(user?.roles, user?.role || 'analyst') || [user?.role || 'analyst'];
+const primaryRoleFor = user => rolesFor(user)[0];
+const hasRole = (user, ...allowedRoles) => {
+  const roles = rolesFor(user);
+  return roles.includes('admin') || allowedRoles.some(role => roles.includes(role));
+};
+const tokenFor = (user, csrfToken) => {
+  const roles = rolesFor(user);
+  return jwt.sign({ sub: user.id, username: user.username, role: roles[0], roles, ver: user.token_version || 0, csrf: csrfToken }, jwtSecret, { expiresIn: Math.floor(sessionMaxAge / 1000), issuer: 'gport-export', audience: 'gport-web' });
+};
+const publicUser = user => {
+  const roles = rolesFor(user);
+  return { id: user.id, username: user.username, role: roles[0], roles, active: user.active, createdAt: user.created_at };
+};
 const isStrongPassword = password => typeof password === 'string' && password.length >= 12 && password.length <= 200 && /[A-Za-z]/.test(password) && /\d/.test(password);
 const validId = value => typeof value === 'string' && uuidPattern.test(value);
 const attachmentScanMode = process.env.ATTACHMENT_SCAN_MODE === 'external' ? 'external' : 'basic';
@@ -259,13 +277,14 @@ function authenticate(req, res, next) {
   let claims;
   try { claims = jwt.verify(token, jwtSecret, { issuer: 'gport-export', audience: 'gport-web' }); }
   catch { return res.status(401).json({ error: 'Sessão inválida ou expirada.' }); }
-  query('SELECT id,username,role,active,token_version FROM users WHERE id=$1', [claims.sub])
+  query('SELECT id,username,role,roles,active,token_version FROM users WHERE id=$1', [claims.sub])
     .then(result => {
       const user = result.rows[0];
       if (!user?.active || user.token_version !== claims.ver) return res.status(401).json({ error: 'Usuário inativo ou sessão expirada.' });
       // O cargo vem do banco, não apenas do token antigo. Assim exclusões e
       // mudanças de função passam a valer imediatamente.
-      req.user = { sub: user.id, username: user.username, role: user.role, csrfToken: claims.csrf };
+      const roles = rolesFor(user);
+      req.user = { sub: user.id, username: user.username, role: roles[0], roles, csrfToken: claims.csrf };
       next();
     })
     .catch(next);
@@ -284,7 +303,7 @@ function csrfProtection(req, res, next) {
   next();
 }
 app.use('/api', csrfProtection);
-const adminOnly = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Acesso restrito a administradores.' });
+const adminOnly = (req, res, next) => hasRole(req.user, 'admin') ? next() : res.status(403).json({ error: 'Acesso restrito a administradores.' });
 // Regra operacional confirmada: qualquer usuário autenticado pode consultar,
 // criar, editar e excluir processos. Controles especializados de VGM e
 // liberação continuam restritos aos respectivos perfis.
@@ -293,10 +312,10 @@ const processCreatorOnly = (_req, _res, next) => next();
 // Qualquer colaborador autenticado pode cadastrar um exportador necessário
 // para lançar um processo. Alterações e exclusões continuam restritas.
 const clientCreatorOnly = (_req, _res, next) => next();
-const clientManagerOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem administrar exportadores.' });
-const vgmManagerOnly = (req, res, next) => ['admin', 'vgm'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas VGM ou Administrador podem atualizar este controle.' });
-const releaseManagerOnly = (req, res, next) => ['admin', 'liberacao'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Liberação ou Administrador podem atualizar este controle.' });
-const followupManagerOnly = (req, res, next) => ['admin', 'analyst'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem atualizar o follow up.' });
+const clientManagerOnly = (req, res, next) => hasRole(req.user, 'analyst') ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem administrar exportadores.' });
+const vgmManagerOnly = (req, res, next) => hasRole(req.user, 'vgm') ? next() : res.status(403).json({ error: 'Apenas VGM ou Administrador podem atualizar este controle.' });
+const releaseManagerOnly = (req, res, next) => hasRole(req.user, 'liberacao') ? next() : res.status(403).json({ error: 'Apenas Liberação ou Administrador podem atualizar este controle.' });
+const followupManagerOnly = (req, res, next) => hasRole(req.user, 'analyst') ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem atualizar o follow up.' });
 const audit = (userId, action, entity, entityId, details = {}) => query('INSERT INTO audit_log(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5)', [userId, action, entity, entityId, details]);
 
 app.get('/api/health', asyncRoute(async (_req, res) => {
@@ -313,15 +332,15 @@ app.post('/api/auth/register', loginLimit, asyncRoute(async (req, res) => {
 app.post('/api/users', authenticate, adminOnly, asyncRoute(async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
-  const role = String(req.body.role || 'analyst');
+  const roles = normalizeRoles(req.body.roles ?? req.body.role ?? 'analyst');
   if (!usernamePattern.test(username)) return res.status(400).json({ error: 'Usuário deve ter 3 a 80 caracteres: letras, números, ponto, hífen ou sublinhado.' });
   if (!isStrongPassword(password)) return res.status(400).json({ error: 'A senha deve ter ao menos 12 caracteres, com letras e números.' });
-  if (!validRoles.includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
+  if (!roles) return res.status(400).json({ error: 'Selecione uma ou duas funções válidas.' });
   const passwordHash = await bcrypt.hash(password, 12);
   try {
-    const result = await query('INSERT INTO users(username,password_hash,role) VALUES($1,$2,$3) RETURNING id,username,role,active,created_at', [username, passwordHash, role]);
+    const result = await query('INSERT INTO users(username,password_hash,role,roles) VALUES($1,$2,$3,$4) RETURNING id,username,role,roles,active,created_at', [username, passwordHash, roles[0], roles]);
     const user = result.rows[0];
-    await audit(req.user.sub, 'user.created', 'user', user.id, { role });
+    await audit(req.user.sub, 'user.created', 'user', user.id, { roles });
     publishReferenceChange('users', 'created');
     res.status(201).json({ user: publicUser(user) });
   } catch (error) {
@@ -354,7 +373,7 @@ app.post('/api/auth/logout', authenticate, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/me', authenticate, asyncRoute(async (req, res) => {
-  const user = (await query('SELECT id,username,role,active,created_at,token_version FROM users WHERE id=$1', [req.user.sub])).rows[0];
+  const user = (await query('SELECT id,username,role,roles,active,created_at,token_version FROM users WHERE id=$1', [req.user.sub])).rows[0];
   if (!user?.active) return res.status(401).json({ error: 'Usuário inativo.' });
   // Expiração deslizante: uma aba realmente em uso renova a sessão sem trocar
   // o CSRF em andamento e sem obrigar o usuário a atualizar a página.
@@ -363,11 +382,11 @@ app.get('/api/me', authenticate, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/users', authenticate, adminOnly, asyncRoute(async (_req, res) => {
-  const result = await query('SELECT id,username,role,active,created_at FROM users ORDER BY username');
+  const result = await query('SELECT id,username,role,roles,active,created_at FROM users ORDER BY username');
   res.json(result.rows.map(publicUser));
 }));
 app.get('/api/analysts', authenticate, asyncRoute(async (_req, res) => {
-  const result = await query("SELECT id,username FROM users WHERE active=true AND role='analyst' ORDER BY username");
+  const result = await query("SELECT id,username FROM users WHERE active=true AND roles @> ARRAY['analyst']::varchar[] ORDER BY username");
   res.json(result.rows);
 }));
 app.get('/api/assignees', authenticate, asyncRoute(async (_req, res) => {
@@ -376,27 +395,29 @@ app.get('/api/assignees', authenticate, asyncRoute(async (_req, res) => {
 }));
 app.patch('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de usuário inválido.' });
-  const { role, active, password } = req.body;
-  if (role && !validRoles.includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
+  const { active, password } = req.body;
+  const hasRolesUpdate = Object.hasOwn(req.body, 'roles') || Object.hasOwn(req.body, 'role');
+  const roles = hasRolesUpdate ? normalizeRoles(req.body.roles ?? req.body.role) : null;
+  if (hasRolesUpdate && !roles) return res.status(400).json({ error: 'Selecione uma ou duas funções válidas.' });
   if (password && !isStrongPassword(String(password))) return res.status(400).json({ error: 'A senha deve ter ao menos 12 caracteres, com letras e números.' });
-  if ((role && role !== 'admin') || active === false) {
-    const target = (await query('SELECT role,active FROM users WHERE id=$1', [req.params.id])).rows[0];
-    const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE role='admin' AND active=true")).rows[0].total;
-    if (target?.role === 'admin' && target?.active && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
+  if ((hasRolesUpdate && !roles.includes('admin')) || active === false) {
+    const target = (await query('SELECT role,roles,active FROM users WHERE id=$1', [req.params.id])).rows[0];
+    const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE active=true AND roles @> ARRAY['admin']::varchar[]")).rows[0].total;
+    if (target?.active && hasRole(target, 'admin') && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
   }
-  const result = await query('UPDATE users SET role=COALESCE($1,role), active=COALESCE($2,active), password_hash=COALESCE($3,password_hash), token_version=token_version + CASE WHEN $3 IS NULL THEN 0 ELSE 1 END WHERE id=$4 RETURNING id,username,role,active,created_at', [role || null, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, req.params.id]);
+  const result = await query('UPDATE users SET role=COALESCE($1,role), roles=COALESCE($2,roles), active=COALESCE($3,active), password_hash=COALESCE($4,password_hash), token_version=token_version + CASE WHEN $4 IS NULL AND $2 IS NULL THEN 0 ELSE 1 END WHERE id=$5 RETURNING id,username,role,roles,active,created_at', [roles?.[0] || null, roles, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Usuário não encontrado.' });
-  await audit(req.user.sub, 'user.updated', 'user', req.params.id, { role, active, passwordReset: !!password });
+  await audit(req.user.sub, 'user.updated', 'user', req.params.id, { roles, active, passwordReset: !!password });
   publishReferenceChange('users', 'updated');
   res.json({ user: publicUser(result.rows[0]) });
 }));
 app.delete('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de usuário inválido.' });
-  const target = (await query('SELECT id,role,active FROM users WHERE id=$1', [req.params.id])).rows[0];
+  const target = (await query('SELECT id,role,roles,active FROM users WHERE id=$1', [req.params.id])).rows[0];
   if (!target) return res.status(404).json({ error: 'Usuário não encontrado.' });
   if (!target.active) return res.status(400).json({ error: 'Este funcionário já foi excluído.' });
-  const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE role='admin' AND active=true")).rows[0].total;
-  if (target.role === 'admin' && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
+  const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE active=true AND roles @> ARRAY['admin']::varchar[]")).rows[0].total;
+  if (hasRole(target, 'admin') && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
   await query('UPDATE users SET active=false WHERE id=$1', [target.id]);
   await audit(req.user.sub, 'user.deactivated', 'user', target.id);
   publishReferenceChange('users', 'deactivated');
@@ -658,10 +679,12 @@ app.get('/api/reports/database-usage', authenticate, adminOnly, asyncRoute(async
 // Resumo operacional enxuto: evita que o painel inicial carregue a lista
 // inteira de processos. As regras de leitura continuam centralizadas na API.
 app.get('/api/dashboard', authenticate, asyncRoute(async (req, res) => {
-  const role = req.user.role;
-  const analystScope = role === 'analyst' ? ' AND p.analyst_id=$1' : '';
-  const params = role === 'analyst' ? [req.user.sub] : [];
-  const pendingVgmScope = role === 'analyst' ? ' AND p.analyst_id=$1' : '';
+  const role = primaryRoleFor(req.user);
+  // Analistas mantêm a visão própria; ao acumular uma função operacional, a
+  // pessoa passa a ter a mesma visão ampla exigida pela segunda responsabilidade.
+  const analystOnly = hasRole(req.user, 'analyst') && !['admin','vgm','liberacao','financeiro'].some(item => rolesFor(req.user).includes(item));
+  const analystScope = analystOnly ? ' AND p.analyst_id=$1' : '';
+  const params = analystOnly ? [req.user.sub] : [];
   const [summary, recent, channels] = await Promise.all([
     query(`SELECT
       COUNT(*)::int AS total,
@@ -682,13 +705,13 @@ app.get('/api/dashboard', authenticate, asyncRoute(async (req, res) => {
     : role === 'liberacao' ? ['release_pending','overdue']
       : role === 'financeiro' ? ['due_next_7_days','total']
         : ['due_today','overdue','vgm_pending','release_pending'];
-  res.json({ role, priorities, summary: values, recent: recent.rows, channels: channels.rows });
+  res.json({ role, roles: rolesFor(req.user), priorities, summary: values, recent: recent.rows, channels: channels.rows });
 }));
 
 const notificationTargetsFor = async ({ type, process, actorId }) => {
   if (!process?.id) return [];
   const roles = type === 'vgm' ? ['admin','vgm'] : type === 'release' ? ['admin','liberacao'] : ['admin','analyst'];
-  const recipients = await query('SELECT id,role FROM users WHERE active=TRUE AND role=ANY($1::varchar[])', [roles]);
+  const recipients = await query('SELECT id,role,roles FROM users WHERE active=TRUE AND roles && $1::varchar[]', [roles]);
   return recipients.rows.filter(user => user.id !== actorId || type !== 'process').map(user => user.id);
 };
 const createNotification = async ({ userId, processId, type, title, message, dedupeKey }) => {
@@ -714,14 +737,14 @@ const createDeadlineNotificationsFor = async user => {
   if (!deadlineNotificationsEnabled) return;
   let scope = '';
   const params = [];
-  if (user.role === 'analyst') {
-    scope = ' AND p.analyst_id=$1'; params.push(user.sub);
-  } else if (user.role === 'vgm') {
-    scope = " AND COALESCE(p.vgm_status,'Não') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')";
-  } else if (user.role === 'liberacao') {
-    scope = " AND COALESCE(p.release_status,'Não') <> 'Sim'";
-  } else if (user.role !== 'admin') {
-    return;
+  const roles = rolesFor(user);
+  if (!roles.includes('admin')) {
+    const scopes = [];
+    if (roles.includes('analyst')) { scopes.push('p.analyst_id=$1'); params.push(user.sub); }
+    if (roles.includes('vgm')) scopes.push("COALESCE(p.vgm_status,'Não') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')");
+    if (roles.includes('liberacao')) scopes.push("COALESCE(p.release_status,'Não') <> 'Sim'");
+    if (!scopes.length) return;
+    scope = ` AND (${scopes.join(' OR ')})`;
   }
   const result = await query(`SELECT p.id,p.booking,p.deadline::date AS deadline_date,
       CASE
@@ -1033,7 +1056,7 @@ app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyn
 }));
 
 app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
-  const ownOnly = req.user.role === 'analyst';
+  const ownOnly = hasRole(req.user, 'analyst') && !['admin','vgm','liberacao','financeiro'].some(item => rolesFor(req.user).includes(item));
   const result = await query(`
     SELECT a.id, a.action, a.details, a.created_at, u.username,
            p.id AS process_id, p.booking, c.name AS exporter
@@ -1051,7 +1074,7 @@ app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(a
 
 app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
-  const ownOnly = req.user.role === 'analyst';
+  const ownOnly = hasRole(req.user, 'analyst') && !['admin','vgm','liberacao','financeiro'].some(item => rolesFor(req.user).includes(item));
   const result = await query(`
     SELECT a.action, a.details, a.created_at, u.username,
            p.id AS process_id, p.booking, c.name AS exporter

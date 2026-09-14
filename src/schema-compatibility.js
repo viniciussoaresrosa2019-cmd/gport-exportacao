@@ -1,5 +1,5 @@
 const requiredColumns = new Map([
-  ['users', ['token_version']],
+  ['users', ['token_version', 'roles']],
   ['clients', ['active', 'ruc_manual', 'due_only', 'ovacao']],
   ['processes', [
     'client_id', 'booking', 'deadline', 'container_details', 'updated_at',

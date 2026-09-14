@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-13T23:45:02.960Z",
+  "generatedAt": "2026-09-14T05:37:05.421Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 332012,
-    "gzipBytes": 89564,
+    "bytes": 344594,
+    "gzipBytes": 93363,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,13 +18,13 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 167304,
-        "gzipBytes": 43070
+        "bytes": 167922,
+        "gzipBytes": 43294
       },
       {
         "file": "experience.css",
-        "bytes": 13295,
-        "gzipBytes": 3650
+        "bytes": 13598,
+        "gzipBytes": 3714
       },
       {
         "file": "experience.js",
@@ -38,13 +38,13 @@
       },
       {
         "file": "legacy-ui.js",
-        "bytes": 42781,
-        "gzipBytes": 13318
+        "bytes": 43010,
+        "gzipBytes": 13460
       },
       {
         "file": "login-animation.css",
-        "bytes": 9150,
-        "gzipBytes": 2512
+        "bytes": 13210,
+        "gzipBytes": 3776
       },
       {
         "file": "login-controls.js",
@@ -58,8 +58,13 @@
       },
       {
         "file": "login-view.js",
-        "bytes": 5230,
-        "gzipBytes": 1947
+        "bytes": 6438,
+        "gzipBytes": 2278
+      },
+      {
+        "file": "login-water-motion.js",
+        "bytes": 6164,
+        "gzipBytes": 1774
       },
       {
         "file": "module-loader.js",
@@ -89,8 +94,8 @@
     ]
   },
   "output": {
-    "bytes": 247708,
-    "gzipBytes": 72711,
+    "bytes": 254805,
+    "gzipBytes": 75318,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -103,14 +108,14 @@
         "gzipBytes": 501
       },
       {
-        "file": "app-runtime-A595C6A3DE08.js",
-        "bytes": 103100,
-        "gzipBytes": 31709
+        "file": "app-runtime-D40D68251727.js",
+        "bytes": 103138,
+        "gzipBytes": 31842
       },
       {
-        "file": "experience-29C65ACAC4FF.css",
-        "bytes": 12863,
-        "gzipBytes": 3342
+        "file": "experience-3AD6A28C9CA0.css",
+        "bytes": 13165,
+        "gzipBytes": 3406
       },
       {
         "file": "experience-3BC7E1A7AF6C.js",
@@ -123,14 +128,14 @@
         "gzipBytes": 10790
       },
       {
-        "file": "legacy-ui-989AC998F887.js",
-        "bytes": 38858,
-        "gzipBytes": 12320
+        "file": "legacy-ui-0BBDADC6BAC8.js",
+        "bytes": 38956,
+        "gzipBytes": 12436
       },
       {
-        "file": "login-animation-A96724C19DD0.css",
-        "bytes": 7723,
-        "gzipBytes": 2247
+        "file": "login-animation-39E435D9A3BE.css",
+        "bytes": 10162,
+        "gzipBytes": 2951
       },
       {
         "file": "login-controls-54AA75263ABF.js",
@@ -143,9 +148,14 @@
         "gzipBytes": 765
       },
       {
-        "file": "login-view-D5BB3E9C7B71.js",
-        "bytes": 5169,
-        "gzipBytes": 1916
+        "file": "login-view-A3BE5F940780.js",
+        "bytes": 6377,
+        "gzipBytes": 2247
+      },
+      {
+        "file": "login-water-motion-D7CFE10D18FC.js",
+        "bytes": 3012,
+        "gzipBytes": 1259
       },
       {
         "file": "module-loader-0C618DDBF0EB.js",
@@ -175,10 +185,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 327040,
-    "sourceGzipBytes": 87770,
-    "outputBytes": 244534,
-    "outputGzipBytes": 71449,
+    "sourceBytes": 339622,
+    "sourceGzipBytes": 91569,
+    "outputBytes": 251631,
+    "outputGzipBytes": 74056,
     "deferred": [
       "reports.js"
     ]

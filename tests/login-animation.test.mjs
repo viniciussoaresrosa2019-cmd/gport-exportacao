@@ -5,30 +5,43 @@ import test from 'node:test';
 const readText = file => readFile(new URL(`../${file}`, import.meta.url), 'utf8');
 
 test('login mantém os painéis e carrega o terminal animado como camadas independentes', async () => {
-  const [view, animation, css, index] = await Promise.all([
+  const [view, animation, waterMotion, css, index] = await Promise.all([
     readText('public/assets/login-view.js'),
     readText('public/assets/login-terminal-animation.js'),
+    readText('public/assets/login-water-motion.js'),
     readText('public/assets/login-animation.css'),
     readText('public/index.html')
   ]);
   assert.match(view, /class="login-screen"/);
   assert.match(view, /class="login-stage"/);
   assert.match(view, /class="login-access"/);
+  assert.match(view, /class="login-ship-sea-scene"/);
+  assert.match(view, /login-sea\.png/);
+  assert.match(view, /login-ship\.png/);
+  assert.match(view, /login-wave-overlay/);
   assert.match(view, /id="loginTerminalScene"/);
   assert.match(view, /id="loginTerminalTrolley"/);
   assert.match(view, /id="loginTerminalCables"/);
   assert.match(view, /id="loginTerminalLoad"/);
-  assert.match(view, /login-terminal-base\.png/);
-  assert.match(view, /login-terminal-source\.png/);
+  assert.match(view, /login-terminal-base-alpha\.png/);
+  assert.match(view, /login-terminal-source-alpha\.png/);
   assert.match(index, /assets\/login-terminal-animation\.js/);
+  assert.match(index, /assets\/login-water-motion\.js/);
   assert.match(css, /grid-template-columns: minmax\(0, 58fr\) minmax\(0, 42fr\)/);
-  assert.match(css, /background: #020a14/);
+  assert.match(css, /background: #000f20/);
   assert.match(css, /\.login-terminal-scene/);
+  assert.match(css, /\.login-ship-sea-scene/);
+  assert.match(css, /@keyframes login-ship-swell/);
+  assert.match(css, /\.login-wave-overlay/);
   assert.match(css, /overflow: clip/);
   assert.match(animation, /const keyframes = \[/);
   assert.match(animation, /trolley\.setAttribute\('transform'/);
   assert.match(animation, /load\.setAttribute\('transform'/);
   assert.match(animation, /cables\.forEach/);
+  assert.match(waterMotion, /requestAnimationFrame\(draw\)/);
+  assert.match(waterMotion, /const wavelets = Array\.from/);
+  assert.match(waterMotion, /const life = Math\.pow/);
+  assert.match(waterMotion, /reducedMotion\.matches/);
 });
 
 test('formulário preserva validação, Turnstile e contratos da autenticação', async () => {

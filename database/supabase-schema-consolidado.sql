@@ -12,11 +12,31 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(80) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'analyst',
+  roles VARCHAR(20)[] NOT NULL DEFAULT ARRAY['analyst']::VARCHAR[],
   active BOOLEAN NOT NULL DEFAULT TRUE,
   token_version INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS roles VARCHAR(20)[];
+UPDATE users SET roles=ARRAY[role]::VARCHAR[] WHERE roles IS NULL OR cardinality(roles)=0;
+ALTER TABLE users ALTER COLUMN roles SET DEFAULT ARRAY['analyst']::VARCHAR[];
+ALTER TABLE users ALTER COLUMN roles SET NOT NULL;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_roles_check;
+ALTER TABLE users ADD CONSTRAINT users_roles_check CHECK (
+  cardinality(roles) BETWEEN 1 AND 2
+  AND roles <@ ARRAY['admin','analyst','vgm','financeiro','liberacao']::VARCHAR[]
+  AND (cardinality(roles)=1 OR roles[1]<>roles[2])
+);
+
+CREATE OR REPLACE FUNCTION sync_user_primary_role() RETURNS TRIGGER AS $$
+BEGIN NEW.role = NEW.roles[1]; RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS users_sync_primary_role ON users;
+CREATE TRIGGER users_sync_primary_role BEFORE INSERT OR UPDATE OF roles ON users
+  FOR EACH ROW EXECUTE FUNCTION sync_user_primary_role();
+CREATE INDEX IF NOT EXISTS users_active_roles_gin_idx ON users USING GIN (roles) WHERE active=TRUE;
 
 CREATE TABLE IF NOT EXISTS clients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

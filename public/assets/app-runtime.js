@@ -3,6 +3,8 @@
       const { toast, safeMessage: safeToastMessage, confirmAction } = window.gportUi;
       const cspNonce = document.querySelector('meta[name="csp-nonce"]')?.content || '';
       const securePrintHtml = html => html.replaceAll('<style>', `<style nonce="${cspNonce}">`);
+      const rolesFor = user => Array.isArray(user?.roles) && user.roles.length ? user.roles : [user?.role || 'analyst'];
+      const currentHasRole = role => rolesFor(currentUser).includes('admin') || rolesFor(currentUser).includes(role);
       const syncShipmentTypeWithoutInlineStyle = () => {
         const isLcl = form.elements.tipoEmbarque.value === 'LCL';
         el('containerFields').querySelectorAll('input,select').forEach(input => { input.disabled = isLcl; });
@@ -49,7 +51,7 @@
         renderVgm(); void refreshSectionData('vgm', { page:sectionSearchStates.vgm.pagination.page || 1 });
       };
       const showVgmReportPage = () => {
-        if (!['admin', 'vgm'].includes(currentUser?.role)) { toast.warning('Acesso restrito a VGM e Administrador.'); return; }
+        if (!currentHasRole('vgm')) { toast.warning('Acesso restrito a VGM e Administrador.'); return; }
         window.gportPageNavigation.activate('vgmReport');
         renderVgmReport();
       };
@@ -94,7 +96,7 @@
         }
       };
       const showReportsPage = async () => {
-        if (currentUser?.role !== 'admin') { toast.warning('Apenas administradores podem acessar os relatórios.'); return; }
+        if (!currentHasRole('admin')) { toast.warning('Apenas administradores podem acessar os relatórios.'); return; }
         window.gportPageNavigation.activate('reports');
         el('reportsPage').setAttribute('aria-busy', 'true');
         try {
@@ -110,15 +112,14 @@
       window.showProcessesPage = showProcessesPage;
       window.showReportsPage = showReportsPage;
       const applyRoleTabs = () => {
-        const role = currentUser?.role;
-        el('vgmNav').hidden = !['admin', 'analyst', 'vgm'].includes(role); el('vgmReportNav').hidden = true; el('openVgmReportBtn').hidden = !['admin', 'vgm'].includes(role);
-        el('releaseNav').hidden = !['admin', 'analyst', 'liberacao'].includes(role);
-        el('followupNav').hidden = !['admin', 'analyst'].includes(role);
+        el('vgmNav').hidden = !(currentHasRole('analyst') || currentHasRole('vgm')); el('vgmReportNav').hidden = true; el('openVgmReportBtn').hidden = !currentHasRole('vgm');
+        el('releaseNav').hidden = !(currentHasRole('analyst') || currentHasRole('liberacao'));
+        el('followupNav').hidden = !currentHasRole('analyst');
         // Financeiro e Prazos permanecem no código para reversão futura, mas
         // ficam fora da experiência operacional atual por decisão de produto.
         el('financialNav').hidden = true;
         el('deadlineNav').hidden = true;
-        el('reportsNav').hidden = role !== 'admin';
+        el('reportsNav').hidden = !currentHasRole('admin');
         if (el('vgmNav').hidden && el('releaseNav').hidden) showProcessesPage();
         window.dispatchEvent(new Event('gport:role-tabs-updated'));
       };
@@ -272,7 +273,7 @@
       }
       const vgmStatuses = ['Enviado pelo Cliente', 'Enviando no DRAFT', 'Não', 'Sim'];
       const renderVgm = () => {
-        const canEdit = ['admin', 'vgm'].includes(currentUser?.role); const vgmSent = p => ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus); const filterSelect = el('vgmFilterSelect'); filterSelect.value = vgmFilter; filterSelect.onchange = () => { vgmFilter = filterSelect.value; void refreshSectionData('vgm'); }; renderSectionSearch('vgmSearchControls', filterSelect.closest('.field'), vgmSearchFilter, filter => { if (filter?.clear) { vgmFilter = 'all'; vgmSearchFilter = null; sectionSearchStates.vgm.filter = null; } else { vgmSearchFilter = filter; sectionSearchStates.vgm.filter = filter; } void refreshSectionData('vgm'); }); const vgmProcesses = (vgmFilter === 'sent' ? sectionItems('vgm').filter(vgmSent) : vgmFilter === 'pending' ? sectionItems('vgm').filter(p => !vgmSent(p)) : sectionItems('vgm')).filter(process => matchesSectionSearch(process, vgmSearchFilter)).slice().sort((a,b) => String(b.dataEnvioVgmOrdenacao || '').localeCompare(String(a.dataEnvioVgmOrdenacao || '')));
+        const canEdit = currentHasRole('vgm'); const vgmSent = p => ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus); const filterSelect = el('vgmFilterSelect'); filterSelect.value = vgmFilter; filterSelect.onchange = () => { vgmFilter = filterSelect.value; void refreshSectionData('vgm'); }; renderSectionSearch('vgmSearchControls', filterSelect.closest('.field'), vgmSearchFilter, filter => { if (filter?.clear) { vgmFilter = 'all'; vgmSearchFilter = null; sectionSearchStates.vgm.filter = null; } else { vgmSearchFilter = filter; sectionSearchStates.vgm.filter = filter; } void refreshSectionData('vgm'); }); const vgmProcesses = (vgmFilter === 'sent' ? sectionItems('vgm').filter(vgmSent) : vgmFilter === 'pending' ? sectionItems('vgm').filter(p => !vgmSent(p)) : sectionItems('vgm')).filter(process => matchesSectionSearch(process, vgmSearchFilter)).slice().sort((a,b) => String(b.dataEnvioVgmOrdenacao || '').localeCompare(String(a.dataEnvioVgmOrdenacao || '')));
         const options = p => vgmStatuses.map(status => `<option ${p.vgmStatus === status ? 'selected' : ''}>${esc(status)}</option>`).join('');
         const analystOptions = p => {
           const people = [...availableAssignees, ...(p.analistaFisico && !availableAssignees.some(a => a.username === p.analistaFisico) ? [{ username:p.analistaFisico, role:'' }] : [])];
@@ -314,6 +315,9 @@
         el('clearVgmReportDay')?.addEventListener('click', () => { selectedVgmReportDay = null; renderVgmReport(); });
       };
       const renderRelease = () => {
+        // A tabela antiga ainda consulta `currentUser.role`. Preserve esse
+        // contrato local, mas derive-o da lista de funções para esta visão.
+        const currentUser = { role: currentHasRole('liberacao') ? 'liberacao' : '__without_release__' };
         const canEdit = ['admin', 'liberacao'].includes(currentUser?.role); const normalizePort = value => normalizeSearchText(value); const deadlineOrder = p => { const stored = Date.parse(p.releaseDeadlineOrder || ''); if (Number.isFinite(stored)) return stored; const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/); if (!match) return Number.MAX_SAFE_INTEGER; const now = new Date(), date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4])); if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1); return date.getTime(); }; const filterSelect = el('releaseFilterSelect'); filterSelect.value = releaseFilter; filterSelect.onchange = () => { releaseFilter = filterSelect.value; void refreshSectionData('release'); }; renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => { if (filter?.clear) { releaseFilter = 'all'; releasePortFilter = 'all'; releaseSearchFilter = null; sectionSearchStates.release.filter = null; } else { releaseSearchFilter = filter; sectionSearchStates.release.filter = filter; } void refreshSectionData('release'); }); let portControls = el('releasePortFilters'); if (!portControls) { portControls = document.createElement('div'); portControls.id = 'releasePortFilters'; portControls.className = 'release-port-filters'; filterSelect.closest('.field').insertAdjacentElement('afterend', portControls); } const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos']; const knownPortMap = new Map(); [...standardPorts, ...sectionItems('release').map(p => String(p.origem || '').trim())].forEach(port => { const key=normalizePort(port); if(key&&!knownPortMap.has(key))knownPortMap.set(key,port); }); const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b,'pt-BR',{sensitivity:'base'})); portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`; portControls.querySelectorAll('[data-release-port]').forEach(button => button.onclick = () => { releasePortFilter = button.dataset.releasePort; void refreshSectionData('release'); }); const releaseProcesses = (releaseFilter === 'released' ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim') : releaseFilter === 'pending' ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim') : sectionItems('release')).filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter)).filter(process => matchesSectionSearch(process, releaseSearchFilter)).slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR'));
         const options = p => ['Não', 'Sim'].map(status => `<option ${p.liberacaoStatus === status ? 'selected' : ''}>${status}</option>`).join('');
         const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
@@ -1107,12 +1111,12 @@
       const refreshReferencesFromEvent = async () => {
         try {
           const requests = [request('/api/clients'), request('/api/assignees')];
-          if (currentUser?.role === 'admin') requests.push(request('/api/users'));
+          if (currentHasRole('admin')) requests.push(request('/api/users'));
           const [remoteClients, remoteAssignees, remoteUsers] = await Promise.all(requests);
           clients = remoteClients.map(toViewClient); availableAssignees = remoteAssignees;
           if (remoteUsers) users = remoteUsers;
           referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
-          renderClients(); if (currentUser?.role === 'admin') renderUsers();
+          renderClients(); if (currentHasRole('admin')) renderUsers();
         } catch { /* o cache atual permanece utilizável até a próxima tentativa */ }
       };
       const applyProcessRealtimeChange = async event => {
@@ -1292,7 +1296,7 @@
         currentUser = result.user;
         sessionRecoveryRequired = false; lastSessionCheckAt = Date.now();
         el('currentUserName').textContent = currentUser.username;
-        el('usersNav').hidden = currentUser.role !== 'admin';
+        el('usersNav').hidden = !currentHasRole('admin');
         applyRoleTabs();
         // A sessão já está válida neste ponto. Fechamos o login e exibimos
         // feedback imediato; processos e referências continuam em paralelo.
@@ -1304,7 +1308,7 @@
         try {
           const result = await request('/api/me'); currentUser = result.user; lastSessionCheckAt = Date.now();
           el('currentUserName').textContent = currentUser.username;
-          el('usersNav').hidden = currentUser.role !== 'admin';
+          el('usersNav').hidden = !currentHasRole('admin');
           applyRoleTabs();
           el('loginDialog').close(); showProcessLoading(); connectRealtime();
           void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('Não foi possível atualizar os processos agora. Tente novamente em instantes.'));
@@ -1493,19 +1497,19 @@
       };
       el('vgmNav').onclick = e => {
         e.preventDefault();
-        if (!['admin', 'analyst', 'vgm'].includes(currentUser?.role)) return;
+        if (!(currentHasRole('analyst') || currentHasRole('vgm'))) return;
         showVgmPage();
       };
       el('vgmReportNav').onclick = e => { e.preventDefault(); showVgmReportPage(); }; el('openVgmReportBtn').onclick = showVgmReportPage;
       el('closeVgmReportBtn').onclick = showVgmPage;
       el('releaseNav').onclick = e => {
         e.preventDefault();
-        if (!['admin', 'analyst', 'liberacao'].includes(currentUser?.role)) return;
+        if (!(currentHasRole('analyst') || currentHasRole('liberacao'))) return;
         showReleasePage();
       };
       el('followupNav').onclick = e => {
         e.preventDefault();
-        if (!['admin', 'analyst'].includes(currentUser?.role)) return;
+        if (!currentHasRole('analyst')) return;
         showFollowupPage();
       };
       const saveVgmRow = async id => {
@@ -1574,7 +1578,7 @@
       };
       el('financialNav').onclick = e => {
         e.preventDefault();
-        if (!['admin', 'financeiro'].includes(currentUser?.role)) return;
+        if (!currentHasRole('financeiro')) return;
         renderFinancial(); el('financialDialog').showModal();
       };
       const quickHelpTopics = [
@@ -1646,9 +1650,12 @@
       };
       el('userList').onchange = async e => {
         const input = e.target.closest('.user-role'); if (!input) return;
-        const user = users.find(u => u.username === input.dataset.user); if (!user) return;
-        try { await request(`/api/users/${user.id}`, { method:'PATCH', body:JSON.stringify({ role:input.value }) }); users = await request('/api/users'); renderUsers(); }
-        catch (error) { toast.error(error.message); input.value = user.role; }
+        const group = input.closest('.user-roles');
+        const user = users.find(u => u.username === group?.dataset.user); if (!user) return;
+        const roles = [...group.querySelectorAll('.user-role:checked')].map(control => control.value);
+        if (!roles.length || roles.length > 2) { toast.warning('Selecione uma ou duas funções por usuário.'); renderUsers(); return; }
+        try { await request(`/api/users/${user.id}`, { method:'PATCH', body:JSON.stringify({ roles }) }); users = await request('/api/users'); renderUsers(); }
+        catch (error) { toast.error(error.message); renderUsers(); }
       };
       el('userList').onclick = async e => {
         const button = e.target.closest('.reset-password, .delete-user'); if (!button) return;

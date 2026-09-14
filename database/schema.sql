@@ -5,10 +5,28 @@ CREATE TABLE users (
   username VARCHAR(80) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role VARCHAR(20) NOT NULL DEFAULT 'analyst' CHECK (role IN ('admin', 'analyst', 'vgm', 'financeiro', 'liberacao')),
+  roles VARCHAR(20)[] NOT NULL DEFAULT ARRAY['analyst']::VARCHAR[] CHECK (
+    cardinality(roles) BETWEEN 1 AND 2
+    AND roles <@ ARRAY['admin', 'analyst', 'vgm', 'financeiro', 'liberacao']::VARCHAR[]
+    AND (cardinality(roles) = 1 OR roles[1] <> roles[2])
+  ),
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE OR REPLACE FUNCTION sync_user_primary_role() RETURNS TRIGGER AS $$
+BEGIN
+  NEW.role = NEW.roles[1];
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER users_sync_primary_role
+  BEFORE INSERT OR UPDATE OF roles ON users
+  FOR EACH ROW EXECUTE FUNCTION sync_user_primary_role();
+
+CREATE INDEX users_active_roles_gin_idx ON users USING GIN (roles) WHERE active = TRUE;
 
 CREATE TABLE clients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -105,6 +105,33 @@ test('terminal completa um ciclo de içamento sem romper cabos', async ({ page }
   await testInfo.attach('motion-samples', { body: JSON.stringify(samples), contentType: 'application/json' });
 });
 
+test('ondas deslizam e o navio acompanha o balanço sem navegar lateralmente', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chrome');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto(loginUrl);
+  const sample = () => page.evaluate(() => {
+    const transform = selector => getComputedStyle(document.querySelector(selector)).transform;
+    const translateX = transformValue => new DOMMatrixReadOnly(transformValue).e;
+    return {
+      sea: transform('.login-sea-motion img'),
+      ship: transform('.login-ship-motion'),
+      shipTranslateX: translateX(transform('.login-ship-motion')),
+      waveFrame: document.querySelector('.login-wave-overlay').toDataURL(),
+      waveMotion: document.querySelector('.login-wave-overlay').dataset.waveMotion
+    };
+  });
+  const first = await sample();
+  await page.waitForTimeout(2600);
+  const later = await sample();
+  expect(later.sea).toBe(first.sea);
+  expect(later.ship).not.toBe(first.ship);
+  expect(first.waveMotion).toBe('running');
+  expect(later.waveFrame).not.toBe(first.waveFrame);
+  expect(Math.abs(first.shipTranslateX)).toBeLessThan(.1);
+  expect(Math.abs(later.shipTranslateX)).toBeLessThan(.1);
+  await page.screenshot({ path: testInfo.outputPath('ship-and-sea-motion.png') });
+});
+
 test('movimento reduzido mantém cenário estático e completo', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chrome');
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -115,6 +142,8 @@ test('movimento reduzido mantém cenário estático e completo', async ({ page }
   expect(await page.locator('#loginTerminalTrolley').getAttribute('transform')).toBe(firstTrolley);
   expect(await page.locator('#loginTerminalLoad').getAttribute('transform')).toBe(firstLoad);
   await expect(page.locator('#loginTerminalArt')).toBeVisible();
+  await expect(page.locator('.login-sea-motion img')).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('.login-ship-motion')).toHaveCSS('animation-name', 'none');
 });
 
 test('celular mantém formulário e cena acessíveis sem rolagem horizontal', async ({ page }, testInfo) => {

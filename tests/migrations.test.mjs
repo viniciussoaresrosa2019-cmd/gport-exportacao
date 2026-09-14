@@ -27,9 +27,9 @@ const fakePool = ({ recorded = [], failMigration = false } = {}) => {
 test('migrações versionadas possuem ordem determinística e checksum SHA-256', async () => {
   const migrations = await loadMigrations(directory);
   assert.ok(migrations.length >= 1);
-  assert.equal(migrations.length, 10);
+  assert.equal(migrations.length, 11);
   assert.equal(migrations[0].version, '2026-07-25-001');
-  assert.equal(migrations.at(-1).version, '2026-08-28-003');
+  assert.equal(migrations.at(-1).version, '2026-09-14-001');
   assert.deepEqual(migrations.map(item => item.version), [...migrations.map(item => item.version)].sort());
   for (const migration of migrations) {
     assert.match(migration.version, /^\d{4}-\d{2}-\d{2}-\d{3}$/);
@@ -83,7 +83,7 @@ test('falha de DDL executa rollback e registra somente código técnico', async 
 test('boot valida o esquema somente com consultas de leitura', async () => {
   const tables = ['users', 'clients', 'processes', 'audit_log', 'user_notifications', 'process_checklist_items', 'process_comments', 'process_attachments', 'process_prelaunches'];
   const columns = {
-    users:['token_version'],
+    users:['token_version','roles'],
     clients:['active', 'ruc_manual', 'due_only', 'ovacao'],
     processes:['client_id', 'booking', 'deadline', 'container_details', 'updated_at', 'idempotency_key', 'vgm_sent_date', 'release_deadline', 'followup_status'],
     process_attachments:['scan_status', 'scan_provider']
