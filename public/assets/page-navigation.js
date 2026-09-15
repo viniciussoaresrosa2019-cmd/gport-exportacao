@@ -5,6 +5,7 @@
     vgm:'vgmPage',
     vgmReport:'vgmReportPage',
     release:'releasePage',
+    postShipment:'postShipmentPage',
     followup:'followupPage',
     reports:'reportsPage'
   });
@@ -13,6 +14,7 @@
     vgm:'vgmNav',
     vgmReport:'vgmReportNav',
     release:'releaseNav',
+    postShipment:'postShipmentNav',
     followup:'followupNav',
     reports:'reportsNav'
   });
@@ -30,4 +32,3 @@
 
   window.gportPageNavigation = Object.freeze({ activate, pages, navigation });
 })();
-

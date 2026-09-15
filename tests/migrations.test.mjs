@@ -27,9 +27,9 @@ const fakePool = ({ recorded = [], failMigration = false } = {}) => {
 test('migrações versionadas possuem ordem determinística e checksum SHA-256', async () => {
   const migrations = await loadMigrations(directory);
   assert.ok(migrations.length >= 1);
-  assert.equal(migrations.length, 11);
+  assert.equal(migrations.length, 12);
   assert.equal(migrations[0].version, '2026-07-25-001');
-  assert.equal(migrations.at(-1).version, '2026-09-14-001');
+  assert.equal(migrations.at(-1).version, '2026-09-14-002');
   assert.deepEqual(migrations.map(item => item.version), [...migrations.map(item => item.version)].sort());
   for (const migration of migrations) {
     assert.match(migration.version, /^\d{4}-\d{2}-\d{2}-\d{3}$/);
@@ -85,7 +85,7 @@ test('boot valida o esquema somente com consultas de leitura', async () => {
   const columns = {
     users:['token_version','roles'],
     clients:['active', 'ruc_manual', 'due_only', 'ovacao'],
-    processes:['client_id', 'booking', 'deadline', 'container_details', 'updated_at', 'idempotency_key', 'vgm_sent_date', 'release_deadline', 'followup_status'],
+    processes:['client_id', 'booking', 'deadline', 'container_details', 'updated_at', 'idempotency_key', 'vgm_sent_date', 'release_deadline', 'followup_status', 'post_shipment_date'],
     process_attachments:['scan_status', 'scan_provider']
   };
   const calls = [];

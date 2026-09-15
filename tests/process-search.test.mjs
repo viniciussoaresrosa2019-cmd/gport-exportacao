@@ -10,7 +10,7 @@ test('busca normaliza acentos, caixa e espaços sem alterar SQL', () => {
   assert.equal(query.offset, 50);
   assert.equal(query.pageParams.at(-2), 25);
   assert.equal(query.pageParams.at(-1), 50);
-  assert.match(query.itemsSql, /LIMIT \$10 OFFSET \$11/);
+  assert.match(query.itemsSql, /LIMIT \$11 OFFSET \$12/);
 });
 
 test('busca escapa curingas e mantém termo exclusivamente parametrizado', () => {
@@ -44,5 +44,5 @@ test('ordenação é estável e específica por tela', () => {
   assert.match(buildProcessSearchQuery({ view:'vgm' }).itemsSql, /vgm_sent_date DESC NULLS LAST/);
   assert.match(buildProcessSearchQuery({ view:'release' }).itemsSql, /origin_port ASC,p\.release_deadline ASC NULLS LAST/);
   assert.match(buildProcessSearchQuery({ view:'followup' }).itemsSql, /updated_at DESC,p\.id DESC/);
+  assert.match(buildProcessSearchQuery({ view:'postshipment', projection:'postshipment' }).itemsSql, /post_shipment_date ASC NULLS FIRST/);
 });
-

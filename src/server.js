@@ -1054,6 +1054,20 @@ app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyn
   publishProcessChange(result.rows[0], 'followup-updated');
   res.json(result.rows[0]);
 }));
+// Pós-embarque tem data própria: não reutiliza `shipping_date`, que guarda a
+// data de envio do draft no lançamento original do processo.
+app.patch('/api/processes/:id/post-shipment', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
+  const postShipmentDate = cleanOptionalDate(req.body.postShipmentDate, 'Data de embarque');
+  const result = await query(`UPDATE processes
+    SET post_shipment_date=$1
+    WHERE id=$2
+    RETURNING *`, [postShipmentDate, req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
+  await audit(req.user.sub, 'process.post_shipment_updated', 'process', req.params.id, { postShipmentDate });
+  publishProcessChange(result.rows[0], 'post-shipment-updated');
+  res.json(result.rows[0]);
+}));
 
 app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(async (req, res) => {
   const ownOnly = hasRole(req.user, 'analyst') && !['admin','vgm','liberacao','financeiro'].some(item => rolesFor(req.user).includes(item));
@@ -1065,7 +1079,7 @@ app.get('/api/followup/history', authenticate, followupManagerOnly, asyncRoute(a
       JOIN processes p ON p.id=a.entity_id
       JOIN clients c ON c.id=p.client_id
      WHERE a.entity='process'${ownOnly ? ' AND p.analyst_id=$1' : ''}
-       AND a.action IN ('process.created','process.updated','process.vgm_updated','process.release_updated','process.followup_updated')
+       AND a.action IN ('process.created','process.updated','process.vgm_updated','process.release_updated','process.followup_updated','process.post_shipment_updated')
      ORDER BY a.created_at DESC
      LIMIT 500
   `, ownOnly ? [req.user.sub] : []);
@@ -1083,7 +1097,7 @@ app.get('/api/processes/:id/followup-history', authenticate, followupManagerOnly
       JOIN processes p ON p.id=a.entity_id
       JOIN clients c ON c.id=p.client_id
      WHERE a.entity='process' AND a.entity_id=$1${ownOnly ? ' AND p.analyst_id=$2' : ''}
-       AND a.action IN ('process.created','process.updated','process.vgm_updated','process.release_updated','process.followup_updated')
+       AND a.action IN ('process.created','process.updated','process.vgm_updated','process.release_updated','process.followup_updated','process.post_shipment_updated')
      ORDER BY a.created_at ASC
   `, ownOnly ? [req.params.id, req.user.sub] : [req.params.id]);
   res.json(result.rows);
@@ -1141,6 +1155,7 @@ const legacyEnsureProcessFields = async () => {
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS deadline TIMESTAMP WITHOUT TIME ZONE');
   await query('ALTER TABLE processes ALTER COLUMN deadline TYPE TIMESTAMP WITHOUT TIME ZONE USING deadline::timestamp');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS shipping_date DATE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS post_shipment_date DATE');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS container_collection_date DATE');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS collection_terminal VARCHAR(160)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS free_time_days INTEGER');
@@ -1191,6 +1206,7 @@ const legacyEnsureProcessFields = async () => {
   await query('CREATE INDEX IF NOT EXISTS processes_vgm_status_idx ON processes(vgm_status)');
   await query('CREATE INDEX IF NOT EXISTS processes_vgm_sent_date_idx ON processes(vgm_sent_date DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_release_origin_deadline_idx ON processes(origin_port, release_deadline ASC)');
+  await query('CREATE INDEX IF NOT EXISTS processes_post_shipment_date_idx ON processes(post_shipment_date ASC)');
   await query('CREATE INDEX IF NOT EXISTS processes_updated_at_idx ON processes(updated_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS audit_log_entity_created_at_idx ON audit_log(entity, created_at DESC)');
   // Caixa de notificações persistente e por usuário. A chave de deduplicação

@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-14T05:37:05.421Z",
+  "generatedAt": "2026-09-15T01:55:24.947Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 344594,
-    "gzipBytes": 93363,
+    "bytes": 353763,
+    "gzipBytes": 95247,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,8 +18,8 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 167922,
-        "gzipBytes": 43294
+        "bytes": 173648,
+        "gzipBytes": 44227
       },
       {
         "file": "experience.css",
@@ -33,8 +33,8 @@
       },
       {
         "file": "gport.css",
-        "bytes": 56689,
-        "gzipBytes": 11183
+        "bytes": 58528,
+        "gzipBytes": 11442
       },
       {
         "file": "legacy-ui.js",
@@ -73,8 +73,13 @@
       },
       {
         "file": "page-navigation.js",
-        "bytes": 1008,
-        "gzipBytes": 447
+        "bytes": 1080,
+        "gzipBytes": 468
+      },
+      {
+        "file": "post-shipment-ui.js",
+        "bytes": 1532,
+        "gzipBytes": 671
       },
       {
         "file": "reports.js",
@@ -94,8 +99,8 @@
     ]
   },
   "output": {
-    "bytes": 254805,
-    "gzipBytes": 75318,
+    "bytes": 261024,
+    "gzipBytes": 76831,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -108,9 +113,9 @@
         "gzipBytes": 501
       },
       {
-        "file": "app-runtime-D40D68251727.js",
-        "bytes": 103138,
-        "gzipBytes": 31842
+        "file": "app-runtime-C817E9463332.js",
+        "bytes": 106329,
+        "gzipBytes": 32547
       },
       {
         "file": "experience-3AD6A28C9CA0.css",
@@ -123,9 +128,9 @@
         "gzipBytes": 2831
       },
       {
-        "file": "gport-B85A75BC09A9.css",
-        "bytes": 55941,
-        "gzipBytes": 10790
+        "file": "gport-D8F2845E37F6.css",
+        "bytes": 57686,
+        "gzipBytes": 11009
       },
       {
         "file": "legacy-ui-0BBDADC6BAC8.js",
@@ -163,9 +168,14 @@
         "gzipBytes": 487
       },
       {
-        "file": "page-navigation-215A9B59B7B6.js",
-        "bytes": 649,
-        "gzipBytes": 337
+        "file": "page-navigation-5C61DC5F5319.js",
+        "bytes": 712,
+        "gzipBytes": 354
+      },
+      {
+        "file": "post-shipment-ui-7822AEE6361A.js",
+        "bytes": 1220,
+        "gzipBytes": 572
       },
       {
         "file": "reports-97E32C33F346.js",
@@ -185,10 +195,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 339622,
-    "sourceGzipBytes": 91569,
-    "outputBytes": 251631,
-    "outputGzipBytes": 74056,
+    "sourceBytes": 348791,
+    "sourceGzipBytes": 93453,
+    "outputBytes": 257850,
+    "outputGzipBytes": 75569,
     "deferred": [
       "reports.js"
     ]

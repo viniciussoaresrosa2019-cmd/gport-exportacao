@@ -6,10 +6,9 @@ test('navegação compartilhada cobre todas as páginas e não contém autoriza�
   const navigation = await readFile(new URL('../public/assets/page-navigation.js', import.meta.url), 'utf8');
   const runtime = await readFile(new URL('../public/assets/app-runtime.js', import.meta.url), 'utf8');
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-  for (const page of ['processes','vgm','vgmReport','release','followup','reports']) assert.match(navigation, new RegExp(`${page}:`));
+  for (const page of ['processes','vgm','vgmReport','release','postShipment','followup','reports']) assert.match(navigation, new RegExp(`${page}:`));
   assert.match(runtime, /gportPageNavigation\.activate\('processes'\)/);
   assert.match(runtime, /gportPageNavigation\.activate\('reports'\)/);
   assert.match(html, /page-navigation\.js[^>]+defer/);
   assert.doesNotMatch(navigation, /role|permission|authenticate|fetch\(/i);
 });
-

@@ -10,6 +10,7 @@ const interfaceFiles = [
   'public/assets/ui-feedback.js',
   'public/assets/legacy-ui.js',
   'public/assets/app-runtime.js',
+  'public/assets/post-shipment-ui.js',
   'public/assets/accessibility.js',
   'public/assets/experience.js',
   'public/assets/login-terminal-animation.js',
@@ -779,6 +780,7 @@ test('busca operacional é normalizada, paginada no servidor e cancela consultas
   assert.match(search, /p\.container_details::text/);
   assert.match(search, /vgmStatus/);
   assert.match(search, /releaseStatus/);
+  assert.match(search, /postShipmentStatus/);
   assert.match(search, /originPort/);
   assert.match(server, /processes_vgm_sent_date_idx/);
   assert.match(server, /processes_release_origin_deadline_idx/);
@@ -787,9 +789,10 @@ test('busca operacional é normalizada, paginada no servidor e cancela consultas
   assert.match(html, /processSearchController\?\.abort\(\)/);
   assert.match(html, /new AbortController\(\)/);
   assert.match(html, /const sectionSearchStates/);
-  assert.match(html, /view:name/);
+  assert.match(html, /apiView = name === 'postShipment'/);
   assert.match(html, /sectionSearchStates\.vgm\.filter = filter/);
   assert.match(html, /sectionSearchStates\.release\.filter = filter/);
+  assert.match(html, /sectionSearchStates\.postShipment\.filter = filter/);
   assert.match(html, /sectionSearchStates\.followup\.filter = followupSearchFilter/);
   assert.match(html, /Nenhum resultado encontrado\./);
   assert.match(html, /normalizeSearchText/);
@@ -1032,4 +1035,18 @@ test('interface de VGM e Liberação usa somente ações individuais', async () 
   assert.doesNotMatch(runtime, /vgmBulkApply|releaseBulkApply|data-vgm-bulk-id|data-release-bulk-id/);
   assert.match(runtime, /saveVgmRow/);
   assert.match(runtime, /saveReleaseRow/);
+});
+
+test('Pós-embarque registra uma data independente do envio do draft', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const ui = await read('public/assets/post-shipment-ui.js');
+  assert.match(server, /app\.patch\('\/api\/processes\/:id\/post-shipment', authenticate, processEditorOnly/);
+  assert.match(server, /SET post_shipment_date=\$1/);
+  assert.match(server, /process\.post_shipment_updated/);
+  assert.match(runtime, /savePostShipmentRow/);
+  assert.match(runtime, /data-post-shipment-date/);
+  assert.match(ui, /Pós-embarque/);
+  assert.match(ui, /data de embarque/);
+  assert.doesNotMatch(server.match(/app\.patch\('\/api\/processes\/:id\/post-shipment[\s\S]*?\}\)\);/)?.[0] || '', /shipping_date/);
 });

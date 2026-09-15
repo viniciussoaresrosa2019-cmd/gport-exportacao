@@ -40,6 +40,14 @@ export const processFollowupSelect = `SELECT
   ${relationFields}
   ${processRelations}`;
 
+// Contrato exclusivo do Pós-embarque. A data é independente da data de envio
+// do draft, para que registrar o embarque não altere o histórico documental.
+export const processPostShipmentSelect = `SELECT
+  p.id,p.client_id,p.booking,p.invoice,p.importer,p.vessel,p.origin_port,
+  p.destination_port,p.post_shipment_date,p.analyst_id,p.created_at,p.updated_at,
+  ${relationFields}
+  ${processRelations}`;
+
 export const processCalendarSelect = `SELECT
   p.id,p.booking,p.deadline,p.container_collection_date,
   p.release_schedule,p.release_deadline,p.analyst_id,
@@ -51,7 +59,8 @@ const projections = Object.freeze({
   summary:processSummarySelect,
   vgm:processVgmSelect,
   release:processReleaseSelect,
-  followup:processFollowupSelect
+  followup:processFollowupSelect,
+  postshipment:processPostShipmentSelect
 });
 
 export const processProjection = name => projections[name] || processDetailSelect;

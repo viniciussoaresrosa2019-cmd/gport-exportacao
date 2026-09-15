@@ -3,7 +3,8 @@ const requiredColumns = new Map([
   ['clients', ['active', 'ruc_manual', 'due_only', 'ovacao']],
   ['processes', [
     'client_id', 'booking', 'deadline', 'container_details', 'updated_at',
-    'idempotency_key', 'vgm_sent_date', 'release_deadline', 'followup_status'
+    'idempotency_key', 'vgm_sent_date', 'release_deadline', 'followup_status',
+    'post_shipment_date'
   ]],
   ['process_attachments', ['scan_status', 'scan_provider']]
 ]);

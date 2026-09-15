@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  processCalendarSelect, processDetailSelect, processFollowupSelect,
+  processCalendarSelect, processDetailSelect, processFollowupSelect, processPostShipmentSelect,
   processProjection, processReleaseSelect, processSummarySelect,
   processVgmSelect, supportedProcessProjections
 } from '../src/process-projections.js';
@@ -21,7 +21,7 @@ test('projeção completa permanece padrão para consumidores existentes', () =>
   assert.equal(processProjection('full'), processDetailSelect);
   assert.equal(processProjection('desconhecida'), processDetailSelect);
   assert.equal(processProjection('summary'), processSummarySelect);
-  assert.deepEqual([...supportedProcessProjections].sort(), ['followup', 'full', 'release', 'summary', 'vgm']);
+  assert.deepEqual([...supportedProcessProjections].sort(), ['followup', 'full', 'postshipment', 'release', 'summary', 'vgm']);
 });
 
 test('VGM, Liberação e Follow up recebem somente os campos consumidos por cada tela', () => {
@@ -37,6 +37,13 @@ test('VGM, Liberação e Follow up recebem somente os campos consumidos por cada
   assert.equal(processProjection('vgm'), processVgmSelect);
   assert.equal(processProjection('release'), processReleaseSelect);
   assert.equal(processProjection('followup'), processFollowupSelect);
+  assert.equal(processProjection('postshipment'), processPostShipmentSelect);
+});
+
+test('Pós-embarque recebe somente os campos necessários para registrar a data do embarque', () => {
+  assert.match(processPostShipmentSelect, /p\.post_shipment_date/);
+  assert.match(processPostShipmentSelect, /p\.booking/);
+  assert.doesNotMatch(processPostShipmentSelect, /p\.\*|container_details|cargo_value|content|password|token/i);
 });
 
 test('calendário usa contrato mínimo e reduz payload representativo', () => {

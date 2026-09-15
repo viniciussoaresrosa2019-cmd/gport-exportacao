@@ -38,6 +38,8 @@
       const referenceDataTtlMs = 5 * 60 * 1000;
       let referenceDataLoadPromise = null;
       let selectedVgmReportDay = null;
+      let postShipmentFilter = 'all';
+      let postShipmentSearchFilter = null;
       const autoSaveTimers = new Map();
       const scheduleAutoSave = (key, task) => {
         clearTimeout(autoSaveTimers.get(key));
@@ -58,6 +60,10 @@
       const showReleasePage = () => {
         window.gportPageNavigation.activate('release');
         renderRelease(); void refreshSectionData('release', { page:sectionSearchStates.release.pagination.page || 1 });
+      };
+      const showPostShipmentPage = () => {
+        window.gportPageNavigation.activate('postShipment');
+        renderPostShipment(); void refreshSectionData('postShipment', { page:sectionSearchStates.postShipment.pagination.page || 1 });
       };
       const showFollowupPage = () => {
         window.gportPageNavigation.activate('followup');
@@ -114,6 +120,9 @@
       const applyRoleTabs = () => {
         el('vgmNav').hidden = !(currentHasRole('analyst') || currentHasRole('vgm')); el('vgmReportNav').hidden = true; el('openVgmReportBtn').hidden = !currentHasRole('vgm');
         el('releaseNav').hidden = !(currentHasRole('analyst') || currentHasRole('liberacao'));
+        // A mesma regra já aplicada à edição de processos: qualquer pessoa
+        // autenticada pode registrar a data do embarque.
+        el('postShipmentNav').hidden = false;
         el('followupNav').hidden = !currentHasRole('analyst');
         // Financeiro e Prazos permanecem no código para reversão futura, mas
         // ficam fora da experiência operacional atual por decisão de produto.
@@ -161,7 +170,7 @@
       };
       // VGM, Liberação e Follow up têm a própria página de dados. Assim a
       // busca dessas áreas não fica limitada aos 50 processos da planilha.
-      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'followup'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
+      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
       const sectionItems = name => sectionSearchStates[name]?.items || [];
       // As páginas operacionais usam listas próprias e paginadas. Atualizar
       // somente `data` (a lista da página Processos) fazia VGM e Liberação
@@ -174,6 +183,7 @@
       const renderSectionView = name => {
         if (name === 'vgm') renderVgm();
         else if (name === 'release') renderRelease();
+        else if (name === 'postShipment') renderPostShipment();
         else if (name === 'followup') renderFollowup();
       };
       const snapshotVisibleProcess = (name, id) => ({
@@ -250,23 +260,25 @@
       async function refreshSectionData(name, { page=1 } = {}) {
         const state = sectionSearchStates[name]; if (!state) return false;
         state.controller?.abort(); const controller = new AbortController(); state.controller = controller; const version = ++state.version; state.loading = true;
-        if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
-        const params = new URLSearchParams({ view:name, projection:name, limit:String(state.pagination.limit || 50), offset:String((page - 1) * Number(state.pagination.limit || 50)) });
+        if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else renderFollowup();
+        const apiView = name === 'postShipment' ? 'postshipment' : name;
+        const params = new URLSearchParams({ view:apiView, projection:apiView, limit:String(state.pagination.limit || 50), offset:String((page - 1) * Number(state.pagination.limit || 50)) });
         const filter = state.filter;
         if (filter?.value) { params.set('field', filter.field || 'booking'); params.set('search', filter.value); }
         if (name === 'vgm' && vgmFilter !== 'all') params.set('vgmStatus', vgmFilter);
         if (name === 'release') { if (releaseFilter !== 'all') params.set('releaseStatus', releaseFilter); if (releasePortFilter !== 'all') params.set('originPort', releasePortFilter); }
+        if (name === 'postShipment' && postShipmentFilter !== 'all') params.set('postShipmentStatus', postShipmentFilter);
         try {
           const result = await request(`/api/processes?${params}`, { signal:controller.signal });
           if (version !== state.version) return false;
           state.items = result.items.map(item => ({ ...toViewProcess(item), createdAt:item.created_at || '', updatedAt:item.updated_at || '', releaseDeadlineOrder:item.release_deadline || '' }));
           state.pagination = { ...result.pagination, page }; state.loading = false;
-          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
+          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else renderFollowup();
           return true;
         } catch (error) {
           if (error?.name === 'AbortError') return false;
           state.loading = false;
-          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else renderFollowup();
+          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else renderFollowup();
           toast.error(error.message || 'Não foi possível atualizar a busca. Tente novamente.');
           return false;
         } finally { if (state.controller === controller) state.controller = null; }
@@ -352,6 +364,47 @@
           }));
         }
       };
+      const renderPostShipment = () => {
+        const filterSelect = el('postShipmentFilterSelect');
+        filterSelect.value = postShipmentFilter;
+        filterSelect.onchange = () => { postShipmentFilter = filterSelect.value; void refreshSectionData('postShipment'); };
+        renderSectionSearch('postShipmentSearchControls', filterSelect.closest('.field'), postShipmentSearchFilter, filter => {
+          if (filter?.clear) {
+            postShipmentFilter = 'all';
+            postShipmentSearchFilter = null;
+            sectionSearchStates.postShipment.filter = null;
+          } else {
+            postShipmentSearchFilter = filter;
+            sectionSearchStates.postShipment.filter = filter;
+          }
+          void refreshSectionData('postShipment');
+        });
+        const isoDate = value => String(value || '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] || '';
+        const displayDate = value => {
+          const iso = isoDate(value);
+          if (!iso) return 'Não informado';
+          const [year, month, day] = iso.split('-');
+          return `${day}/${month}/${year}`;
+        };
+        const processes = sectionItems('postShipment')
+          .filter(process => matchesSectionSearch(process, postShipmentSearchFilter))
+          .slice()
+          .sort((a, b) => String(a.dataPosEmbarque || '9999-12-31').localeCompare(String(b.dataPosEmbarque || '9999-12-31')) || String(a.booking || '').localeCompare(String(b.booking || ''), 'pt-BR'));
+        el('postShipmentList').innerHTML = processes.length
+          ? `<div class="post-shipment-board" role="list" aria-label="Processos de pós-embarque">${processes.map(p => {
+              const booking = esc(p.booking || '—');
+              const date = isoDate(p.dataPosEmbarque);
+              return `<article class="post-shipment-card" role="listitem"><div class="post-shipment-card__process"><span>BOOKING</span><strong>${booking}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="post-shipment-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="post-shipment-card__route"><span>ROTA</span><strong>${esc(p.origem || '—')} <b>→</b> ${esc(p.destino || '—')}</strong><small>${esc(p.navio || 'Navio não informado')}</small></div><div class="post-shipment-card__date"><label for="post-shipment-date-${esc(p.id)}">DATA DE EMBARQUE</label><input id="post-shipment-date-${esc(p.id)}" data-post-shipment-date="${esc(p.id)}" type="date" value="${esc(date)}" aria-label="Data de embarque do booking ${booking}"><small>${displayDate(date)}</small></div></article>`;
+            }).join('')}</div>`
+          : `<div class="empty">${sectionSearchStates.postShipment.loading ? 'Buscando processos…' : 'Nenhum processo encontrado.'}</div>`;
+        renderSectionPagination('postShipment', el('postShipmentList'));
+        el('postShipmentList').querySelectorAll('[data-post-shipment-date]').forEach(input => {
+          input.addEventListener('change', async () => {
+            try { await savePostShipmentRow(input.dataset.postShipmentDate); }
+            catch (error) { toast.error(error.message); renderPostShipment(); }
+          });
+        });
+      };
       const renderFollowup = () => {
         renderSectionSearch('followupSearchControls', document.querySelector('#followupPage .intro'), followupSearchFilter, filter => { followupSearchFilter = filter?.clear ? null : filter; sectionSearchStates.followup.filter = followupSearchFilter; void refreshSectionData('followup'); }); const followupProcesses = sectionItems('followup').filter(process => matchesSectionSearch(process, followupSearchFilter));
         el('followupPdfList').innerHTML = followupProcesses.length ? `<div class="followup-board" role="list">${followupProcesses.map(p => `<article class="followup-card process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" role="listitem"><div class="followup-card__process"><span>BOOKING</span><strong>${esc(p.booking || '—')}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="followup-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="followup-card__meta"><span>NAVIO</span><strong>${esc(p.navio || '—')}</strong></div><div class="followup-card__meta"><span>ANALISTA</span><strong>${esc(p.analista || '—')}</strong></div><div class="followup-card__actions"><button class="btn secondary followup-history" data-followup-history="${p.id}" aria-label="Ver histórico do booking ${esc(p.booking || 'sem booking')}">Histórico</button><button class="btn secondary followup-pdf" data-followup-pdf="${p.id}" aria-label="Gerar PDF do histórico do booking ${esc(p.booking || 'sem booking')}">PDF</button></div></article>`).join('')}</div>` : `<div class="empty">${sectionSearchStates.followup.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
@@ -364,6 +417,7 @@
         if (item.action === 'process.vgm_updated') return ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(details.vgmStatus) ? 'VGM enviado' : 'VGM atualizado';
         if (item.action === 'process.release_updated') return details.releaseStatus === 'Sim' ? 'Processo liberado' : 'Liberação atualizada';
         if (item.action === 'process.followup_updated') return 'Follow up atualizado';
+        if (item.action === 'process.post_shipment_updated') return 'Data de embarque atualizada';
         return 'Processo atualizado';
       };
       const historyDateTime = value => {
@@ -552,7 +606,7 @@
         const seals = Array.isArray(details) ? details.map(x => x.seal).filter(Boolean).join(' / ') : '';
         const newSeals = Array.isArray(details) ? details.map(x => x.new_seal).filter(Boolean).join(' / ') : '';
         const notes = Array.isArray(details) ? details.map(x => x.invoice_number).filter(Boolean).join(' / ') : '';
-        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
         // HTMLInputElement converte `undefined` para o texto literal
         // "undefined". Normalize somente valores nulos da resposta; strings
         // realmente armazenadas continuam visíveis para uma auditoria posterior.
@@ -1507,6 +1561,10 @@
         if (!(currentHasRole('analyst') || currentHasRole('liberacao'))) return;
         showReleasePage();
       };
+      el('postShipmentNav').onclick = e => {
+        e.preventDefault();
+        showPostShipmentPage();
+      };
       el('followupNav').onclick = e => {
         e.preventDefault();
         if (!currentHasRole('analyst')) return;
@@ -1568,6 +1626,27 @@
           finishSectionMutation(id, mutationVersion);
         }
       };
+      const savePostShipmentRow = async id => {
+        const input = el('postShipmentList').querySelector(`[data-post-shipment-date="${id}"]`);
+        const postShipmentDate = input?.value || null;
+        const snapshot = snapshotVisibleProcess('postShipment', id);
+        const mutationVersion = beginSectionMutation(id);
+        updateVisibleProcess('postShipment', id, { dataPosEmbarque:postShipmentDate || '' }, { renderView:false });
+        try {
+          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/post-shipment`, {
+            method:'PATCH', body:JSON.stringify({ postShipmentDate })
+          }));
+          if (!isLatestSectionMutation(id, mutationVersion)) return;
+          reconcileVisibleProcess('postShipment', id, updated);
+          toast.success(postShipmentDate ? 'Data de embarque registrada.' : 'Data de embarque removida.');
+        } catch (error) {
+          if (!isLatestSectionMutation(id, mutationVersion)) return;
+          restoreVisibleProcess('postShipment', id, snapshot);
+          throw error;
+        } finally {
+          finishSectionMutation(id, mutationVersion);
+        }
+      };
       el('followupPdfList').onclick = async e => {
         const button = e.target.closest('[data-followup-pdf], [data-followup-history]'); if (!button) return;
         const id = button.dataset.followupPdf || button.dataset.followupHistory;
@@ -1611,6 +1690,7 @@
       el('processNav').onclick = e => { e.preventDefault(); showProcessesPage(); };
       el('closeVgmBtn').onclick = showProcessesPage;
       el('closeReleaseBtn').onclick = showProcessesPage;
+      el('closePostShipmentBtn').onclick = showProcessesPage;
       el('closeFollowupBtn').onclick = showProcessesPage;
       el('closeFinancialBtn').onclick = () => el('financialDialog').close();
       const passwordResetDialog = el('passwordResetDialog');

@@ -37,6 +37,7 @@ export const buildProcessSearchQuery = query => {
   const launchedTo = String(query.launchedTo || '').trim();
   const vgmStatus = String(query.vgmStatus || '').trim().toLowerCase();
   const releaseStatus = String(query.releaseStatus || '').trim().toLowerCase();
+  const postShipmentStatus = String(query.postShipmentStatus || '').trim().toLowerCase();
   const originPort = normalizeSearchTerm(query.originPort);
   const view = String(query.view || 'processes').trim().toLowerCase();
   const projection = String(query.projection || 'full').trim().toLowerCase();
@@ -44,20 +45,22 @@ export const buildProcessSearchQuery = query => {
   const offset = Number(query.offset || 0);
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   if (rawTerm.length > 100 || status.length > 40 || clientName.length > 200 || originPort.length > 120
-    || !['processes', 'vgm', 'release', 'followup'].includes(view) || !supportedProcessProjections.has(projection)
+    || !['processes', 'vgm', 'release', 'followup', 'postshipment'].includes(view) || !supportedProcessProjections.has(projection)
     || !['', 'sent', 'pending'].includes(vgmStatus) || !['', 'released', 'pending'].includes(releaseStatus)
+    || !['', 'shipped', 'pending'].includes(postShipmentStatus)
     || (launchedFrom && !datePattern.test(launchedFrom)) || (launchedTo && !datePattern.test(launchedTo))
     || (launchedFrom && launchedTo && launchedFrom > launchedTo) || (clientId && !uuidPattern.test(clientId))
     || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100
     || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) throw invalidFilter();
 
-  const params = [status, term, clientId, clientName, launchedFrom, launchedTo, vgmStatus, releaseStatus, originPort];
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||$2||'%' ESCAPE E'\\\\') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day')) AND ($7='' OR ($7='sent' AND p.vgm_status IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')) OR ($7='pending' AND COALESCE(p.vgm_status,'') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT'))) AND ($8='' OR ($8='released' AND p.release_status='Sim') OR ($8='pending' AND COALESCE(p.release_status,'Não')<>'Sim')) AND ($9='' OR ${normalizedSearchExpression('p.origin_port')}=$9)`;
+  const params = [status, term, clientId, clientName, launchedFrom, launchedTo, vgmStatus, releaseStatus, originPort, postShipmentStatus];
+  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||$2||'%' ESCAPE E'\\\\') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day')) AND ($7='' OR ($7='sent' AND p.vgm_status IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')) OR ($7='pending' AND COALESCE(p.vgm_status,'') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT'))) AND ($8='' OR ($8='released' AND p.release_status='Sim') OR ($8='pending' AND COALESCE(p.release_status,'Não')<>'Sim')) AND ($9='' OR ${normalizedSearchExpression('p.origin_port')}=$9) AND ($10='' OR ($10='shipped' AND p.post_shipment_date IS NOT NULL) OR ($10='pending' AND p.post_shipment_date IS NULL))`;
   const orderBy = {
     processes:'c.name ASC,p.created_at DESC,p.id DESC',
     vgm:'p.vgm_sent_date DESC NULLS LAST,p.created_at DESC,p.id DESC',
     release:'p.origin_port ASC,p.release_deadline ASC NULLS LAST,p.created_at DESC,p.id DESC',
-    followup:'p.updated_at DESC,p.id DESC'
+    followup:'p.updated_at DESC,p.id DESC',
+    postshipment:'p.post_shipment_date ASC NULLS FIRST,p.created_at DESC,p.id DESC'
   }[view];
   const next = params.length + 1;
   return {
@@ -69,4 +72,3 @@ export const buildProcessSearchQuery = query => {
     offset
   };
 };
-
