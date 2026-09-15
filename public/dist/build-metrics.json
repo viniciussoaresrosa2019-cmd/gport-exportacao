@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-15T01:55:24.947Z",
+  "generatedAt": "2026-09-15T02:09:39.624Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 353763,
-    "gzipBytes": 95247,
+    "bytes": 354020,
+    "gzipBytes": 95309,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,8 +18,8 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 173648,
-        "gzipBytes": 44227
+        "bytes": 173843,
+        "gzipBytes": 44263
       },
       {
         "file": "experience.css",
@@ -38,8 +38,8 @@
       },
       {
         "file": "legacy-ui.js",
-        "bytes": 43010,
-        "gzipBytes": 13460
+        "bytes": 43072,
+        "gzipBytes": 13486
       },
       {
         "file": "login-animation.css",
@@ -99,8 +99,8 @@
     ]
   },
   "output": {
-    "bytes": 261024,
-    "gzipBytes": 76831,
+    "bytes": 261150,
+    "gzipBytes": 76895,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -113,9 +113,9 @@
         "gzipBytes": 501
       },
       {
-        "file": "app-runtime-C817E9463332.js",
-        "bytes": 106329,
-        "gzipBytes": 32547
+        "file": "app-runtime-008221844EED.js",
+        "bytes": 106393,
+        "gzipBytes": 32583
       },
       {
         "file": "experience-3AD6A28C9CA0.css",
@@ -133,9 +133,9 @@
         "gzipBytes": 11009
       },
       {
-        "file": "legacy-ui-0BBDADC6BAC8.js",
-        "bytes": 38956,
-        "gzipBytes": 12436
+        "file": "legacy-ui-6A5B2058301E.js",
+        "bytes": 39018,
+        "gzipBytes": 12464
       },
       {
         "file": "login-animation-39E435D9A3BE.css",
@@ -195,10 +195,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 348791,
-    "sourceGzipBytes": 93453,
-    "outputBytes": 257850,
-    "outputGzipBytes": 75569,
+    "sourceBytes": 349048,
+    "sourceGzipBytes": 93515,
+    "outputBytes": 257976,
+    "outputGzipBytes": 75633,
     "deferred": [
       "reports.js"
     ]

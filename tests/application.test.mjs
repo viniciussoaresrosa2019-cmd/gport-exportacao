@@ -1041,11 +1041,13 @@ test('Pós-embarque registra uma data independente do envio do draft', async () 
   const server = await read('src/server.js');
   const runtime = await read('public/assets/app-runtime.js');
   const ui = await read('public/assets/post-shipment-ui.js');
-  assert.match(server, /app\.patch\('\/api\/processes\/:id\/post-shipment', authenticate, processEditorOnly/);
+  assert.match(server, /app\.patch\('\/api\/processes\/:id\/post-shipment', authenticate, postShipmentManagerOnly/);
+  assert.match(server, /const postShipmentManagerOnly = \(req, res, next\) => hasRole\(req\.user, 'pos_embarque'\)/);
   assert.match(server, /SET post_shipment_date=\$1/);
   assert.match(server, /process\.post_shipment_updated/);
   assert.match(runtime, /savePostShipmentRow/);
   assert.match(runtime, /data-post-shipment-date/);
+  assert.match(runtime, /currentHasRole\('pos_embarque'\)/);
   assert.match(ui, /Pós-embarque/);
   assert.match(ui, /data de embarque/);
   assert.doesNotMatch(server.match(/app\.patch\('\/api\/processes\/:id\/post-shipment[\s\S]*?\}\)\);/)?.[0] || '', /shipping_date/);

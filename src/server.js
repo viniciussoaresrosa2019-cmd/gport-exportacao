@@ -151,7 +151,7 @@ const secureEqual = (left, right) => {
   const a = Buffer.from(left), b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
 };
-const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao'];
+const validRoles = ['admin', 'analyst', 'vgm', 'financeiro', 'liberacao', 'pos_embarque'];
 const normalizeRoles = (value, fallback = 'analyst') => {
   const entries = Array.isArray(value) ? value : value == null ? [fallback] : [value];
   const roles = [...new Set(entries.map(item => String(item || '').trim()).filter(Boolean))];
@@ -316,6 +316,7 @@ const clientManagerOnly = (req, res, next) => hasRole(req.user, 'analyst') ? nex
 const vgmManagerOnly = (req, res, next) => hasRole(req.user, 'vgm') ? next() : res.status(403).json({ error: 'Apenas VGM ou Administrador podem atualizar este controle.' });
 const releaseManagerOnly = (req, res, next) => hasRole(req.user, 'liberacao') ? next() : res.status(403).json({ error: 'Apenas Liberação ou Administrador podem atualizar este controle.' });
 const followupManagerOnly = (req, res, next) => hasRole(req.user, 'analyst') ? next() : res.status(403).json({ error: 'Apenas Analista ou Administrador podem atualizar o follow up.' });
+const postShipmentManagerOnly = (req, res, next) => hasRole(req.user, 'pos_embarque') ? next() : res.status(403).json({ error: 'Apenas Pós-embarque ou Administrador podem atualizar este controle.' });
 const audit = (userId, action, entity, entityId, details = {}) => query('INSERT INTO audit_log(user_id,action,entity,entity_id,details) VALUES($1,$2,$3,$4,$5)', [userId, action, entity, entityId, details]);
 
 app.get('/api/health', asyncRoute(async (_req, res) => {
@@ -1056,7 +1057,7 @@ app.patch('/api/processes/:id/followup', authenticate, followupManagerOnly, asyn
 }));
 // Pós-embarque tem data própria: não reutiliza `shipping_date`, que guarda a
 // data de envio do draft no lançamento original do processo.
-app.patch('/api/processes/:id/post-shipment', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
+app.patch('/api/processes/:id/post-shipment', authenticate, postShipmentManagerOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
   const postShipmentDate = cleanOptionalDate(req.body.postShipmentDate, 'Data de embarque');
   const result = await query(`UPDATE processes
@@ -1198,7 +1199,7 @@ const legacyEnsureProcessFields = async () => {
   END $$`);
   // Permite criar o perfil Liberação também em bancos já existentes.
   await query('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check');
-  await query("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'analyst', 'vgm', 'financeiro', 'liberacao'))");
+  await query("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'analyst', 'vgm', 'financeiro', 'liberacao', 'pos_embarque'))");
   await query('CREATE INDEX IF NOT EXISTS processes_status_deadline_idx ON processes(status, deadline)');
   await query('CREATE INDEX IF NOT EXISTS processes_created_at_idx ON processes(created_at DESC)');
   await query('CREATE INDEX IF NOT EXISTS processes_analyst_created_at_idx ON processes(analyst_id, created_at DESC)');

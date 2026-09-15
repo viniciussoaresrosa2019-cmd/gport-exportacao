@@ -120,8 +120,9 @@
       const applyRoleTabs = () => {
         el('vgmNav').hidden = !(currentHasRole('analyst') || currentHasRole('vgm')); el('vgmReportNav').hidden = true; el('openVgmReportBtn').hidden = !currentHasRole('vgm');
         el('releaseNav').hidden = !(currentHasRole('analyst') || currentHasRole('liberacao'));
-        // A mesma regra já aplicada à edição de processos: qualquer pessoa
-        // autenticada pode registrar a data do embarque.
+        // A aba pode ser consultada por todos os usuários autenticados; o
+        // servidor e o campo de data liberam alteração só para Pós-embarque
+        // ou Administrador.
         el('postShipmentNav').hidden = false;
         el('followupNav').hidden = !currentHasRole('analyst');
         // Financeiro e Prazos permanecem no código para reversão futura, mas
@@ -365,6 +366,7 @@
         }
       };
       const renderPostShipment = () => {
+        const canEdit = currentHasRole('pos_embarque');
         const filterSelect = el('postShipmentFilterSelect');
         filterSelect.value = postShipmentFilter;
         filterSelect.onchange = () => { postShipmentFilter = filterSelect.value; void refreshSectionData('postShipment'); };
@@ -394,10 +396,11 @@
           ? `<div class="post-shipment-board" role="list" aria-label="Processos de pós-embarque">${processes.map(p => {
               const booking = esc(p.booking || '—');
               const date = isoDate(p.dataPosEmbarque);
-              return `<article class="post-shipment-card" role="listitem"><div class="post-shipment-card__process"><span>BOOKING</span><strong>${booking}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="post-shipment-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="post-shipment-card__route"><span>ROTA</span><strong>${esc(p.origem || '—')} <b>→</b> ${esc(p.destino || '—')}</strong><small>${esc(p.navio || 'Navio não informado')}</small></div><div class="post-shipment-card__date"><label for="post-shipment-date-${esc(p.id)}">DATA DE EMBARQUE</label><input id="post-shipment-date-${esc(p.id)}" data-post-shipment-date="${esc(p.id)}" type="date" value="${esc(date)}" aria-label="Data de embarque do booking ${booking}"><small>${displayDate(date)}</small></div></article>`;
+              return `<article class="post-shipment-card" role="listitem"><div class="post-shipment-card__process"><span>BOOKING</span><strong>${booking}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="post-shipment-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="post-shipment-card__route"><span>ROTA</span><strong>${esc(p.origem || '—')} <b>→</b> ${esc(p.destino || '—')}</strong><small>${esc(p.navio || 'Navio não informado')}</small></div><div class="post-shipment-card__date"><label for="post-shipment-date-${esc(p.id)}">DATA DE EMBARQUE</label><input id="post-shipment-date-${esc(p.id)}" data-post-shipment-date="${esc(p.id)}" type="date" value="${esc(date)}" aria-label="Data de embarque do booking ${booking}" ${canEdit ? '' : 'disabled'}><small>${displayDate(date)}${canEdit ? '' : ' · Consulta'}</small></div></article>`;
             }).join('')}</div>`
           : `<div class="empty">${sectionSearchStates.postShipment.loading ? 'Buscando processos…' : 'Nenhum processo encontrado.'}</div>`;
         renderSectionPagination('postShipment', el('postShipmentList'));
+        if (!canEdit) return;
         el('postShipmentList').querySelectorAll('[data-post-shipment-date]').forEach(input => {
           input.addEventListener('change', async () => {
             try { await savePostShipmentRow(input.dataset.postShipmentDate); }
