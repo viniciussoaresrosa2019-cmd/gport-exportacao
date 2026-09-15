@@ -929,8 +929,11 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont�
   assert.match(runtime, /info\.has-long-invoice\{grid-template-rows:9mm 16mm repeat\(4,10mm\)!important\}/);
   assert.match(runtime, /section class="info\$\{hasLongInvoice \? ' has-long-invoice' : ''\}"/);
   assert.match(runtime, /const compactContainerTable = rowCount > 14/);
+  assert.match(runtime, /const declaredContainerRows = Math\.min\(20, Math\.max\(0, Number\.parseInt\(p\.qtdContainers, 10\) \|\| 0\)\)/);
+  assert.match(runtime, /const rowCount = Math\.min\(20, Math\.max\(6, declaredContainerRows/);
   assert.match(runtime, /48 \/ Math\.min\(rowCount, 20\)/);
   assert.match(runtime, /containers\$\{compactContainerTable \? ' compact' : ''\}/);
+  assert.match(html, /name="qtdContainers" type="number" min="1" max="20"/);
   assert.match(server, /cleanNonNegative\(raw\.containerQuantity, 20, 'Quantidade de contêineres'/);
   assert.match(runtime, /const isDueOnly = client\.dueOnly === true/);
   assert.match(runtime, /const dueOnlyImporter = isDueOnly \? \(p\.importador \|\| 'NÃO INFORMADO'\)/);
