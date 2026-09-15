@@ -4,10 +4,10 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username VARCHAR(80) NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
-  role VARCHAR(20) NOT NULL DEFAULT 'analyst' CHECK (role IN ('admin', 'analyst', 'vgm', 'financeiro', 'liberacao')),
+  role VARCHAR(20) NOT NULL DEFAULT 'analyst' CHECK (role IN ('admin', 'analyst', 'vgm', 'financeiro', 'liberacao', 'pos_embarque')),
   roles VARCHAR(20)[] NOT NULL DEFAULT ARRAY['analyst']::VARCHAR[] CHECK (
     cardinality(roles) BETWEEN 1 AND 2
-    AND roles <@ ARRAY['admin', 'analyst', 'vgm', 'financeiro', 'liberacao']::VARCHAR[]
+    AND roles <@ ARRAY['admin', 'analyst', 'vgm', 'financeiro', 'liberacao', 'pos_embarque']::VARCHAR[]
     AND (cardinality(roles) = 1 OR roles[1] <> roles[2])
   ),
   active BOOLEAN NOT NULL DEFAULT TRUE,
