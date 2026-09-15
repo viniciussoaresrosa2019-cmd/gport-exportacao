@@ -911,6 +911,9 @@ test('capa do processo segue o modelo operacional com checklist e grade de contÃ
   const server = await read('src/server.js');
   assert.match(html, /function printCoverFromDocumentModel\(p\)/);
   assert.match(runtime, /function printCoverFromDocumentModelBase\(p\)/);
+  assert.match(runtime, /const parseMonetaryValue = value =>/);
+  assert.match(runtime, /const cargoAmount = parseMonetaryValue\(p\.valor\)/);
+  assert.doesNotMatch(runtime, /Number\(p\.valor\)\.toLocaleString/);
   assert.match(runtime, /setupProcessAssigneeSelector/);
   assert.match(runtime, /analystId:p\.analyst_id/);
   assert.match(runtime, /analystId:p\.analystId \|\| currentUser\?\.id/);

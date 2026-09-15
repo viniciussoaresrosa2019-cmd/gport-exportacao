@@ -146,7 +146,27 @@
         if (el('vgmNav').hidden && el('releaseNav').hidden) showProcessesPage();
         window.dispatchEvent(new Event('gport:role-tabs-updated'));
       };
-      const money = p => p.valor ? `${p.moeda || 'USD'} ${Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—';
+      // O valor pode vir do PostgreSQL como número ou do formulário já
+      // apresentado como "US$ 11.718,80". Number() não entende o segundo
+      // formato e imprimia "NaN" na capa. Centralize a conversão para todos
+      // os pontos que exibem valor monetário.
+      const parseMonetaryValue = value => {
+        if (value === null || value === undefined || value === '') return null;
+        if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+        const compact = String(value).trim().replace(/[^0-9,.-]/g, '');
+        if (!compact || compact === '-' || compact === ',' || compact === '.') return null;
+        const comma = compact.lastIndexOf(',');
+        const dot = compact.lastIndexOf('.');
+        const normalized = comma > dot
+          ? compact.replaceAll('.', '').replace(',', '.')
+          : comma >= 0 ? compact.replaceAll(',', '') : compact;
+        const numeric = Number(normalized);
+        return Number.isFinite(numeric) ? numeric : null;
+      };
+      const money = p => {
+        const value = parseMonetaryValue(p.valor);
+        return value === null ? '—' : `${p.moeda || 'USD'} ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      };
       const sectionSearchOptions = '<option value="booking" selected>BOOKING</option><option value="todos">TODOS OS DADOS</option><option value="fatura">FATURA</option><option value="due">DU-E</option><option value="navio">NAVIO</option><option value="agencia">AGÊNCIA</option><option value="porto">PORTO</option><option value="importador">IMPORTADOR</option><option value="exportador">EXPORTADOR</option><option value="containers">CONTÊINER / LACRE</option>';
       const normalizeSearchText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt-BR');
       const matchesSectionSearch = (process, filter) => {
@@ -1907,7 +1927,8 @@
         const deliveryVgm = ['Sim', 'Enviado pelo Cliente', 'Enviando no DRAFT'].includes(p.vgmStatus);
         const released = p.liberacaoStatus === 'Sim' || p.canal === 'Verde';
         const ovacao = (client.ovacao ?? p.ovacao) === true ? 'Sim' : 'Não';
-        const cargoValue = p.valor ? `${p.moeda || 'USD'} ${Number(p.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
+        const cargoAmount = parseMonetaryValue(p.valor);
+        const cargoValue = cargoAmount === null ? '' : `${p.moeda || 'USD'} ${cargoAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
         const containerSummary = p.qtdContainers ? `${String(p.qtdContainers).padStart(2, '0')}x${String(p.tipoContainer || '').replace(/[^a-zA-Z0-9]/g, '')}` : '';
         const cell = (label, value = '', cls = '') => `<div class="field ${cls}"><b>${esc(label)}</b><span>${esc(value || '')}</span></div>`;
         const mark = (label, selected) => `<span class="mark">${esc(label)} <i>${selected ? 'X' : ''}</i></span>`;
