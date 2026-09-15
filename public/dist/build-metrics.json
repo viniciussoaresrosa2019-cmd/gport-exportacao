@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-15T03:05:12.159Z",
+  "generatedAt": "2026-09-15T03:19:12.370Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 367185,
-    "gzipBytes": 98304,
+    "bytes": 378776,
+    "gzipBytes": 101795,
     "files": [
       {
         "file": "accessibility.js",
@@ -38,8 +38,8 @@
       },
       {
         "file": "gport.css",
-        "bytes": 60391,
-        "gzipBytes": 11674
+        "bytes": 61606,
+        "gzipBytes": 11918
       },
       {
         "file": "legacy-ui.js",
@@ -88,8 +88,8 @@
       },
       {
         "file": "reports.js",
-        "bytes": 4972,
-        "gzipBytes": 1794
+        "bytes": 15348,
+        "gzipBytes": 5041
       },
       {
         "file": "toasts.css",
@@ -104,8 +104,8 @@
     ]
   },
   "output": {
-    "bytes": 270575,
-    "gzipBytes": 79307,
+    "bytes": 279903,
+    "gzipBytes": 82629,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -138,9 +138,9 @@
         "gzipBytes": 2831
       },
       {
-        "file": "gport-F8A62831FBBB.css",
-        "bytes": 59459,
-        "gzipBytes": 11183
+        "file": "gport-D67A1A6DC882.css",
+        "bytes": 60600,
+        "gzipBytes": 11380
       },
       {
         "file": "legacy-ui-F80133F576B4.js",
@@ -188,9 +188,9 @@
         "gzipBytes": 572
       },
       {
-        "file": "reports-97E32C33F346.js",
-        "bytes": 3174,
-        "gzipBytes": 1262
+        "file": "reports-D6A09C7C0ACA.js",
+        "bytes": 11361,
+        "gzipBytes": 4387
       },
       {
         "file": "toasts-3FBF6625D80A.css",
@@ -205,10 +205,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 362213,
-    "sourceGzipBytes": 96510,
-    "outputBytes": 267401,
-    "outputGzipBytes": 78045,
+    "sourceBytes": 363428,
+    "sourceGzipBytes": 96754,
+    "outputBytes": 268542,
+    "outputGzipBytes": 78242,
     "deferred": [
       "reports.js"
     ]

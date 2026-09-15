@@ -1150,6 +1150,52 @@ app.get('/api/reports', authenticate, adminOnly, asyncRoute(async (req, res) => 
   res.json({ year, month, allPeriods, total: total.rows[0].total, analysts: analysts.rows, exporters: exporters.rows });
 }));
 
+// Consolida a operação por mês sem misturar a data de lançamento com as
+// datas efetivas de liberação e de embarque. O filtro de exportador também é
+// aplicado no banco, para que o PDF represente exatamente o recorte escolhido.
+app.get('/api/reports/operational-monthly', authenticate, adminOnly, asyncRoute(async (req, res) => {
+  const month = String(req.query.month || '').trim();
+  const clientId = String(req.query.client || '').trim() || null;
+  if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ error: 'Mês de relatório inválido.' });
+  if (clientId && !validId(clientId)) return res.status(400).json({ error: 'Exportador do relatório inválido.' });
+
+  const selectedMonth = `${month}-01`;
+  const [clientResult, currentResult, comparisonResult] = await Promise.all([
+    clientId ? query('SELECT id,name FROM clients WHERE id=$1', [clientId]) : Promise.resolve({ rows: [] }),
+    query(`
+      WITH selected_month AS (SELECT $1::date AS starts_at)
+      SELECT
+        COUNT(*) FILTER (WHERE p.created_at AT TIME ZONE 'America/Sao_Paulo' >= m.starts_at AND p.created_at AT TIME ZONE 'America/Sao_Paulo' < m.starts_at + INTERVAL '1 month')::int AS launched,
+        COUNT(*) FILTER (WHERE p.release_date >= m.starts_at AND p.release_date < m.starts_at + INTERVAL '1 month')::int AS released,
+        COUNT(*) FILTER (WHERE p.post_shipment_date >= m.starts_at AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date)::int AS shipped
+      FROM processes p CROSS JOIN selected_month m
+      WHERE ($2::uuid IS NULL OR p.client_id=$2::uuid)
+    `, [selectedMonth, clientId]),
+    query(`
+      WITH months AS (
+        SELECT month_start::date
+        FROM generate_series(($1::date - INTERVAL '5 months')::date, $1::date, INTERVAL '1 month') AS series(month_start)
+      )
+      SELECT
+        to_char(m.month_start, 'YYYY-MM') AS month,
+        COUNT(p.id) FILTER (WHERE p.created_at AT TIME ZONE 'America/Sao_Paulo' >= m.month_start AND p.created_at AT TIME ZONE 'America/Sao_Paulo' < m.month_start + INTERVAL '1 month')::int AS launched,
+        COUNT(p.id) FILTER (WHERE p.release_date >= m.month_start AND p.release_date < m.month_start + INTERVAL '1 month')::int AS released,
+        COUNT(p.id) FILTER (WHERE p.post_shipment_date >= m.month_start AND p.post_shipment_date < (m.month_start + INTERVAL '1 month')::date)::int AS shipped
+      FROM months m
+      LEFT JOIN processes p ON ($2::uuid IS NULL OR p.client_id=$2::uuid)
+      GROUP BY m.month_start
+      ORDER BY m.month_start
+    `, [selectedMonth, clientId])
+  ]);
+  if (clientId && !clientResult.rowCount) return res.status(404).json({ error: 'Exportador não encontrado.' });
+  res.json({
+    month,
+    client: clientId ? clientResult.rows[0] : null,
+    current: currentResult.rows[0],
+    comparison: comparisonResult.rows
+  });
+}));
+
 app.use(createErrorHandler({ localLogPath:path.resolve(here, '../server-errors.log'), logger, alerts }));
 // Fallback histórico preservado temporariamente para conferência da migração.
 // Ele não é mais chamado no boot e será removido somente após a homologação da

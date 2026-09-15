@@ -660,6 +660,22 @@ test('relatórios possuem módulo próprio sem alterar o contrato da interface a
   assert.match(reports, /window\.renderReports = renderReports/);
 });
 
+test('relatório mensal operacional gera PDF com filtro por exportador e comparação entre meses', async () => {
+  const server = await read('src/server.js');
+  const reports = await read('public/assets/reports.js');
+  const css = await read('public/assets/gport.css');
+
+  assert.match(server, /app\.get\('\/api\/reports\/operational-monthly', authenticate, adminOnly/);
+  assert.match(server, /p\.release_date >= m\.starts_at/);
+  assert.match(server, /p\.post_shipment_date >= m\.starts_at/);
+  assert.match(server, /p\.client_id=\$2::uuid/);
+  assert.match(reports, /button\.textContent = 'Relatórios'/);
+  assert.match(reports, /\/api\/reports\/operational-monthly\?\$\{params\}/);
+  assert.match(reports, /Comparação entre meses/);
+  assert.match(reports, /el\('pdfFrame'\)\.srcdoc/);
+  assert.match(css, /monthly-operational-report-dialog/);
+});
+
 test('ativos versionados usam cache imutável sem tornar o HTML persistente', async () => {
   const server = await read('src/server.js');
 
