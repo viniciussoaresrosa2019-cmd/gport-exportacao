@@ -64,6 +64,7 @@ CREATE TABLE processes (
   carrier VARCHAR(120),
   deadline TIMESTAMP WITHOUT TIME ZONE,
   shipping_date DATE,
+  post_shipment_date DATE,
   container_collection_date DATE,
   collection_terminal VARCHAR(120),
   free_time_days INTEGER CHECK (free_time_days >= 0),
