@@ -617,6 +617,18 @@ const processClientSettings = async clientId => {
   if (!result.rowCount) throw Object.assign(new Error('Exportador inválido.'), { status: 400 });
   return { rucManual: result.rows[0].ruc_manual === true, dueOnly: result.rows[0].due_only === true };
 };
+// A capa é vinculada ao responsável do processo. Ao trocar o responsável,
+// relatórios e qualquer nova geração da capa passam a usar o mesmo usuário.
+// Um vínculo histórico a uma conta desativada pode ser preservado, mas uma
+// nova atribuição só pode apontar para uma conta ativa.
+const resolveProcessAnalystId = async (value, fallbackId) => {
+  const analystId = String(value || fallbackId || '').trim();
+  if (!validId(analystId)) throw Object.assign(new Error('Responsável pelo processo inválido.'), { status: 400 });
+  if (analystId === fallbackId) return analystId;
+  const assignee = await query('SELECT id FROM users WHERE id=$1 AND active=true', [analystId]);
+  if (!assignee.rowCount) throw Object.assign(new Error('Selecione um usuário ativo para a capa do processo.'), { status: 400 });
+  return analystId;
+};
 const auditValue = value => {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value.toISOString();
@@ -899,12 +911,13 @@ app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (r
     body.processNumber = booking || `SEM-BOOKING-${Date.now()}`;
   }
   const p = toDbProcess(validatedProcess(body, await processClientSettings(body.clientId)));
+  const analystId = await resolveProcessAnalystId(body.analystId, req.user.sub);
   const placeholders = processColumns.map((_, i) => `$${i + 1}`).join(',');
   const insertProcess = process => {
     const processValues = processColumns.map(key => process[key] ?? null);
     return query(
       `INSERT INTO processes(${processColumns.join(',')},analyst_id,idempotency_key) VALUES(${placeholders},$${processValues.length + 1},$${processValues.length + 2}) RETURNING *`,
-      [...processValues, req.user.sub, idempotencyKey]
+      [...processValues, analystId, idempotencyKey]
     );
   };
   let result;
@@ -941,9 +954,12 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   // o usuário altera booking ou outros campos do processo.
   body.processNumber = previous.process_number;
   const p = toDbProcess(validatedProcess(body, await processClientSettings(body.clientId))); const values = processColumns.map(key => p[key] ?? null);
+  const analystId = await resolveProcessAnalystId(body.analystId, previous.analyst_id);
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
-  const result = await query(`UPDATE processes SET ${set} WHERE id=$${values.length + 1} RETURNING *`, [...values, req.params.id]);
-  await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes: processChanges(previous, p) });
+  const result = await query(`UPDATE processes SET ${set}, analyst_id=$${values.length + 1} WHERE id=$${values.length + 2} RETURNING *`, [...values, analystId, req.params.id]);
+  const changes = processChanges(previous, p);
+  if (previous.analyst_id !== analystId) changes.analyst_id = { before: previous.analyst_id, after: analystId };
+  await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes });
   notifyProcessChange(result.rows[0], 'updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'updated');
   res.json(result.rows[0]);

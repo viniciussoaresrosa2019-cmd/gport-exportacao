@@ -48,6 +48,14 @@ export const processPostShipmentSelect = `SELECT
   ${relationFields}
   ${processRelations}`;
 
+// Contrato da área Braspine: processos de exportadores configurados como
+// Apenas DU-E. A edição completa continua disponível pelo endpoint individual.
+export const processBraspineSelect = `SELECT
+  p.id,p.client_id,p.booking,p.invoice,p.importer,p.origin_port,p.destination_port,
+  p.vessel,p.due_number,p.ruc_number,p.analyst_id,p.created_at,p.updated_at,
+  ${relationFields}
+  ${processRelations}`;
+
 export const processCalendarSelect = `SELECT
   p.id,p.booking,p.deadline,p.container_collection_date,
   p.release_schedule,p.release_deadline,p.analyst_id,
@@ -60,7 +68,8 @@ const projections = Object.freeze({
   vgm:processVgmSelect,
   release:processReleaseSelect,
   followup:processFollowupSelect,
-  postshipment:processPostShipmentSelect
+  postshipment:processPostShipmentSelect,
+  braspine:processBraspineSelect
 });
 
 export const processProjection = name => projections[name] || processDetailSelect;

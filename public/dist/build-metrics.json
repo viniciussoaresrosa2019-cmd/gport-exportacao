@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-15T02:21:29.142Z",
+  "generatedAt": "2026-09-15T02:42:54.660Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 357170,
-    "gzipBytes": 96213,
+    "bytes": 366147,
+    "gzipBytes": 98036,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,8 +18,13 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 175379,
-        "gzipBytes": 44681
+        "bytes": 181240,
+        "gzipBytes": 45720
+      },
+      {
+        "file": "braspine-ui.js",
+        "bytes": 1196,
+        "gzipBytes": 538
       },
       {
         "file": "experience.css",
@@ -33,8 +38,8 @@
       },
       {
         "file": "gport.css",
-        "bytes": 58528,
-        "gzipBytes": 11442
+        "bytes": 60391,
+        "gzipBytes": 11674
       },
       {
         "file": "legacy-ui.js",
@@ -73,8 +78,8 @@
       },
       {
         "file": "page-navigation.js",
-        "bytes": 1080,
-        "gzipBytes": 468
+        "bytes": 1137,
+        "gzipBytes": 482
       },
       {
         "file": "post-shipment-ui.js",
@@ -99,8 +104,8 @@
     ]
   },
   "output": {
-    "bytes": 263730,
-    "gzipBytes": 77711,
+    "bytes": 269962,
+    "gzipBytes": 79113,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -113,9 +118,14 @@
         "gzipBytes": 501
       },
       {
-        "file": "app-runtime-9E4C2791D403.js",
-        "bytes": 107465,
-        "gzipBytes": 32950
+        "file": "app-runtime-809F276D8A5D.js",
+        "bytes": 110989,
+        "gzipBytes": 33729
+      },
+      {
+        "file": "braspine-ui-411C18D04427.js",
+        "bytes": 888,
+        "gzipBytes": 436
       },
       {
         "file": "experience-139D2DA54374.css",
@@ -128,9 +138,9 @@
         "gzipBytes": 2831
       },
       {
-        "file": "gport-D8F2845E37F6.css",
-        "bytes": 57686,
-        "gzipBytes": 11009
+        "file": "gport-F8A62831FBBB.css",
+        "bytes": 59459,
+        "gzipBytes": 11183
       },
       {
         "file": "legacy-ui-F80133F576B4.js",
@@ -168,9 +178,9 @@
         "gzipBytes": 487
       },
       {
-        "file": "page-navigation-5C61DC5F5319.js",
-        "bytes": 712,
-        "gzipBytes": 354
+        "file": "page-navigation-745CEE557D8A.js",
+        "bytes": 759,
+        "gzipBytes": 367
       },
       {
         "file": "post-shipment-ui-7822AEE6361A.js",
@@ -195,10 +205,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 352198,
-    "sourceGzipBytes": 94419,
-    "outputBytes": 260556,
-    "outputGzipBytes": 76449,
+    "sourceBytes": 361175,
+    "sourceGzipBytes": 96242,
+    "outputBytes": 266788,
+    "outputGzipBytes": 77851,
     "deferred": [
       "reports.js"
     ]

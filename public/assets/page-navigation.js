@@ -2,6 +2,7 @@
 (() => {
   const pages = Object.freeze({
     processes:'processesPage',
+    braspine:'braspinePage',
     vgm:'vgmPage',
     vgmReport:'vgmReportPage',
     release:'releasePage',
@@ -11,6 +12,7 @@
   });
   const navigation = Object.freeze({
     processes:'processNav',
+    braspine:'braspineNav',
     vgm:'vgmNav',
     vgmReport:'vgmReportNav',
     release:'releaseNav',

@@ -885,8 +885,14 @@ test('documentação operacional de backup, Entra e menor privilégio existe', a
 test('capa do processo segue o modelo operacional com checklist e grade de contêineres', async () => {
   const html = await readInterface();
   const runtime = await read('public/assets/app-runtime.js');
+  const server = await read('src/server.js');
   assert.match(html, /function printCoverFromDocumentModel\(p\)/);
   assert.match(runtime, /function printCoverFromDocumentModelBase\(p\)/);
+  assert.match(runtime, /setupProcessAssigneeSelector/);
+  assert.match(runtime, /analystId:p\.analyst_id/);
+  assert.match(runtime, /analystId:p\.analystId \|\| currentUser\?\.id/);
+  assert.match(server, /const resolveProcessAnalystId = async/);
+  assert.match(server, /analyst_id=\$\$\{values\.length \+ 1\}/);
   assert.doesNotMatch(runtime, /function printOperationalCover\(p\)/);
   assert.match(html, /DEADLINES \/ PRAZOS/);
   assert.match(html, /CHECK LIST/);

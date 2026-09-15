@@ -47,6 +47,7 @@
       let selectedVgmReportDay = null;
       let postShipmentFilter = 'all';
       let postShipmentSearchFilter = null;
+      let braspineSearchFilter = null;
       const autoSaveTimers = new Map();
       const scheduleAutoSave = (key, task) => {
         clearTimeout(autoSaveTimers.get(key));
@@ -58,6 +59,10 @@
       const showVgmPage = () => {
         window.gportPageNavigation.activate('vgm');
         renderVgm(); void refreshSectionData('vgm', { page:sectionSearchStates.vgm.pagination.page || 1 });
+      };
+      const showBraspinePage = () => {
+        window.gportPageNavigation.activate('braspine');
+        renderBraspine(); void refreshSectionData('braspine', { page:sectionSearchStates.braspine.pagination.page || 1 });
       };
       const showVgmReportPage = () => {
         if (!currentHasRole('vgm')) { toast.warning('Acesso restrito a VGM e Administrador.'); return; }
@@ -131,6 +136,7 @@
         // servidor e o campo de data liberam alteração só para Pós-embarque
         // ou Administrador.
         el('postShipmentNav').hidden = false;
+        el('braspineNav').hidden = false;
         el('followupNav').hidden = !currentHasRole('analyst');
         // Financeiro e Prazos permanecem no código para reversão futura, mas
         // ficam fora da experiência operacional atual por decisão de produto.
@@ -178,7 +184,7 @@
       };
       // VGM, Liberação e Follow up têm a própria página de dados. Assim a
       // busca dessas áreas não fica limitada aos 50 processos da planilha.
-      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
+      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup', 'braspine'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
       const sectionItems = name => sectionSearchStates[name]?.items || [];
       // As páginas operacionais usam listas próprias e paginadas. Atualizar
       // somente `data` (a lista da página Processos) fazia VGM e Liberação
@@ -193,6 +199,7 @@
         else if (name === 'release') renderRelease();
         else if (name === 'postShipment') renderPostShipment();
         else if (name === 'followup') renderFollowup();
+        else if (name === 'braspine') renderBraspine();
       };
       const snapshotVisibleProcess = (name, id) => ({
         section:sectionSearchStates[name]?.items?.find(item => item.id === id) || null,
@@ -268,7 +275,7 @@
       async function refreshSectionData(name, { page=1 } = {}) {
         const state = sectionSearchStates[name]; if (!state) return false;
         state.controller?.abort(); const controller = new AbortController(); state.controller = controller; const version = ++state.version; state.loading = true;
-        if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else renderFollowup();
+        if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
         const apiView = name === 'postShipment' ? 'postshipment' : name;
         const params = new URLSearchParams({ view:apiView, projection:apiView, limit:String(state.pagination.limit || 50), offset:String((page - 1) * Number(state.pagination.limit || 50)) });
         const filter = state.filter;
@@ -281,12 +288,12 @@
           if (version !== state.version) return false;
           state.items = result.items.map(item => ({ ...toViewProcess(item), createdAt:item.created_at || '', updatedAt:item.updated_at || '', releaseDeadlineOrder:item.release_deadline || '' }));
           state.pagination = { ...result.pagination, page }; state.loading = false;
-          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else renderFollowup();
+          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
           return true;
         } catch (error) {
           if (error?.name === 'AbortError') return false;
           state.loading = false;
-          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else renderFollowup();
+          if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
           toast.error(error.message || 'Não foi possível atualizar a busca. Tente novamente.');
           return false;
         } finally { if (state.controller === controller) state.controller = null; }
@@ -414,6 +421,22 @@
             catch (error) { toast.error(error.message); renderPostShipment(); }
           });
         });
+      };
+      const renderBraspine = () => {
+        renderSectionSearch('braspineSearchControls', document.querySelector('#braspinePage .intro'), braspineSearchFilter, filter => {
+          braspineSearchFilter = filter?.clear ? null : filter;
+          sectionSearchStates.braspine.filter = braspineSearchFilter;
+          void refreshSectionData('braspine');
+        });
+        const processes = sectionItems('braspine')
+          .filter(process => matchesSectionSearch(process, braspineSearchFilter));
+        el('braspineList').innerHTML = processes.length
+          ? `<div class="braspine-board" role="list" aria-label="Processos Apenas DU-E">${processes.map(p => {
+              const booking = esc(p.booking || '—');
+              return `<article class="braspine-card" role="listitem"><div class="braspine-card__process"><span>BOOKING</span><strong>${booking}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="braspine-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="braspine-card__route"><span>ROTA</span><strong>${esc(p.origem || '—')} <b>→</b> ${esc(p.destino || '—')}</strong><small>${esc(p.navio || 'Navio não informado')}</small></div><div class="braspine-card__documents"><span>DOCUMENTOS</span><strong>DU-E ${esc(p.due || '—')}</strong><small>RUC ${esc(p.ruc || '—')}</small></div><div class="braspine-card__actions"><button class="btn secondary" type="button" data-braspine-open="${esc(p.id)}" aria-label="Abrir processo do booking ${booking}">Abrir processo</button></div></article>`;
+            }).join('')}</div>`
+          : `<div class="empty">${sectionSearchStates.braspine.loading ? 'Buscando processos…' : 'Nenhum processo Apenas DU-E encontrado.'}</div>`;
+        renderSectionPagination('braspine', el('braspineList'));
       };
       const renderFollowup = () => {
         renderSectionSearch('followupSearchControls', document.querySelector('#followupPage .intro'), followupSearchFilter, filter => { followupSearchFilter = filter?.clear ? null : filter; sectionSearchStates.followup.filter = followupSearchFilter; void refreshSectionData('followup'); }); const followupProcesses = sectionItems('followup').filter(process => matchesSectionSearch(process, followupSearchFilter));
@@ -616,7 +639,7 @@
         const seals = Array.isArray(details) ? details.map(x => x.seal).filter(Boolean).join(' / ') : '';
         const newSeals = Array.isArray(details) ? details.map(x => x.new_seal).filter(Boolean).join(' / ') : '';
         const notes = Array.isArray(details) ? details.map(x => x.invoice_number).filter(Boolean).join(' / ') : '';
-        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
         // HTMLInputElement converte `undefined` para o texto literal
         // "undefined". Normalize somente valores nulos da resposta; strings
         // realmente armazenadas continuam visíveis para uma auditoria posterior.
@@ -634,7 +657,7 @@
         if (!rucManual && !String(p.due || '').trim()) throw new Error('Informe a DU-E ou marque RUC manual no cadastro do exportador.');
         if (!dueOnly && !rucManual && !dueIssueDate) throw new Error('Informe a data de emissão da DU-E no formato dd/mm.');
         if (p.dueEmissao && !dueIssueDate) throw new Error('Informe a data de emissão da DU-E no formato dd/mm.');
-        return { processId:p.id || null, processNumber:p.numero || p.booking || `SEM-BOOKING-${Date.now()}`, displayProcessNumber:p.numeroProcesso || null, status:p.status, clientId:client?.id, importer:p.importador, invoice:p.fatura, booking:p.booking, dueNumber:p.due, dueIssueDate, rucNumber:p.ruc, originPort:p.origem, destinationPort:p.destino, vessel:p.navio, agency:p.agencia, carrier:p.armador, shipmentType:dueOnly ? 'FCL' : p.tipoEmbarque, blType:p.tipoBL, freightType:p.tipoFrete, mapaInspection:dueOnly ? false : p.vistoriaMapa === 'Sim', isfLacey:dueOnly ? false : p.isfLacey === 'Sim', deadline:dueOnly ? null : deadline, shippingDate:dueOnly ? null : shippingDate, containerCollectionDate:dueOnly ? null : containerCollectionDate, collectionTerminal:p.terminal, freeTimeDays:dueOnly ? null : (p.freetime === '' ? null : Number(p.freetime)), incoterm:dueOnly ? '' : p.incoterm, containerQuantity:dueOnly ? Math.max(1, numbers.length) : (p.qtdContainers === '' ? null : Number(p.qtdContainers)), containerType:dueOnly ? 'NÃO INFORMADO' : p.tipoContainer, containerDetails:numbers.map((number, i) => ({ number, tare:taras[i] || '', seal:seals[i] || '', invoiceNumber:notes[i] || '', new_seal:newSeals[i] || '' })), cubicMeters:dueOnly ? null : decimalForDatabase(p.metragem, 'A metragem cúbica'), netWeightKg:dueOnly ? null : decimalForDatabase(p.pesoLiquido, 'O peso líquido'), grossWeightKg:dueOnly ? null : decimalForDatabase(p.pesoBruto, 'O peso bruto'), packagesQuantity:dueOnly ? null : (p.volumes === '' ? null : Number(p.volumes)), cargoValue:dueOnly ? null : currencyForDatabase(p.valor), currency:dueOnly ? 'USD' : (p.moeda || 'USD') };
+        return { processId:p.id || null, processNumber:p.numero || p.booking || `SEM-BOOKING-${Date.now()}`, displayProcessNumber:p.numeroProcesso || null, status:p.status, clientId:client?.id, analystId:p.analystId || currentUser?.id || null, importer:p.importador, invoice:p.fatura, booking:p.booking, dueNumber:p.due, dueIssueDate, rucNumber:p.ruc, originPort:p.origem, destinationPort:p.destino, vessel:p.navio, agency:p.agencia, carrier:p.armador, shipmentType:dueOnly ? 'FCL' : p.tipoEmbarque, blType:p.tipoBL, freightType:p.tipoFrete, mapaInspection:dueOnly ? false : p.vistoriaMapa === 'Sim', isfLacey:dueOnly ? false : p.isfLacey === 'Sim', deadline:dueOnly ? null : deadline, shippingDate:dueOnly ? null : shippingDate, containerCollectionDate:dueOnly ? null : containerCollectionDate, collectionTerminal:p.terminal, freeTimeDays:dueOnly ? null : (p.freetime === '' ? null : Number(p.freetime)), incoterm:dueOnly ? '' : p.incoterm, containerQuantity:dueOnly ? Math.max(1, numbers.length) : (p.qtdContainers === '' ? null : Number(p.qtdContainers)), containerType:dueOnly ? 'NÃO INFORMADO' : p.tipoContainer, containerDetails:numbers.map((number, i) => ({ number, tare:taras[i] || '', seal:seals[i] || '', invoiceNumber:notes[i] || '', new_seal:newSeals[i] || '' })), cubicMeters:dueOnly ? null : decimalForDatabase(p.metragem, 'A metragem cúbica'), netWeightKg:dueOnly ? null : decimalForDatabase(p.pesoLiquido, 'O peso líquido'), grossWeightKg:dueOnly ? null : decimalForDatabase(p.pesoBruto, 'O peso bruto'), packagesQuantity:dueOnly ? null : (p.volumes === '' ? null : Number(p.volumes)), cargoValue:dueOnly ? null : currencyForDatabase(p.valor), currency:dueOnly ? 'USD' : (p.moeda || 'USD') };
       };
       // O banco normaliza o porto de origem para maiúsculas. Como as opções
       // visíveis preservam acentos e capitalização, atribuir o texto direto ao
@@ -675,6 +698,36 @@
       };
       let processFormHasPersistedDetails = true;
       let editingProcessUpdatedAt = null;
+      const setupProcessAssigneeSelector = (selectedId = '', selectedName = '') => {
+        const legacyInput = form.elements.analista;
+        let select = form.elements.analystId;
+        if (!select && legacyInput) {
+          legacyInput.type = 'hidden';
+          legacyInput.required = false;
+          select = document.createElement('select');
+          select.name = 'analystId';
+          select.id = 'processAnalyst';
+          select.required = true;
+          select.setAttribute('aria-label', 'Responsável pela capa e pelo processo');
+          legacyInput.insertAdjacentElement('afterend', select);
+          legacyInput.closest('.field')?.querySelector('label')?.setAttribute('for', 'processAnalyst');
+        }
+        if (!select) return;
+        const people = [...availableAssignees];
+        if (currentUser?.id && !people.some(person => person.id === currentUser.id)) people.push({ id:currentUser.id, username:currentUser.username });
+        const current = selectedId || select.value || currentUser?.id || '';
+        if (current && !people.some(person => person.id === current)) people.push({ id:current, username:selectedName || legacyInput?.value || 'Usuário desativado' });
+        people.sort((a, b) => String(a.username || '').localeCompare(String(b.username || ''), 'pt-BR', { sensitivity:'base' }));
+        select.innerHTML = people.map(person => `<option value="${esc(person.id)}">${esc(person.username)}</option>`).join('');
+        select.value = current;
+        if (!select.value && people[0]) select.value = people[0].id;
+        const syncSelectedName = () => {
+          const person = people.find(item => item.id === select.value);
+          if (person?.username && legacyInput) legacyInput.value = person.username;
+        };
+        select.onchange = syncSelectedName;
+        syncSelectedName();
+      };
       const nativeOpenProcess = open;
       open = p => {
         processFormHasPersistedDetails = !p || p.__persistedDetails === true;
@@ -683,7 +736,9 @@
         // anterior antes de preencher o processo atual, evitando que valores
         // antigos apareçam mesmo quando o banco já possui os dados corretos.
         el('containerDetails').innerHTML = '';
+        setupProcessAssigneeSelector(p?.analystId || currentUser?.id || '', p?.analista || '');
         nativeOpenProcess(p);
+        setupProcessAssigneeSelector(p?.analystId || currentUser?.id || '', p?.analista || form.elements.analista?.value || '');
         // A capa só pode ser emitida a partir de um processo persistido. O
         // lançamento novo deve ser salvo antes de disponibilizar esta ação.
         el('printBtn').hidden = !p;
@@ -1127,7 +1182,10 @@
           // paginação e filtros não aguardam clientes/responsáveis para terminar.
           void referenceRequests.then(([clientResult, assigneeResult]) => {
             if (clientResult.status === 'fulfilled') clients = clientResult.value.map(toViewClient);
-            if (assigneeResult.status === 'fulfilled') availableAssignees = assigneeResult.value;
+            if (assigneeResult.status === 'fulfilled') {
+              availableAssignees = assigneeResult.value;
+              if (dialog.open) setupProcessAssigneeSelector(form.elements.analystId?.value || '', form.elements.analista?.value || '');
+            }
             if (clientResult.status === 'fulfilled' && assigneeResult.status === 'fulfilled') referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
             renderClients();
             // Os filtros por exportador dependem da lista de clientes. Como essa
@@ -1157,6 +1215,7 @@
         if (!el('vgmPage').hidden && !editingVgmDestination) void refreshSectionData('vgm', { page:sectionSearchStates.vgm.pagination.page || 1 });
         if (!el('releasePage').hidden) void refreshSectionData('release', { page:sectionSearchStates.release.pagination.page || 1 });
         if (!el('followupPage').hidden) void refreshSectionData('followup', { page:sectionSearchStates.followup.pagination.page || 1 });
+        if (!el('braspinePage').hidden) void refreshSectionData('braspine', { page:sectionSearchStates.braspine.pagination.page || 1 });
       };
       const stopRealtimeFallback = () => {
         clearTimeout(realtimeFailureTimer); realtimeFailureTimer = null;
@@ -1178,6 +1237,7 @@
           if (currentHasRole('admin')) requests.push(request('/api/users'));
           const [remoteClients, remoteAssignees, remoteUsers] = await Promise.all(requests);
           clients = remoteClients.map(toViewClient); availableAssignees = remoteAssignees;
+          if (dialog.open) setupProcessAssigneeSelector(form.elements.analystId?.value || '', form.elements.analista?.value || '');
           if (remoteUsers) users = remoteUsers;
           referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
           renderClients(); if (currentHasRole('admin')) renderUsers();
@@ -1502,7 +1562,8 @@
           const saved = await request(processId ? `/api/processes/${processId}` : '/api/processes', { method:processId ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
           const client = clients.find(item => item.id === payload.clientId);
           const previous = data.find(item => item.id === processId) || {};
-          const view = { ...toViewProcess({ ...saved, exporter:client?.nome || previous.exportador || '', analyst:previous.analista || currentUser?.username || '' }), updatedAt:saved.updated_at || '' };
+          const assignee = availableAssignees.find(person => person.id === payload.analystId);
+          const view = { ...toViewProcess({ ...saved, exporter:client?.nome || previous.exportador || '', analyst:assignee?.username || previous.analista || currentUser?.username || '' }), updatedAt:saved.updated_at || '' };
           data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data].slice(0, Math.max(data.length, processPagination.limit));
           if (isNewProcess) processPagination.total += 1;
           // Mantém o mesmo identificador após o primeiro lançamento. A partir
@@ -1574,6 +1635,10 @@
       el('postShipmentNav').onclick = e => {
         e.preventDefault();
         showPostShipmentPage();
+      };
+      el('braspineNav').onclick = e => {
+        e.preventDefault();
+        showBraspinePage();
       };
       el('followupNav').onclick = e => {
         e.preventDefault();
@@ -1665,6 +1730,20 @@
         catch (error) { toast.error(error.message); }
         finally { button.disabled = false; }
       };
+      el('braspineList').onclick = async event => {
+        const button = event.target.closest('[data-braspine-open]');
+        if (!button) return;
+        try {
+          button.disabled = true;
+          const process = await loadPersistedProcess(button.dataset.braspineOpen);
+          showProcessesPage();
+          open(process);
+        } catch (error) {
+          toast.error(error.message || 'Não foi possível carregar os detalhes do processo.');
+        } finally {
+          if (button.isConnected) button.disabled = false;
+        }
+      };
       el('financialNav').onclick = e => {
         e.preventDefault();
         if (!currentHasRole('financeiro')) return;
@@ -1701,6 +1780,7 @@
       el('closeVgmBtn').onclick = showProcessesPage;
       el('closeReleaseBtn').onclick = showProcessesPage;
       el('closePostShipmentBtn').onclick = showProcessesPage;
+      el('closeBraspineBtn').onclick = showProcessesPage;
       el('closeFollowupBtn').onclick = showProcessesPage;
       el('closeFinancialBtn').onclick = () => el('financialDialog').close();
       const passwordResetDialog = el('passwordResetDialog');

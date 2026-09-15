@@ -45,4 +45,11 @@ test('ordenação é estável e específica por tela', () => {
   assert.match(buildProcessSearchQuery({ view:'release' }).itemsSql, /origin_port ASC,p\.release_deadline ASC NULLS LAST/);
   assert.match(buildProcessSearchQuery({ view:'followup' }).itemsSql, /updated_at DESC,p\.id DESC/);
   assert.match(buildProcessSearchQuery({ view:'postshipment', projection:'postshipment' }).itemsSql, /post_shipment_date ASC NULLS FIRST/);
+  assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /c\.name ASC,p\.created_at DESC,p\.id DESC/);
+});
+
+test('processos Apenas DU-E são separados da planilha, VGM e Braspine no banco', () => {
+  assert.match(buildProcessSearchQuery({ view:'processes' }).itemsSql, /COALESCE\(c\.due_only,false\)=FALSE/);
+  assert.match(buildProcessSearchQuery({ view:'vgm', projection:'vgm' }).itemsSql, /COALESCE\(c\.due_only,false\)=FALSE/);
+  assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /COALESCE\(c\.due_only,false\)=TRUE/);
 });

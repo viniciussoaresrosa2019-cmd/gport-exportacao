@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  processCalendarSelect, processDetailSelect, processFollowupSelect, processPostShipmentSelect,
+  processBraspineSelect, processCalendarSelect, processDetailSelect, processFollowupSelect, processPostShipmentSelect,
   processProjection, processReleaseSelect, processSummarySelect,
   processVgmSelect, supportedProcessProjections
 } from '../src/process-projections.js';
@@ -21,7 +21,7 @@ test('projeção completa permanece padrão para consumidores existentes', () =>
   assert.equal(processProjection('full'), processDetailSelect);
   assert.equal(processProjection('desconhecida'), processDetailSelect);
   assert.equal(processProjection('summary'), processSummarySelect);
-  assert.deepEqual([...supportedProcessProjections].sort(), ['followup', 'full', 'postshipment', 'release', 'summary', 'vgm']);
+  assert.deepEqual([...supportedProcessProjections].sort(), ['braspine', 'followup', 'full', 'postshipment', 'release', 'summary', 'vgm']);
 });
 
 test('VGM, Liberação e Follow up recebem somente os campos consumidos por cada tela', () => {
@@ -38,6 +38,14 @@ test('VGM, Liberação e Follow up recebem somente os campos consumidos por cada
   assert.equal(processProjection('release'), processReleaseSelect);
   assert.equal(processProjection('followup'), processFollowupSelect);
   assert.equal(processProjection('postshipment'), processPostShipmentSelect);
+  assert.equal(processProjection('braspine'), processBraspineSelect);
+});
+
+test('Braspine recebe o contrato compacto dos processos Apenas DU-E', () => {
+  for (const field of ['p.booking', 'p.invoice', 'p.due_number', 'p.ruc_number', 'p.origin_port', 'p.destination_port']) {
+    assert.match(processBraspineSelect, new RegExp(field.replace('.', '\\.')));
+  }
+  assert.doesNotMatch(processBraspineSelect, /p\.\*|container_details|cargo_value|content|password|token/i);
 });
 
 test('Pós-embarque recebe somente os campos necessários para registrar a data do embarque', () => {
