@@ -165,11 +165,13 @@ test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mí
   assert.match(server, /\{ rucManual = false, dueOnly = false \}/);
   assert.match(html, /Apenas DU-E/);
   assert.match(html, /syncDueOnlyLaunchFields/);
-  assert.match(html, /const dueOnlyFieldNames = \['importador', 'ruc', 'tipoEmbarque'/);
+  assert.match(html, /const dueOnlyFieldNames = \['tipoEmbarque'/);
+  assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'importador'/);
+  assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'ruc'/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'origem'[^\]]*\]/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'destino'[^\]]*\]/);
   assert.match(server, /originPort: cleanText\(raw\.originPort, 120, 'Porto de origem', \{ required: true \}\), destinationPort: cleanText\(raw\.destinationPort, 120, 'Porto de destino', \{ required: true \}\)/);
-  assert.match(html, /containerType:dueOnly \? 'NÃO INFORMADO'/);
+  assert.match(html, /containerType:dueOnly \? \(p\.tipoContainer \|\| 'NÃO INFORMADO'\)/);
   assert.match(migration, /ALTER COLUMN deadline DROP NOT NULL/);
 });
 
@@ -907,6 +909,13 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont�
   assert.match(html, /white-space:pre-line!important;font-size:10\.8px!important/);
   assert.doesNotMatch(html, /exporter-very-long|exporter-long/);
   assert.match(html, /NOVO LACRE/);
+  assert.match(runtime, /const hasLongInvoice = String\(p\.fatura \|\| ''\)\.trim\(\)\.length > 18/);
+  assert.match(runtime, /info\.has-long-invoice\{grid-template-rows:9mm 16mm repeat\(4,10mm\)!important\}/);
+  assert.match(runtime, /section class="info\$\{hasLongInvoice \? ' has-long-invoice' : ''\}"/);
+  assert.match(runtime, /const isDueOnly = client\.dueOnly === true/);
+  assert.match(runtime, /const dueOnlyImporter = isDueOnly \? \(p\.importador \|\| 'NÃO INFORMADO'\)/);
+  assert.match(runtime, /const dueOnlyRuc = isDueOnly \? \(p\.ruc \|\| 'NÃO INFORMADO'\)/);
+  assert.match(runtime, /isDueOnly \? 'TIPO DE CONTÊINER' : 'CONTAINER\(S\)'/);
 });
 
 test('notificações de prazo são deduplicadas, configuráveis e respeitam o perfil operacional', async () => {
