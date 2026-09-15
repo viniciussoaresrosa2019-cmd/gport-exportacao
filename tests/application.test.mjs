@@ -231,6 +231,21 @@ test('usuário pode acumular no máximo duas funções sem perder a função pri
   assert.match(runtime, /currentHasRole/);
   assert.match(runtime, /JSON\.stringify\(\{ roles \}\)/);
   assert.match(legacy, /Até 2 funções/);
+  assert.match(legacy, /user-role-select/);
+  assert.match(legacy, /Sem segunda função/);
+  assert.match(legacy, /Pós-embarque.*VGM/);
+});
+
+test('administração permite nomes compostos e a edição segura do usuário', async () => {
+  const server = await read('src/server.js');
+  const runtime = await read('public/assets/app-runtime.js');
+  const legacy = await read('public/assets/legacy-ui.js');
+  assert.match(server, /const normalizeUsername = value => String\(value \|\| ''\)\.trim\(\)\.replace\(\/\\s\+\/g, ' '\)/);
+  assert.match(server, /\\p\{L\}\\p\{N\}/);
+  assert.match(server, /username=COALESCE\(\$5,username\)/);
+  assert.match(runtime, /save-user-name/);
+  assert.match(runtime, /JSON\.stringify\(\{ username \}\)/);
+  assert.match(legacy, /data-user-name/);
 });
 
 test('criação de usuário mantém referência ao formulário após requisições assíncronas', async () => {

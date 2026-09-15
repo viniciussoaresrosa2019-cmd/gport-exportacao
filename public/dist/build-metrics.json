@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-15T02:09:39.624Z",
+  "generatedAt": "2026-09-15T02:21:29.142Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 354020,
-    "gzipBytes": 95309,
+    "bytes": 357170,
+    "gzipBytes": 96213,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,13 +18,13 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 173843,
-        "gzipBytes": 44263
+        "bytes": 175379,
+        "gzipBytes": 44681
       },
       {
         "file": "experience.css",
-        "bytes": 13598,
-        "gzipBytes": 3714
+        "bytes": 14227,
+        "gzipBytes": 3871
       },
       {
         "file": "experience.js",
@@ -38,8 +38,8 @@
       },
       {
         "file": "legacy-ui.js",
-        "bytes": 43072,
-        "gzipBytes": 13486
+        "bytes": 44057,
+        "gzipBytes": 13815
       },
       {
         "file": "login-animation.css",
@@ -99,8 +99,8 @@
     ]
   },
   "output": {
-    "bytes": 261150,
-    "gzipBytes": 76895,
+    "bytes": 263730,
+    "gzipBytes": 77711,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -113,14 +113,14 @@
         "gzipBytes": 501
       },
       {
-        "file": "app-runtime-008221844EED.js",
-        "bytes": 106393,
-        "gzipBytes": 32583
+        "file": "app-runtime-9E4C2791D403.js",
+        "bytes": 107465,
+        "gzipBytes": 32950
       },
       {
-        "file": "experience-3AD6A28C9CA0.css",
-        "bytes": 13165,
-        "gzipBytes": 3406
+        "file": "experience-139D2DA54374.css",
+        "bytes": 13794,
+        "gzipBytes": 3560
       },
       {
         "file": "experience-3BC7E1A7AF6C.js",
@@ -133,9 +133,9 @@
         "gzipBytes": 11009
       },
       {
-        "file": "legacy-ui-6A5B2058301E.js",
-        "bytes": 39018,
-        "gzipBytes": 12464
+        "file": "legacy-ui-F80133F576B4.js",
+        "bytes": 39897,
+        "gzipBytes": 12759
       },
       {
         "file": "login-animation-39E435D9A3BE.css",
@@ -195,10 +195,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 349048,
-    "sourceGzipBytes": 93515,
-    "outputBytes": 257976,
-    "outputGzipBytes": 75633,
+    "sourceBytes": 352198,
+    "sourceGzipBytes": 94419,
+    "outputBytes": 260556,
+    "outputGzipBytes": 76449,
     "deferred": [
       "reports.js"
     ]

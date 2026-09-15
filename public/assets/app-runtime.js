@@ -5,6 +5,13 @@
       const securePrintHtml = html => html.replaceAll('<style>', `<style nonce="${cspNonce}">`);
       const rolesFor = user => Array.isArray(user?.roles) && user.roles.length ? user.roles : [user?.role || 'analyst'];
       const currentHasRole = role => rolesFor(currentUser).includes('admin') || rolesFor(currentUser).includes(role);
+      const userNameInput = el('userForm')?.elements.username;
+      if (userNameInput) {
+        userNameInput.pattern = '[A-Za-zÀ-ÿ0-9._-]+( [A-Za-zÀ-ÿ0-9._-]+)*';
+        userNameInput.minLength = 3;
+        userNameInput.maxLength = 80;
+        userNameInput.title = 'Use 3 a 80 caracteres: letras, números, espaços, ponto, hífen ou sublinhado.';
+      }
       const syncShipmentTypeWithoutInlineStyle = () => {
         const isLcl = form.elements.tipoEmbarque.value === 'LCL';
         el('containerFields').querySelectorAll('input,select').forEach(input => { input.disabled = isLcl; });
@@ -1732,18 +1739,28 @@
         catch (error) { toast.error(error.message); }
       };
       el('userList').onchange = async e => {
-        const input = e.target.closest('.user-role'); if (!input) return;
+        const input = e.target.closest('.user-role-select'); if (!input) return;
         const group = input.closest('.user-roles');
-        const user = users.find(u => u.username === group?.dataset.user); if (!user) return;
-        const roles = [...group.querySelectorAll('.user-role:checked')].map(control => control.value);
-        if (!roles.length || roles.length > 2) { toast.warning('Selecione uma ou duas funções por usuário.'); renderUsers(); return; }
+        const user = users.find(u => u.id === group?.dataset.userId); if (!user) return;
+        const roles = [...group.querySelectorAll('.user-role-select')].map(control => control.value).filter(Boolean);
+        if (!roles.length || roles.length > 2 || new Set(roles).size !== roles.length) { toast.warning('Selecione uma ou duas funções diferentes por usuário.'); renderUsers(); return; }
         try { await request(`/api/users/${user.id}`, { method:'PATCH', body:JSON.stringify({ roles }) }); users = await request('/api/users'); renderUsers(); }
         catch (error) { toast.error(error.message); renderUsers(); }
       };
       el('userList').onclick = async e => {
-        const button = e.target.closest('.reset-password, .delete-user'); if (!button) return;
-        const user = users.find(u => u.username === button.dataset.user); if (!user) return;
+        const button = e.target.closest('.save-user-name, .reset-password, .delete-user'); if (!button) return;
+        const user = users.find(u => u.id === button.dataset.userId || u.username === button.dataset.user); if (!user) return;
         try {
+          if (button.classList.contains('save-user-name')) {
+            const input = el('userList').querySelector(`[data-user-name="${user.id}"]`);
+            const username = String(input?.value || '').trim().replace(/\s+/g, ' ');
+            if (!input || !username || !input.checkValidity()) return toast.warning('Informe um nome válido de 3 a 80 caracteres.');
+            const result = await request(`/api/users/${user.id}`, { method:'PATCH', body:JSON.stringify({ username }) });
+            if (currentUser?.id === user.id) { currentUser = { ...currentUser, username:result.user.username }; el('currentUserName').textContent = currentUser.username; }
+            users = await request('/api/users'); renderUsers();
+            toast.success('Nome de usuário atualizado.');
+            return;
+          }
           if (button.classList.contains('reset-password')) {
             openPasswordReset(user);
             return;
@@ -1754,6 +1771,11 @@
           }
           users = await request('/api/users'); renderUsers();
         } catch (error) { toast.error(error.message); }
+      };
+      el('userList').onkeydown = e => {
+        if (e.key !== 'Enter' || !e.target.matches('[data-user-name]')) return;
+        e.preventDefault();
+        e.target.closest('tr')?.querySelector('.save-user-name')?.click();
       };
       el('settingsLogoutBtn').onclick = async () => { try { await request('/api/auth/logout', { method:'POST' }); sessionStorage.setItem('gport_toast_notice', 'Você saiu do sistema com segurança.'); } finally { location.reload(); } };
       function printCoverFromDocumentModelBase(p) {

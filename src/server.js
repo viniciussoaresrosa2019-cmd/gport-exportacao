@@ -62,7 +62,11 @@ const turnstileEnabled = Boolean(turnstileSiteKey && turnstileSecretKey);
 const turnstileAllowedHostnames = new Set((process.env.TURNSTILE_ALLOWED_HOSTNAMES || 'gport-exportacao.onrender.com,localhost').split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
 if ((turnstileSiteKey || turnstileSecretKey) && !turnstileEnabled) throw new Error('TURNSTILE_SITE_KEY e TURNSTILE_SECRET_KEY devem ser configuradas juntas.');
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const usernamePattern = /^[A-Za-z0-9._-]{3,80}$/;
+// Nomes de acesso podem ser compostos (por exemplo, “Maria da Silva”), mas
+// preservam uma forma previsível: sem espaços nas extremidades, repetidos ou
+// caracteres de controle. Pontos, hífens e sublinhados seguem compatíveis.
+const usernamePattern = /^[\p{L}\p{N}._-]+(?: [\p{L}\p{N}._-]+)*$/u;
+const normalizeUsername = value => String(value || '').trim().replace(/\s+/g, ' ');
 // Hash utilizado apenas para manter tempo de resposta semelhante quando o
 // usuário não existe, reduzindo enumeração de contas por tempo de resposta.
 const dummyPasswordHash = '$2a$12$D1q0beGaVr2D.FubVPSbWO0SvptUQ3rJ9WXrZHm8YiWZlfQmOzPfe';
@@ -331,10 +335,10 @@ app.post('/api/auth/register', loginLimit, asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/users', authenticate, adminOnly, asyncRoute(async (req, res) => {
-  const username = String(req.body.username || '').trim();
+  const username = normalizeUsername(req.body.username);
   const password = String(req.body.password || '');
   const roles = normalizeRoles(req.body.roles ?? req.body.role ?? 'analyst');
-  if (!usernamePattern.test(username)) return res.status(400).json({ error: 'Usuário deve ter 3 a 80 caracteres: letras, números, ponto, hífen ou sublinhado.' });
+  if (username.length < 3 || username.length > 80 || !usernamePattern.test(username)) return res.status(400).json({ error: 'Usuário deve ter 3 a 80 caracteres, com letras, números, espaço, ponto, hífen ou sublinhado.' });
   if (!isStrongPassword(password)) return res.status(400).json({ error: 'A senha deve ter ao menos 12 caracteres, com letras e números.' });
   if (!roles) return res.status(400).json({ error: 'Selecione uma ou duas funções válidas.' });
   const passwordHash = await bcrypt.hash(password, 12);
@@ -351,7 +355,7 @@ app.post('/api/users', authenticate, adminOnly, asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
-  const username = String(req.body.username || '').trim();
+  const username = normalizeUsername(req.body.username);
   const password = String(req.body.password || '');
   if (!username || !password || username.length > 80 || password.length > 200) { await registerLoginFailure(req); return res.status(401).json({ error: 'Usuário ou senha inválidos.' }); }
   if (!(await verifyTurnstile(req.body.turnstileToken, req.ip))) { await registerLoginFailure(req); return res.status(403).json({ error: 'Verificação de segurança inválida. Tente novamente.' }); }
@@ -397,8 +401,11 @@ app.get('/api/assignees', authenticate, asyncRoute(async (_req, res) => {
 app.patch('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de usuário inválido.' });
   const { active, password } = req.body;
+  const hasUsernameUpdate = Object.hasOwn(req.body, 'username');
+  const username = hasUsernameUpdate ? normalizeUsername(req.body.username) : null;
   const hasRolesUpdate = Object.hasOwn(req.body, 'roles') || Object.hasOwn(req.body, 'role');
   const roles = hasRolesUpdate ? normalizeRoles(req.body.roles ?? req.body.role) : null;
+  if (hasUsernameUpdate && (username.length < 3 || username.length > 80 || !usernamePattern.test(username))) return res.status(400).json({ error: 'Usuário deve ter 3 a 80 caracteres, com letras, números, espaço, ponto, hífen ou sublinhado.' });
   if (hasRolesUpdate && !roles) return res.status(400).json({ error: 'Selecione uma ou duas funções válidas.' });
   if (password && !isStrongPassword(String(password))) return res.status(400).json({ error: 'A senha deve ter ao menos 12 caracteres, com letras e números.' });
   if ((hasRolesUpdate && !roles.includes('admin')) || active === false) {
@@ -406,9 +413,15 @@ app.patch('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res)
     const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE active=true AND roles @> ARRAY['admin']::varchar[]")).rows[0].total;
     if (target?.active && hasRole(target, 'admin') && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
   }
-  const result = await query('UPDATE users SET role=COALESCE($1,role), roles=COALESCE($2,roles), active=COALESCE($3,active), password_hash=COALESCE($4,password_hash), token_version=token_version + CASE WHEN $4 IS NULL AND $2 IS NULL THEN 0 ELSE 1 END WHERE id=$5 RETURNING id,username,role,roles,active,created_at', [roles?.[0] || null, roles, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, req.params.id]);
+  let result;
+  try {
+    result = await query('UPDATE users SET role=COALESCE($1,role), roles=COALESCE($2,roles), active=COALESCE($3,active), password_hash=COALESCE($4,password_hash), username=COALESCE($5,username), token_version=token_version + CASE WHEN $4 IS NULL AND $2 IS NULL THEN 0 ELSE 1 END WHERE id=$6 RETURNING id,username,role,roles,active,created_at', [roles?.[0] || null, roles, typeof active === 'boolean' ? active : null, password ? await bcrypt.hash(String(password), 12) : null, username, req.params.id]);
+  } catch (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
+    throw error;
+  }
   if (!result.rowCount) return res.status(404).json({ error: 'Usuário não encontrado.' });
-  await audit(req.user.sub, 'user.updated', 'user', req.params.id, { roles, active, passwordReset: !!password });
+  await audit(req.user.sub, 'user.updated', 'user', req.params.id, { username, roles, active, passwordReset: !!password });
   publishReferenceChange('users', 'updated');
   res.json({ user: publicUser(result.rows[0]) });
 }));
