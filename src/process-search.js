@@ -53,15 +53,45 @@ export const buildProcessSearchQuery = query => {
     || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100
     || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) throw invalidFilter();
 
-  const params = [status, term, clientId, clientName, launchedFrom, launchedTo, vgmStatus, releaseStatus, originPort, postShipmentStatus];
+  // Construa somente os predicados realmente solicitados. A versão anterior
+  // mantinha vários "OR parâmetro vazio" na mesma consulta; isso impedia o
+  // planejador de usar bem o índice de client_id e fazia o filtro de
+  // exportador examinar processos desnecessários.
+  const params = [];
+  const addParam = value => {
+    params.push(value);
+    return `$${params.length}`;
+  };
+  const conditions = [];
+  if (status) conditions.push(`p.status=${addParam(status)}`);
+  if (term) conditions.push(`${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||${addParam(term)}||'%' ESCAPE E'\\\\'`);
+  // O seletor da interface sempre possui o UUID do exportador. Filtrar
+  // diretamente por ele permite usar processes_client_created_at_idx. A
+  // comparação pelo nome continua apenas para consumidores legados da API que
+  // ainda não enviem o identificador.
+  if (clientId) conditions.push(`p.client_id=${addParam(clientId)}::uuid`);
+  else if (clientName) conditions.push(`LOWER(COALESCE(c.name,''))=LOWER(${addParam(clientName)})`);
+  if (launchedFrom) conditions.push(`p.created_at >= ${addParam(launchedFrom)}::date`);
+  if (launchedTo) conditions.push(`p.created_at < (${addParam(launchedTo)}::date + INTERVAL '1 day')`);
+  if (vgmStatus) conditions.push(vgmStatus === 'sent'
+    ? "p.vgm_status IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')"
+    : "COALESCE(p.vgm_status,'') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')");
+  if (releaseStatus) conditions.push(releaseStatus === 'released'
+    ? "p.release_status='Sim'"
+    : "COALESCE(p.release_status,'Não')<>'Sim'");
+  if (originPort) conditions.push(`${normalizedSearchExpression('p.origin_port')}=${addParam(originPort)}`);
+  if (postShipmentStatus) conditions.push(postShipmentStatus === 'shipped'
+    ? 'p.post_shipment_date IS NOT NULL'
+    : 'p.post_shipment_date IS NULL');
   // Clientes classificados como Apenas DU-E têm um fluxo próprio. O recorte
   // é feito na consulta, e não somente na interface, para evitar que uma
   // atualização de tela volte a expô-los na planilha ou na área de VGM.
   const dueOnlyScope = view === 'braspine'
     ? ' AND COALESCE(c.due_only,false)=TRUE'
     : ['processes', 'vgm'].includes(view) ? ' AND COALESCE(c.due_only,false)=FALSE' : '';
-  const where = `WHERE ($1='' OR p.status=$1) AND ($2='' OR ${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||$2||'%' ESCAPE E'\\\\') AND ($3='' OR p.client_id=NULLIF($3,'')::uuid OR LOWER(COALESCE(c.name,''))=LOWER($4)) AND ($5='' OR p.created_at >= $5::date) AND ($6='' OR p.created_at < ($6::date + INTERVAL '1 day')) AND ($7='' OR ($7='sent' AND p.vgm_status IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT')) OR ($7='pending' AND COALESCE(p.vgm_status,'') NOT IN ('Sim','Enviado pelo Cliente','Enviando no DRAFT'))) AND ($8='' OR ($8='released' AND p.release_status='Sim') OR ($8='pending' AND COALESCE(p.release_status,'Não')<>'Sim')) AND ($9='' OR ${normalizedSearchExpression('p.origin_port')}=$9) AND ($10='' OR ($10='shipped' AND p.post_shipment_date IS NOT NULL) OR ($10='pending' AND p.post_shipment_date IS NULL))${dueOnlyScope}`;
-  const orderBy = {
+  if (dueOnlyScope) conditions.push(dueOnlyScope.replace(/^ AND /, ''));
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const defaultOrderBy = {
     processes:'c.name ASC,p.created_at DESC,p.id DESC',
     vgm:'p.vgm_sent_date DESC NULLS LAST,p.created_at DESC,p.id DESC',
     release:'p.origin_port ASC,p.release_deadline ASC NULLS LAST,p.created_at DESC,p.id DESC',
@@ -69,10 +99,19 @@ export const buildProcessSearchQuery = query => {
     postshipment:'p.post_shipment_date ASC NULLS FIRST,p.created_at DESC,p.id DESC',
     braspine:'c.name ASC,p.created_at DESC,p.id DESC'
   }[view];
+  // Uma vez que a consulta está restrita a um único exportador, ordenar pelo
+  // nome dele é redundante. Esta ordenação corresponde ao índice composto
+  // client_id/created_at e reduz o custo da primeira página e da contagem.
+  const orderBy = clientId && ['processes', 'braspine'].includes(view)
+    ? 'p.created_at DESC,p.id DESC'
+    : defaultOrderBy;
   const next = params.length + 1;
+  const countRelations = ['todos', 'analista'].includes(field)
+    ? 'FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id'
+    : 'FROM processes p LEFT JOIN clients c ON c.id=p.client_id';
   return {
     itemsSql:`${processProjection(projection)} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`,
-    countSql:`SELECT COUNT(*)::int AS total FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id ${where}`,
+    countSql:`SELECT COUNT(*)::int AS total ${countRelations} ${where}`,
     params,
     pageParams:[...params, limit, offset],
     limit,

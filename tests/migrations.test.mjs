@@ -27,9 +27,9 @@ const fakePool = ({ recorded = [], failMigration = false } = {}) => {
 test('migrações versionadas possuem ordem determinística e checksum SHA-256', async () => {
   const migrations = await loadMigrations(directory);
   assert.ok(migrations.length >= 1);
-  assert.equal(migrations.length, 13);
+  assert.equal(migrations.length, 14);
   assert.equal(migrations[0].version, '2026-07-25-001');
-  assert.equal(migrations.at(-1).version, '2026-09-14-003');
+  assert.equal(migrations.at(-1).version, '2026-09-15-001');
   assert.deepEqual(migrations.map(item => item.version), [...migrations.map(item => item.version)].sort());
   for (const migration of migrations) {
     assert.match(migration.version, /^\d{4}-\d{2}-\d{2}-\d{3}$/);

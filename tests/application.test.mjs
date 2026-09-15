@@ -52,6 +52,7 @@ test('coleta, free time e novo lacre MAPA são opcionais no lançamento', async 
   const server = await read('src/server.js');
   const index = await read('public/index.html');
   const runtime = await read('public/assets/app-runtime.js');
+  const legacy = await read('public/assets/legacy-ui.js');
   assert.match(index, /name="coleta" placeholder="dd\/mm" inputmode="numeric">/);
   assert.match(index, /name="terminal">/);
   assert.match(index, /name="freetime" type="number" min="0">/);
@@ -59,6 +60,8 @@ test('coleta, free time e novo lacre MAPA são opcionais no lançamento', async 
   assert.match(server, /collectionTerminal: cleanText\(raw\.collectionTerminal, 160, 'Terminal da coleta'\)/);
   assert.match(server, /freeTimeDays: cleanNonNegative\(raw\.freeTimeDays, 3650, 'Free time', \{ integer: true \}\)/);
   assert.match(server, /new_seal: mapaInspection \? upperText\(cleanText\(item\.new_seal, 80, 'Novo lacre'\)\) : null/);
+  assert.match(index, /<input name="lacreNovo" type="hidden">/);
+  assert.match(legacy, /form\.elements\.lacreNovo\.value/);
   assert.match(runtime, /makeMapaSealOptional/);
 });
 
@@ -620,8 +623,8 @@ test('processos permitem filtrar pelo período em que foram lançados', async ()
   const css = await read('public/assets/gport.css');
   assert.match(search, /const launchedFrom = String\(query\.launchedFrom \|\| ''\)\.trim\(\)/);
   assert.match(search, /const launchedTo = String\(query\.launchedTo \|\| ''\)\.trim\(\)/);
-  assert.match(search, /p\.created_at >= \$5::date/);
-  assert.match(search, /p\.created_at < \(\$6::date \+ INTERVAL '1 day'\)/);
+  assert.match(search, /p\.created_at >= \$\{addParam\(launchedFrom\)\}::date/);
+  assert.match(search, /p\.created_at < \(\$\{addParam\(launchedTo\)\}::date \+ INTERVAL '1 day'\)/);
   assert.match(html, /id="processLaunchedFrom" type="date"/);
   assert.match(html, /id="processLaunchedTo" type="date"/);
   assert.match(html, /searchParams\.set\('launchedFrom', requestedFilter\.launchedFrom\)/);
@@ -766,7 +769,8 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   const css = await read('public/assets/gport.css');
   assert.match(search, /const clientId = String\(query\.client \|\| ''\)\.trim\(\)/);
   assert.match(search, /const clientName = String\(query\.clientName \|\| ''\)\.trim\(\)/);
-  assert.match(search, /LOWER\(COALESCE\(c\.name,''\)\)=LOWER\(\$4\)/);
+  assert.match(search, /p\.client_id=\$\{addParam\(clientId\)\}::uuid/);
+  assert.match(search, /else if \(clientName\) conditions\.push/);
   assert.match(search, /processes:'c\.name ASC,p\.created_at DESC,p\.id DESC'/);
   assert.match(html, /processClientFilter='all'/);
   assert.match(html, /processClientFilters/);
@@ -775,7 +779,7 @@ test('processos podem ser filtrados por cliente e ordenados por cliente e lança
   assert.match(html, /clientControls\.open=false/);
   assert.match(html, /data-process-client/);
   assert.match(html, /searchParams\.set\('client', processClientFilter\)/);
-  assert.match(html, /searchParams\.set\('clientName', selectedClient\.nome\)/);
+  assert.doesNotMatch(html, /searchParams\.set\('clientName'/);
   assert.match(html, /function matchesClientFilter\(process\)/);
   assert.match(html, /if \(clientResult\.status === 'fulfilled'\) render\(\)/);
   assert.match(html, /class="client-group"/);
@@ -800,7 +804,8 @@ test('pesquisas atualizam automaticamente sem exigir clique no botão Filtrar', 
   assert.match(html, /if \(refreshVersion !== processRefreshVersion\) return false/);
   assert.match(html, /const requestedFilter = serverProcessFilter \? \{ \.\.\.serverProcessFilter \} : null/);
   assert.match(html, /summary\.textContent = 'Buscando processos…'/);
-  assert.match(html, /setTimeout\(\(\) => \{ void applyServerProcessSearch\(\); \}, 250\)/);
+  assert.match(html, /value\.length < 2/);
+  assert.match(html, /setTimeout\(\(\) => \{ void applyServerProcessSearch\(\); \}, 500\)/);
 });
 
 test('busca operacional é normalizada, paginada no servidor e cancela consultas antigas', async () => {

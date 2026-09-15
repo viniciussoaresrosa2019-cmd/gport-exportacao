@@ -1154,9 +1154,7 @@
           if (requestedFilter.launchedTo) searchParams.set('launchedTo', requestedFilter.launchedTo);
         }
         if (processClientFilter !== 'all') {
-          const selectedClient = clients.find(client => client.id === processClientFilter);
           searchParams.set('client', processClientFilter);
-          if (selectedClient?.nome) searchParams.set('clientName', selectedClient.nome);
         }
         const needsReferenceData = refreshReferenceData || Date.now() >= referenceDataCache.expiresAt;
         const processRequest = request(`/api/processes?${searchParams}`, { signal:controller.signal });
@@ -1361,7 +1359,16 @@
         catch (error) { toast.error(error.message); }
         finally { if (`${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` === filterKey) summary.removeAttribute('aria-busy'); }
       };
-      const scheduleServerProcessSearch = () => { clearTimeout(processSearchTimer); processSearchTimer = setTimeout(() => { void applyServerProcessSearch(); }, 250); };
+      const scheduleServerProcessSearch = () => {
+        clearTimeout(processSearchTimer);
+        const value = el('search').value.trim();
+        const hasPeriod = !!(el('processLaunchedFrom').value || el('processLaunchedTo').value);
+        // Para texto livre, aguarde ao menos dois caracteres. Assim o banco não
+        // recebe uma busca pesada para cada tecla e a busca explícita continua
+        // disponível pelo botão ou Enter, inclusive para um único caractere.
+        if (value && value.length < 2 && !hasPeriod) return;
+        processSearchTimer = setTimeout(() => { void applyServerProcessSearch(); }, 500);
+      };
       el('filterBtn').onclick = () => { clearTimeout(processSearchTimer); return applyServerProcessSearch({ showValidation:true }); };
       el('search').oninput = scheduleServerProcessSearch;
       el('searchField').onchange = scheduleServerProcessSearch;
