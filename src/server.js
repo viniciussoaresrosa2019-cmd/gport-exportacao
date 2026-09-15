@@ -585,7 +585,7 @@ const validatedProcess = (raw, { rucManual = false, dueOnly = false } = {}) => {
   if (!dueOnly && typeof raw.isfLacey !== 'boolean') throw Object.assign(new Error('ISF/LACEY é obrigatório.'), { status: 400 });
   const mapaInspection = dueOnly ? false : raw.mapaInspection;
   const isfLacey = dueOnly ? false : raw.isfLacey;
-  const containerQuantity = shipmentType === 'LCL' ? null : cleanNonNegative(raw.containerQuantity, 100, 'Quantidade de contêineres', { integer: true, required: true });
+  const containerQuantity = shipmentType === 'LCL' ? null : cleanNonNegative(raw.containerQuantity, 20, 'Quantidade de contêineres', { integer: true, required: true });
   const incoterm = dueOnly ? '' : cleanText(raw.incoterm, 10, 'Incoterm', { required: true }).toUpperCase();
   const currency = dueOnly ? 'USD' : cleanText(raw.currency, 3, 'Moeda', { required: true }).toUpperCase();
   if (!dueOnly && !validIncoterms.has(incoterm)) throw Object.assign(new Error('Incoterm inválido.'), { status: 400 });
