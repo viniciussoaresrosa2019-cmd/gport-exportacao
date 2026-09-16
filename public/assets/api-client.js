@@ -11,15 +11,23 @@
 
   const create = ({ isAuthenticated = () => false, onUnauthorized = () => {} } = {}) => async (url, options = {}) => {
     const method = String(options.method || 'GET').toUpperCase();
-    const response = await fetch(url, {
-      ...options,
-      credentials: 'same-origin',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(mutationMethods.has(method) ? { 'X-CSRF-Token': csrfToken() } : {}),
-        ...(options.headers || {})
-      }
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(mutationMethods.has(method) ? { 'X-CSRF-Token': csrfToken() } : {}),
+          ...(options.headers || {})
+        }
+      });
+    } catch (cause) {
+      const error = new Error('Não foi possível comunicar com o sistema. Verifique a conexão e tente novamente.');
+      error.status = 0;
+      error.cause = cause;
+      throw error;
+    }
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(body.error || 'Não foi possível concluir a operação.');

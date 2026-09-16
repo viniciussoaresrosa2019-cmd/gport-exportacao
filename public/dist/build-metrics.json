@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-15T10:39:18.367Z",
+  "generatedAt": "2026-09-16T15:55:54.996Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 382436,
-    "gzipBytes": 102826,
+    "bytes": 385708,
+    "gzipBytes": 103955,
     "files": [
       {
         "file": "accessibility.js",
@@ -13,13 +13,13 @@
       },
       {
         "file": "api-client.js",
-        "bytes": 1205,
-        "gzipBytes": 655
+        "bytes": 1461,
+        "gzipBytes": 737
       },
       {
         "file": "app-runtime.js",
-        "bytes": 185938,
-        "gzipBytes": 47019
+        "bytes": 187850,
+        "gzipBytes": 47563
       },
       {
         "file": "braspine-ui.js",
@@ -93,19 +93,19 @@
       },
       {
         "file": "toasts.css",
-        "bytes": 3956,
-        "gzipBytes": 1356
+        "bytes": 4206,
+        "gzipBytes": 1472
       },
       {
         "file": "ui-feedback.js",
-        "bytes": 4339,
-        "gzipBytes": 1614
+        "bytes": 5193,
+        "gzipBytes": 2001
       }
     ]
   },
   "output": {
-    "bytes": 282194,
-    "gzipBytes": 83187,
+    "bytes": 283769,
+    "gzipBytes": 83830,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -113,14 +113,14 @@
         "gzipBytes": 1320
       },
       {
-        "file": "api-client-E0F4F564C144.js",
-        "bytes": 687,
-        "gzipBytes": 501
+        "file": "api-client-FDE25910CD77.js",
+        "bytes": 846,
+        "gzipBytes": 573
       },
       {
-        "file": "app-runtime-0C7F406405D9.js",
-        "bytes": 113893,
-        "gzipBytes": 34481
+        "file": "app-runtime-A59276D41F18.js",
+        "bytes": 114913,
+        "gzipBytes": 34879
       },
       {
         "file": "braspine-ui-411C18D04427.js",
@@ -193,22 +193,22 @@
         "gzipBytes": 4387
       },
       {
-        "file": "toasts-3FBF6625D80A.css",
-        "bytes": 3489,
-        "gzipBytes": 1151
+        "file": "toasts-78A60C41451D.css",
+        "bytes": 3589,
+        "gzipBytes": 1176
       },
       {
-        "file": "ui-feedback-F1E89DFD883C.js",
-        "bytes": 2792,
-        "gzipBytes": 1268
+        "file": "ui-feedback-752EBDC2B7E3.js",
+        "bytes": 3088,
+        "gzipBytes": 1416
       }
     ]
   },
   "initial": {
-    "sourceBytes": 367088,
-    "sourceGzipBytes": 97785,
-    "outputBytes": 270833,
-    "outputGzipBytes": 78800,
+    "sourceBytes": 370360,
+    "sourceGzipBytes": 98914,
+    "outputBytes": 272408,
+    "outputGzipBytes": 79443,
     "deferred": [
       "reports.js"
     ]

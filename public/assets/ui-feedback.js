@@ -4,7 +4,7 @@
   const region = document.getElementById('toastRegion');
   const safeMessage = (message, fallback = 'Não foi possível concluir a ação. Tente novamente.') => {
     const text = String(message || '').trim();
-    if (!text || /(sql|postgres|database|stack|trace|token|password|senha|\bat\s+\w+\s*\()/i.test(text)) return fallback;
+    if (!text || /(sql|postgres|database|stack|trace|token|password|senha|\bat\s+\w+\s*\(|cannot\s+(?:read|set)\s+propert(?:y|ies)|\bundefined\b|\bnull\b|failed\s+to\s+fetch|networkerror|typeerror|referenceerror|syntaxerror)/i.test(text)) return fallback;
     return text.slice(0, 240);
   };
 
@@ -13,6 +13,22 @@
     error: { icon: '!', duration: 10000, title: 'Não foi possível concluir a ação', durationClass: 'toast--duration-long' },
     warning: { icon: '!', duration: 5000, title: 'Atenção', durationClass: 'toast--duration-medium' },
     info: { icon: 'i', duration: 4000, title: 'Informação', durationClass: 'toast--duration-short' }
+  };
+
+  // Diálogos nativos entram na "top layer" do navegador e ignoram qualquer
+  // z-index comum. Ao promover a região também para essa camada no momento em
+  // que a notificação é criada, a mensagem continua visível mesmo sobre modais
+  // de lançamento, prévia e confirmação.
+  const bringToastRegionToFront = () => {
+    if (!region || typeof region.showPopover !== 'function') return;
+    try {
+      region.setAttribute('popover', 'manual');
+      if (region.matches(':popover-open')) region.hidePopover();
+      region.showPopover();
+    } catch {
+      // Navegadores sem suporte completo a Popover continuam usando o z-index
+      // elevado definido no CSS.
+    }
   };
 
   const createToast = (type, message, options = {}) => {
@@ -32,6 +48,7 @@
     };
     item.querySelector('.toast__close').addEventListener('click', dismiss);
     region.append(item);
+    bringToastRegionToFront();
     const timeout = options.duration === undefined ? definition.duration : options.duration;
     if (timeout > 0) window.setTimeout(dismiss, timeout);
     else item.querySelector('.toast__progress').hidden = true;

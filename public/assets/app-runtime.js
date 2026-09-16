@@ -1546,25 +1546,50 @@
       // (novo) e PATCH (edição). O campo hidden é mantido apenas para a tela.
       const processIdFromForm = () => String(editingProcessId || '').trim();
       const showProcessSaveState = text => { const button = form.querySelector('button[type="submit"]'); if (button) button.textContent = text; };
+      const processFieldLabel = input => {
+        const linked = input.id ? [...form.querySelectorAll('label[for]')].find(label => label.htmlFor === input.id) : null;
+        const local = input.closest('.field')?.querySelector('label');
+        return String((linked || local)?.textContent || input.name || 'campo').replace(/\s*\*\s*$/, '').trim();
+      };
+      const processValidationMessage = input => {
+        const label = processFieldLabel(input);
+        if (input.validity.valueMissing) return `Informe o campo obrigatório “${label}”.`;
+        if (input.validity.typeMismatch) return `Informe “${label}” no formato solicitado.`;
+        if (input.validity.patternMismatch) return `Revise “${label}”: use o formato solicitado.`;
+        if (input.validity.rangeUnderflow || input.validity.rangeOverflow) return `Revise o valor informado em “${label}”.`;
+        return input.validationMessage ? `Revise “${label}”: ${input.validationMessage}` : `Revise o campo “${label}”.`;
+      };
+      const processSaveFailureMessage = (error, isNewProcess) => {
+        const action = isNewProcess ? 'lançar' : 'salvar as alterações do';
+        const reason = safeToastMessage(error?.message, '');
+        return reason ? `Não foi possível ${action} processo. Motivo: ${reason}` : `Não foi possível ${action} processo. Tente novamente.`;
+      };
       const persistProcessForm = async ({ closeAfter = false, quiet = false } = {}) => {
         if (processSaveBusy) { processSavePending = true; return false; }
         if (processIdFromForm() && !processFormHasPersistedDetails) {
           if (!quiet) toast.error('Os detalhes completos do processo não foram carregados. Feche e abra o processo novamente.');
           return false;
         }
-        syncContainerDetails();
+        try {
+          syncContainerDetails();
+        } catch (error) {
+          if (!quiet) toast.error(processSaveFailureMessage(error, !processIdFromForm()));
+          return false;
+        }
         // Reforço no navegador: a API repete esta validação para impedir qualquer
         // salvamento por requisição manual ou navegador antigo.
         const requiredFields = [...form.querySelectorAll('[required]:not(:disabled)')];
         const invalidPlaceholder = requiredFields.find(input => /^[.*]+$/.test(String(input.value || '').trim()));
         if (invalidPlaceholder) {
           invalidPlaceholder.setCustomValidity('Preencha este campo com uma informação válida.');
-          if (!quiet) { invalidPlaceholder.reportValidity(); toast.warning('Revise os campos obrigatórios.'); }
+          if (!quiet) { invalidPlaceholder.reportValidity(); toast.error(processValidationMessage(invalidPlaceholder)); }
           return false;
         }
         requiredFields.forEach(input => input.setCustomValidity(''));
         if (!form.checkValidity()) {
-          if (!quiet) { form.reportValidity(); toast.warning('Revise os campos obrigatórios.'); }
+          const invalidField = [...form.elements].find(input => input instanceof HTMLElement && !input.disabled && input.willValidate && !input.validity.valid);
+          if (!quiet && invalidField) { invalidField.reportValidity(); toast.error(processValidationMessage(invalidField)); }
+          else if (!quiet) toast.error(`Não foi possível ${processIdFromForm() ? 'salvar as alterações do' : 'lançar'} processo. Motivo: revise os campos obrigatórios.`);
           return false;
         }
         const values = Object.fromEntries(new FormData(form));
@@ -1621,7 +1646,7 @@
           return true;
         } catch (error) {
           showProcessSaveState(originalLabel);
-          if (!quiet) toast.error(error.message || 'Não foi possível salvar o processo.');
+          if (!quiet) toast.error(processSaveFailureMessage(error, isNewProcess));
           return false;
         } finally {
           processSaveBusy = false;

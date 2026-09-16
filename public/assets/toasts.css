@@ -1,7 +1,10 @@
 /* Notificações: seguem os cards, modais e cores semânticas do GPORT. */
 #toastRegion{
   position:fixed;
-  z-index:9999;
+  z-index:2147483647;
+  inset:auto;
+  margin:0;
+  border:0;
   top:22px;
   right:24px;
   width:min(360px,calc(100vw - 32px));
@@ -9,6 +12,10 @@
   gap:10px;
   pointer-events:none;
 }
+
+/* Em navegadores que suportam Popover, a região é promovida à top layer pelo
+   JavaScript quando uma notificação é criada. */
+#toastRegion:popover-open{position:fixed;inset:auto;margin:0;border:0}
 
 #toastRegion .toast{
   --toast-accent:#246bce;
