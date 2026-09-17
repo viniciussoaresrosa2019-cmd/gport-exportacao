@@ -14,7 +14,7 @@
 }
 
 /* Popovers entram na top layer sem criar uma segunda caixa ou um backdrop. */
-#toastRegion:popover-open{position:fixed;inset:auto;top:22px;right:24px;margin:0;border:0}
+#toastRegion:popover-open{position:fixed;inset:auto;top:22px;right:24px;width:min(360px,calc(100vw - 32px));margin:0;padding:0;border:0;outline:0;overflow:visible;background:transparent;box-shadow:none}
 
 #toastRegion .toast{
   --toast-accent:#246bce;
@@ -117,7 +117,7 @@ body.theme-dark #toastRegion .toast__close:hover{background:#314154}
 
 @media(max-width:640px){
   #toastRegion{top:12px;right:12px;width:calc(100vw - 24px);gap:8px}
-  #toastRegion:popover-open{top:12px;right:12px}
+  #toastRegion:popover-open{top:12px;right:12px;width:calc(100vw - 24px)}
   #toastRegion .toast{grid-template-columns:27px minmax(0,1fr) 21px;gap:10px;padding:12px 11px 13px 13px}
   #toastRegion .toast__icon{width:27px;height:27px}
 }
