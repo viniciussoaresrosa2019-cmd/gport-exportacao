@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-16T15:55:54.996Z",
+  "generatedAt": "2026-09-17T02:13:09.274Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 385708,
-    "gzipBytes": 103955,
+    "bytes": 384793,
+    "gzipBytes": 103562,
     "files": [
       {
         "file": "accessibility.js",
@@ -93,19 +93,19 @@
       },
       {
         "file": "toasts.css",
-        "bytes": 4206,
-        "gzipBytes": 1472
+        "bytes": 4011,
+        "gzipBytes": 1385
       },
       {
         "file": "ui-feedback.js",
-        "bytes": 5193,
-        "gzipBytes": 2001
+        "bytes": 4473,
+        "gzipBytes": 1695
       }
     ]
   },
   "output": {
-    "bytes": 283769,
-    "gzipBytes": 83830,
+    "bytes": 283548,
+    "gzipBytes": 83758,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -193,22 +193,22 @@
         "gzipBytes": 4387
       },
       {
-        "file": "toasts-78A60C41451D.css",
-        "bytes": 3589,
-        "gzipBytes": 1176
+        "file": "toasts-8067413D0AF7.css",
+        "bytes": 3530,
+        "gzipBytes": 1173
       },
       {
-        "file": "ui-feedback-752EBDC2B7E3.js",
-        "bytes": 3088,
-        "gzipBytes": 1416
+        "file": "ui-feedback-7B876FA6F6D1.js",
+        "bytes": 2926,
+        "gzipBytes": 1347
       }
     ]
   },
   "initial": {
-    "sourceBytes": 370360,
-    "sourceGzipBytes": 98914,
-    "outputBytes": 272408,
-    "outputGzipBytes": 79443,
+    "sourceBytes": 369445,
+    "sourceGzipBytes": 98521,
+    "outputBytes": 272187,
+    "outputGzipBytes": 79371,
     "deferred": [
       "reports.js"
     ]

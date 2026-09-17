@@ -15,22 +15,6 @@
     info: { icon: 'i', duration: 4000, title: 'Informação', durationClass: 'toast--duration-short' }
   };
 
-  // Diálogos nativos entram na "top layer" do navegador e ignoram qualquer
-  // z-index comum. Ao promover a região também para essa camada no momento em
-  // que a notificação é criada, a mensagem continua visível mesmo sobre modais
-  // de lançamento, prévia e confirmação.
-  const bringToastRegionToFront = () => {
-    if (!region || typeof region.showPopover !== 'function') return;
-    try {
-      region.setAttribute('popover', 'manual');
-      if (region.matches(':popover-open')) region.hidePopover();
-      region.showPopover();
-    } catch {
-      // Navegadores sem suporte completo a Popover continuam usando o z-index
-      // elevado definido no CSS.
-    }
-  };
-
   const createToast = (type, message, options = {}) => {
     if (!region) return;
     const definition = definitions[type] || definitions.info;
@@ -48,7 +32,6 @@
     };
     item.querySelector('.toast__close').addEventListener('click', dismiss);
     region.append(item);
-    bringToastRegionToFront();
     const timeout = options.duration === undefined ? definition.duration : options.duration;
     if (timeout > 0) window.setTimeout(dismiss, timeout);
     else item.querySelector('.toast__progress').hidden = true;
