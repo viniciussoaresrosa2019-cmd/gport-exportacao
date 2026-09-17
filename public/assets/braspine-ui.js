@@ -17,7 +17,7 @@
     const section = document.createElement('section');
     section.id = 'braspinePage';
     section.hidden = true;
-    section.innerHTML = `<div class="top"><div><p class="eyebrow">Processos Apenas DU-E</p><h1>Braspine</h1></div><button class="btn secondary" id="closeBraspineBtn" type="button">← Processos</button></div><p class="intro">Processos de exportadores classificados como Apenas DU-E.</p><div id="braspineList" class="panel scrollable-panel"></div>`;
+    section.innerHTML = `<div class="top"><div><p class="eyebrow">Processos Apenas DU-E</p><h1>Braspine</h1></div><div class="action-cluster"><button class="btn" id="newBraspineBtn" type="button">+ Novo processo</button><button class="btn secondary" id="closeBraspineBtn" type="button">← Processos</button></div></div><p class="intro">Processos de exportadores classificados como Apenas DU-E.</p><div id="braspineList" class="panel scrollable-panel"></div>`;
     main.insertBefore(section, processes?.nextSibling || null);
   }
 })();

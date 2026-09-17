@@ -453,7 +453,7 @@
         el('braspineList').innerHTML = processes.length
           ? `<div class="braspine-board" role="list" aria-label="Processos Apenas DU-E">${processes.map(p => {
               const booking = esc(p.booking || '—');
-              return `<article class="braspine-card" role="listitem"><div class="braspine-card__process"><span>BOOKING</span><strong>${booking}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="braspine-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="braspine-card__route"><span>ROTA</span><strong>${esc(p.origem || '—')} <b>→</b> ${esc(p.destino || '—')}</strong><small>${esc(p.navio || 'Navio não informado')}</small></div><div class="braspine-card__documents"><span>DOCUMENTOS</span><strong>DU-E ${esc(p.due || '—')}</strong><small>RUC ${esc(p.ruc || '—')}</small></div><div class="braspine-card__actions"><button class="btn secondary" type="button" data-braspine-open="${esc(p.id)}" aria-label="Abrir processo do booking ${booking}">Abrir processo</button></div></article>`;
+              return `<article class="braspine-card braspine-card--clickable" role="button" tabindex="0" data-braspine-process="${esc(p.id)}" aria-label="Abrir processo do booking ${booking} para editar"><div class="braspine-card__process"><span>BOOKING</span><strong>${booking}</strong><small>${esc(p.fatura || 'Sem fatura')}</small></div><div class="braspine-card__party"><span>EXPORTADOR</span><strong>${esc(p.exportador || '—')}</strong><small>${esc(p.importador || 'Importador não informado')}</small></div><div class="braspine-card__route"><span>ROTA</span><strong>${esc(p.origem || '—')} <b>→</b> ${esc(p.destino || '—')}</strong><small>${esc(p.navio || 'Navio não informado')}</small></div><div class="braspine-card__documents"><span>DOCUMENTOS</span><strong>DU-E ${esc(p.due || '—')}</strong><small>RUC ${esc(p.ruc || '—')}</small></div><div class="braspine-card__actions"><button class="btn secondary" type="button" data-braspine-cover="${esc(p.id)}" aria-label="Ver capa do processo ${booking}">Ver capa</button></div></article>`;
             }).join('')}</div>`
           : `<div class="empty">${sectionSearchStates.braspine.loading ? 'Buscando processos…' : 'Nenhum processo Apenas DU-E encontrado.'}</div>`;
         renderSectionPagination('braspine', el('braspineList'));
@@ -798,6 +798,33 @@
         form.dispatchEvent(new Event('gport:review-update'));
         form.dispatchEvent(new CustomEvent('gport:process-form-opened', { detail:{ mode:'edit' } }));
       };
+      const dueOnlyClients = () => clients.filter(client => client.active !== false && client.dueOnly === true).sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity:'base' }));
+      const restrictProcessClientsToDueOnly = () => {
+        const select = form.elements.exportador;
+        const selected = select.value;
+        const eligibleClients = dueOnlyClients();
+        select.innerHTML = '<option value="">Selecione um exportador</option>' + eligibleClients.map(client => `<option value="${esc(client.id)}">${esc(client.nome)}${client.cnpj ? ` — ${esc(formatCnpj(client.cnpj))}` : ''}</option>`).join('');
+        if (eligibleClients.some(client => client.id === selected)) select.value = selected;
+        syncSelectedClientCnpj();
+        syncDueOnlyLaunchFields();
+        return eligibleClients.length;
+      };
+      const openBraspineProcess = async process => {
+        if (!process && !dueOnlyClients().length) {
+          await refreshData({ refreshReferenceData:true });
+        }
+        if (!process && !dueOnlyClients().length) {
+          toast.warning('Cadastre um exportador marcado como Apenas DU-E antes de criar o processo.');
+          return;
+        }
+        open(process || null);
+        form.dataset.launchScope = 'braspine';
+        restrictProcessClientsToDueOnly();
+        if (!process) {
+          el('formTitle').textContent = 'Novo processo Apenas DU-E';
+          form.elements.exportador.focus();
+        }
+      };
       // A listagem usa uma projeção enxuta. Edição e capa buscam o contrato
       // completo somente quando o usuário executa a ação correspondente.
       const loadPersistedProcess = async id => {
@@ -973,6 +1000,10 @@
       el('calendarBtn').onclick = openCalendar;
       el('closeCalendarBtn').onclick = () => el('calendarDialog').close();
       dialog.addEventListener('close', () => {
+        if (form.dataset.launchScope === 'braspine') {
+          delete form.dataset.launchScope;
+          renderClientOptions();
+        }
         if (!returnToCalendarAfterProcess) return;
         returnToCalendarAfterProcess = false;
         window.setTimeout(() => openCalendar({ returning:true }), 0);
@@ -1617,8 +1648,11 @@
           const previous = data.find(item => item.id === processId) || {};
           const assignee = availableAssignees.find(person => person.id === payload.analystId);
           const view = { ...toViewProcess({ ...saved, exporter:client?.nome || previous.exportador || '', analyst:assignee?.username || previous.analista || currentUser?.username || '' }), updatedAt:saved.updated_at || '' };
-          data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data].slice(0, Math.max(data.length, processPagination.limit));
-          if (isNewProcess) processPagination.total += 1;
+          const isDueOnlyProcess = client?.dueOnly === true;
+          if (!isDueOnlyProcess) {
+            data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data].slice(0, Math.max(data.length, processPagination.limit));
+            if (isNewProcess) processPagination.total += 1;
+          }
           // Mantém o mesmo identificador após o primeiro lançamento. A partir
           // daqui qualquer novo ajuste é obrigatoriamente uma atualização.
           form.elements.id.value = view.id;
@@ -1641,6 +1675,7 @@
           }
           if (closeAfter) {
             dialog.close(); render(); editingProcessId = null;
+            if (isDueOnlyProcess) void refreshSectionData('braspine', { page:sectionSearchStates.braspine.pagination.page || 1 });
             toast.success(isNewProcess ? 'Processo criado com sucesso.' : 'Processo atualizado com sucesso.');
           }
           else { showProcessSaveState('Salvo automaticamente'); window.setTimeout(() => { if (!processSaveBusy) showProcessSaveState('Salvar processo'); }, 1000); }
@@ -1783,19 +1818,33 @@
         catch (error) { toast.error(error.message); }
         finally { button.disabled = false; }
       };
-      el('braspineList').onclick = async event => {
-        const button = event.target.closest('[data-braspine-open]');
-        if (!button) return;
+      const openBraspineCard = async (id, coverButton) => {
         try {
-          button.disabled = true;
-          const process = await loadPersistedProcess(button.dataset.braspineOpen);
-          showProcessesPage();
-          open(process);
+          if (coverButton) coverButton.disabled = true;
+          const process = await loadPersistedProcess(id);
+          if (coverButton) printCoverFromDocumentModel(process);
+          else await openBraspineProcess(process);
         } catch (error) {
           toast.error(error.message || 'Não foi possível carregar os detalhes do processo.');
         } finally {
-          if (button.isConnected) button.disabled = false;
+          if (coverButton?.isConnected) coverButton.disabled = false;
         }
+      };
+      el('braspineList').onclick = event => {
+        const coverButton = event.target.closest('[data-braspine-cover]');
+        const card = event.target.closest('[data-braspine-process]');
+        const id = coverButton?.dataset.braspineCover || card?.dataset.braspineProcess;
+        if (!id) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void openBraspineCard(id, coverButton);
+      };
+      el('braspineList').onkeydown = event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const card = event.target.closest('[data-braspine-process]');
+        if (!card || event.target.closest('button, input, select, textarea, a')) return;
+        event.preventDefault();
+        void openBraspineCard(card.dataset.braspineProcess);
       };
       el('financialNav').onclick = e => {
         e.preventDefault();
@@ -1834,6 +1883,7 @@
       el('closeReleaseBtn').onclick = showProcessesPage;
       el('closePostShipmentBtn').onclick = showProcessesPage;
       el('closeBraspineBtn').onclick = showProcessesPage;
+      el('newBraspineBtn').onclick = () => { void openBraspineProcess(null); };
       el('closeFollowupBtn').onclick = showProcessesPage;
       el('closeFinancialBtn').onclick = () => el('financialDialog').close();
       const passwordResetDialog = el('passwordResetDialog');

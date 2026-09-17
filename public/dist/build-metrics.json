@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-09-17T02:48:57.735Z",
+  "generatedAt": "2026-09-17T03:00:14.760Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 386187,
-    "gzipBytes": 104064,
+    "bytes": 389552,
+    "gzipBytes": 104753,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,13 +18,13 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 187947,
-        "gzipBytes": 47614
+        "bytes": 190816,
+        "gzipBytes": 48215
       },
       {
         "file": "braspine-ui.js",
-        "bytes": 1196,
-        "gzipBytes": 538
+        "bytes": 1308,
+        "gzipBytes": 569
       },
       {
         "file": "experience.css",
@@ -38,8 +38,8 @@
       },
       {
         "file": "gport.css",
-        "bytes": 61606,
-        "gzipBytes": 11918
+        "bytes": 61990,
+        "gzipBytes": 11975
       },
       {
         "file": "legacy-ui.js",
@@ -104,8 +104,8 @@
     ]
   },
   "output": {
-    "bytes": 284118,
-    "gzipBytes": 83905,
+    "bytes": 286140,
+    "gzipBytes": 84453,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -118,14 +118,14 @@
         "gzipBytes": 573
       },
       {
-        "file": "app-runtime-909A431B1CD3.js",
-        "bytes": 114919,
-        "gzipBytes": 34883
+        "file": "app-runtime-CCA479E3069C.js",
+        "bytes": 116454,
+        "gzipBytes": 35340
       },
       {
-        "file": "braspine-ui-411C18D04427.js",
-        "bytes": 888,
-        "gzipBytes": 436
+        "file": "braspine-ui-440026B469EC.js",
+        "bytes": 1000,
+        "gzipBytes": 468
       },
       {
         "file": "experience-139D2DA54374.css",
@@ -138,9 +138,9 @@
         "gzipBytes": 2831
       },
       {
-        "file": "gport-D67A1A6DC882.css",
-        "bytes": 60600,
-        "gzipBytes": 11380
+        "file": "gport-73D06E1698EC.css",
+        "bytes": 60975,
+        "gzipBytes": 11439
       },
       {
         "file": "legacy-ui-F80133F576B4.js",
@@ -205,10 +205,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 370839,
-    "sourceGzipBytes": 99023,
-    "outputBytes": 272757,
-    "outputGzipBytes": 79518,
+    "sourceBytes": 374204,
+    "sourceGzipBytes": 99712,
+    "outputBytes": 274779,
+    "outputGzipBytes": 80066,
     "deferred": [
       "reports.js"
     ]
