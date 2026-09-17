@@ -13,6 +13,9 @@
   pointer-events:none;
 }
 
+/* Popovers entram na top layer sem criar uma segunda caixa ou um backdrop. */
+#toastRegion:popover-open{position:fixed;inset:auto;margin:0;border:0}
+
 #toastRegion .toast{
   --toast-accent:#246bce;
   --toast-icon-bg:#eef4fb;

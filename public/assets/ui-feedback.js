@@ -15,6 +15,25 @@
     info: { icon: 'i', duration: 4000, title: 'Informação', durationClass: 'toast--duration-short' }
   };
 
+  // Um <dialog> modal usa a camada superior do navegador, onde nenhum z-index
+  // comum alcança. O Popover mantém o toast no mesmo canto, sem backdrop e sem
+  // alterar seu layout, mas o coloca nessa mesma camada acima do painel aberto.
+  const promoteToastRegion = () => {
+    if (!region || typeof region.showPopover !== 'function') return;
+    try {
+      region.setAttribute('popover', 'manual');
+      if (region.matches(':popover-open')) region.hidePopover();
+      region.showPopover();
+    } catch {
+      // Em navegadores antigos, o posicionamento fixo e o z-index do CSS
+      // continuam sendo usados como alternativa visual.
+    }
+  };
+  const hideToastRegionWhenEmpty = () => {
+    if (!region || region.childElementCount || typeof region.hidePopover !== 'function') return;
+    try { if (region.matches(':popover-open')) region.hidePopover(); } catch {}
+  };
+
   const createToast = (type, message, options = {}) => {
     if (!region) return;
     const definition = definitions[type] || definitions.info;
@@ -28,10 +47,11 @@
     const dismiss = () => {
       if (!item.isConnected) return;
       item.classList.add('is-leaving');
-      window.setTimeout(() => item.remove(), window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
+      window.setTimeout(() => { item.remove(); hideToastRegionWhenEmpty(); }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
     };
     item.querySelector('.toast__close').addEventListener('click', dismiss);
     region.append(item);
+    promoteToastRegion();
     const timeout = options.duration === undefined ? definition.duration : options.duration;
     if (timeout > 0) window.setTimeout(dismiss, timeout);
     else item.querySelector('.toast__progress').hidden = true;
