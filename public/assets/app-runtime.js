@@ -615,10 +615,11 @@
         el('clientForm').querySelector('input[name="rucManual"]').closest('label').insertAdjacentElement('afterend', label);
         return label.querySelector('input');
       })();
-      // Em lançamentos "Apenas DU-E", importador, RUC e tipo de contêiner
-      // continuam visíveis para que constem corretamente na capa do processo.
+      // Em lançamentos "Apenas DU-E", importador e tipo de contêiner continuam
+      // visíveis para que constem corretamente na capa do processo. RUC não é
+      // informado nesse fluxo e o campo só volta a aparecer em processos comuns.
       // O restante dos campos operacionais permanece simplificado.
-      const dueOnlyFieldNames = ['tipoEmbarque', 'armador', 'agencia', 'prazo', 'envio', 'coleta', 'terminal', 'freetime', 'incoterm', 'tipoBL', 'tipoFrete', 'vistoriaMapa', 'isfLacey', 'metragem', 'pesoLiquido', 'pesoBruto', 'volumes', 'valor', 'moeda'];
+      const dueOnlyFieldNames = ['ruc', 'tipoEmbarque', 'armador', 'agencia', 'prazo', 'envio', 'coleta', 'terminal', 'freetime', 'incoterm', 'tipoBL', 'tipoFrete', 'vistoriaMapa', 'isfLacey', 'metragem', 'pesoLiquido', 'pesoBruto', 'volumes', 'valor', 'moeda'];
       const syncDueOnlyLaunchFields = () => {
         const selected = clients.find(c => c.id === form.elements.exportador.value);
         const dueOnly = selected?.dueOnly === true;
