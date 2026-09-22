@@ -306,9 +306,10 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(toastCss, /#toastRegion \.toast\{[\s\S]*pointer-events:none/);
   assert.match(toastCss, /\.toast__close\{[\s\S]*pointer-events:auto/);
   assert.match(html, /toast__title/);
-  assert.match(html, /toast__progress/);
+  assert.doesNotMatch(html, /toast__progress/);
+  assert.doesNotMatch(html, /showPopover|:popover-open/);
   assert.match(toastCss, /body\.theme-dark #toastRegion \.toast/);
-  assert.match(toastCss, /gport-toast-progress/);
+  assert.doesNotMatch(toastCss, /gport-toast-progress/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
 });
