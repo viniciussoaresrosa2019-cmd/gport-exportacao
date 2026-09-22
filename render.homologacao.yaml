@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: gport-homologacao
+    runtime: node
+    repo: https://github.com/viniciussoaresrosa2019-cmd/gport-exportacao
+    branch: homologacao
+    plan: free
+    autoDeployTrigger: commit
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.18.0
+      - key: NODE_ENV
+        value: production
+      - key: DEPLOY_ENV
+        value: staging
+      # Obrigatorio: conectar SOMENTE ao banco separado de homologacao.
+      # Nunca copiar a DATABASE_URL do servico de producao.
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL_CA_BASE64
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DEADLINE_NOTIFICATIONS_ENABLED
+        value: "false"
