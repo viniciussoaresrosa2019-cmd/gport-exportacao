@@ -1167,7 +1167,22 @@ app.get('/api/reports/operational-monthly', authenticate, adminOnly, asyncRoute(
       SELECT
         COUNT(*) FILTER (WHERE p.created_at AT TIME ZONE 'America/Sao_Paulo' >= m.starts_at AND p.created_at AT TIME ZONE 'America/Sao_Paulo' < m.starts_at + INTERVAL '1 month')::int AS launched,
         COUNT(*) FILTER (WHERE p.release_date >= m.starts_at AND p.release_date < m.starts_at + INTERVAL '1 month')::int AS released,
-        COUNT(*) FILTER (WHERE p.post_shipment_date >= m.starts_at AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date)::int AS shipped
+        COUNT(*) FILTER (WHERE p.post_shipment_date >= m.starts_at AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date)::int AS shipped,
+        COALESCE(ARRAY_AGG(DISTINCT p.booking ORDER BY p.booking) FILTER (
+          WHERE p.created_at AT TIME ZONE 'America/Sao_Paulo' >= m.starts_at
+            AND p.created_at AT TIME ZONE 'America/Sao_Paulo' < m.starts_at + INTERVAL '1 month'
+            AND NULLIF(BTRIM(p.booking), '') IS NOT NULL
+        ), ARRAY[]::text[]) AS launched_bookings,
+        COALESCE(ARRAY_AGG(DISTINCT p.booking ORDER BY p.booking) FILTER (
+          WHERE p.release_date >= m.starts_at
+            AND p.release_date < m.starts_at + INTERVAL '1 month'
+            AND NULLIF(BTRIM(p.booking), '') IS NOT NULL
+        ), ARRAY[]::text[]) AS released_bookings,
+        COALESCE(ARRAY_AGG(DISTINCT p.booking ORDER BY p.booking) FILTER (
+          WHERE p.post_shipment_date >= m.starts_at
+            AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date
+            AND NULLIF(BTRIM(p.booking), '') IS NOT NULL
+        ), ARRAY[]::text[]) AS shipped_bookings
       FROM processes p CROSS JOIN selected_month m
       WHERE ($2::uuid IS NULL OR p.client_id=$2::uuid)
     `, [selectedMonth, clientId]),

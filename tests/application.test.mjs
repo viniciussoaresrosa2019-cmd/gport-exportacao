@@ -673,9 +673,15 @@ test('relatório mensal operacional gera PDF com filtro por exportador e compara
   assert.match(server, /p\.release_date >= m\.starts_at/);
   assert.match(server, /p\.post_shipment_date >= m\.starts_at/);
   assert.match(server, /p\.client_id=\$2::uuid/);
+  assert.match(server, /AS launched_bookings/);
+  assert.match(server, /AS released_bookings/);
+  assert.match(server, /AS shipped_bookings/);
   assert.match(reports, /button\.textContent = 'Relatórios'/);
   assert.match(reports, /\/api\/reports\/operational-monthly\?\$\{params\}/);
   assert.match(reports, /Comparação entre meses/);
+  assert.match(reports, /bookingList\(current\.launched_bookings\)/);
+  assert.match(reports, /bookingList\(current\.released_bookings\)/);
+  assert.match(reports, /bookingList\(current\.shipped_bookings\)/);
   assert.match(reports, /el\('pdfFrame'\)\.srcdoc/);
   assert.match(css, /monthly-operational-report-dialog/);
 });
