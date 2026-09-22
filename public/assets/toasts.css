@@ -102,10 +102,10 @@
 .toast--duration-medium{--toast-duration:5s}
 .toast--duration-long{--toast-duration:10s}
 #toastRegion .toast.is-leaving{animation:gport-toast-leave .15s ease-in both}
-#toastRegion .toast.is-leaving .toast__progress{animation:none}
+#toastRegion .toast.is-leaving .toast__progress{display:none;animation:none}
 
 @keyframes gport-toast-enter{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-@keyframes gport-toast-leave{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-5px)}}
+@keyframes gport-toast-leave{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-5px);visibility:hidden}}
 @keyframes gport-toast-progress{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 
 body.theme-dark #toastRegion .toast{background:#222a33;border-color:#3d4957;box-shadow:0 8px 22px #00000040}
