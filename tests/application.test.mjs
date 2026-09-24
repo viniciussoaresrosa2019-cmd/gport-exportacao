@@ -168,13 +168,14 @@ test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mí
   assert.match(server, /\{ rucManual = false, dueOnly = false \}/);
   assert.match(html, /Apenas DU-E/);
   assert.match(html, /syncDueOnlyLaunchFields/);
-  assert.match(html, /const dueOnlyFieldNames = \['tipoEmbarque'/);
+  assert.match(html, /const dueOnlyFieldNames = \['ruc'/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'importador'/);
-  assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'ruc'/);
+  assert.match(server, /rucNumber: cleanText\(raw\.rucNumber, 120, 'RUC', \{ required: !dueOnly \}\)/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'origem'[^\]]*\]/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'destino'[^\]]*\]/);
   assert.match(server, /originPort: cleanText\(raw\.originPort, 120, 'Porto de origem', \{ required: true \}\), destinationPort: cleanText\(raw\.destinationPort, 120, 'Porto de destino', \{ required: true \}\)/);
   assert.match(html, /containerType:dueOnly \? \(p\.tipoContainer \|\| 'NÃO INFORMADO'\)/);
+  assert.match(html, /const dueOnlyRuc = isDueOnly \? 'NÃO SE APLICA' : p\.ruc/);
   assert.match(migration, /ALTER COLUMN deadline DROP NOT NULL/);
 });
 

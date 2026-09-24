@@ -2014,7 +2014,7 @@
         const dueIssueIso = dateForDatabase(p.dueEmissao);
         const dueExpiry = (() => { if (!dueIssueIso) return ''; const date = new Date(`${dueIssueIso}T12:00:00`); date.setDate(date.getDate() + 14); return dateForField(date.toISOString().slice(0, 10)); })();
         const dueOnlyImporter = isDueOnly ? (p.importador || 'NÃO INFORMADO') : p.importador;
-        const dueOnlyRuc = isDueOnly ? (p.ruc || 'NÃO INFORMADO') : p.ruc;
+        const dueOnlyRuc = isDueOnly ? 'NÃO SE APLICA' : p.ruc;
         const dueOnlyContainer = isDueOnly ? (p.tipoContainer || 'NÃO INFORMADO') : containerSummary;
         const hasLongInvoice = String(p.fatura || '').trim().length > 18;
         const coverPort = `${String(p.origem || 'PORTO DE EMBARQUE').toUpperCase()}${hasMapa ? ' / COM MAPA' : ''}`;
