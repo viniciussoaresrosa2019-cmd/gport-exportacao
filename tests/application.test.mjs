@@ -168,13 +168,14 @@ test('exportador Apenas DU-E restringe o lançamento ao conjunto operacional mí
   assert.match(server, /\{ rucManual = false, dueOnly = false \}/);
   assert.match(html, /Apenas DU-E/);
   assert.match(html, /syncDueOnlyLaunchFields/);
-  assert.match(html, /const dueOnlyFieldNames = \['tipoEmbarque'/);
+  assert.match(html, /const dueOnlyFieldNames = \['ruc'/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'importador'/);
-  assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'ruc'/);
+  assert.match(server, /rucNumber: cleanText\(raw\.rucNumber, 120, 'RUC', \{ required: !dueOnly \}\)/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'origem'[^\]]*\]/);
   assert.doesNotMatch(html, /const dueOnlyFieldNames = \[[^\]]*'destino'[^\]]*\]/);
   assert.match(server, /originPort: cleanText\(raw\.originPort, 120, 'Porto de origem', \{ required: true \}\), destinationPort: cleanText\(raw\.destinationPort, 120, 'Porto de destino', \{ required: true \}\)/);
   assert.match(html, /containerType:dueOnly \? \(p\.tipoContainer \|\| 'NÃO INFORMADO'\)/);
+  assert.match(html, /const dueOnlyRuc = isDueOnly \? 'NÃO SE APLICA' : p\.ruc/);
   assert.match(migration, /ALTER COLUMN deadline DROP NOT NULL/);
 });
 
@@ -306,9 +307,10 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.match(toastCss, /#toastRegion \.toast\{[\s\S]*pointer-events:none/);
   assert.match(toastCss, /\.toast__close\{[\s\S]*pointer-events:auto/);
   assert.match(html, /toast__title/);
-  assert.match(html, /toast__progress/);
+  assert.doesNotMatch(html, /toast__progress/);
+  assert.doesNotMatch(html, /showPopover|:popover-open/);
   assert.match(toastCss, /body\.theme-dark #toastRegion \.toast/);
-  assert.match(toastCss, /gport-toast-progress/);
+  assert.doesNotMatch(toastCss, /gport-toast-progress/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
 });
@@ -672,9 +674,15 @@ test('relatório mensal operacional gera PDF com filtro por exportador e compara
   assert.match(server, /p\.release_date >= m\.starts_at/);
   assert.match(server, /p\.post_shipment_date >= m\.starts_at/);
   assert.match(server, /p\.client_id=\$2::uuid/);
+  assert.match(server, /AS launched_bookings/);
+  assert.match(server, /AS released_bookings/);
+  assert.match(server, /AS shipped_bookings/);
   assert.match(reports, /button\.textContent = 'Relatórios'/);
   assert.match(reports, /\/api\/reports\/operational-monthly\?\$\{params\}/);
   assert.match(reports, /Comparação entre meses/);
+  assert.match(reports, /bookingList\(current\.launched_bookings\)/);
+  assert.match(reports, /bookingList\(current\.released_bookings\)/);
+  assert.match(reports, /bookingList\(current\.shipped_bookings\)/);
   assert.match(reports, /el\('pdfFrame'\)\.srcdoc/);
   assert.match(css, /monthly-operational-report-dialog/);
 });

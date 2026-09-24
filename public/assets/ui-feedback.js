@@ -9,52 +9,50 @@
   };
 
   const definitions = {
-    success: { icon: '✓', duration: 4000, title: 'Concluído', durationClass: 'toast--duration-short' },
-    error: { icon: '!', duration: 10000, title: 'Não foi possível concluir a ação', durationClass: 'toast--duration-long' },
-    warning: { icon: '!', duration: 5000, title: 'Atenção', durationClass: 'toast--duration-medium' },
-    info: { icon: 'i', duration: 4000, title: 'Informação', durationClass: 'toast--duration-short' }
+    success: { icon: '✓', duration: 4000, title: 'Concluído' },
+    error: { icon: '!', duration: 10000, title: 'Não foi possível concluir a ação' },
+    warning: { icon: '!', duration: 5000, title: 'Atenção' },
+    info: { icon: 'i', duration: 4000, title: 'Informação' }
   };
-
-  // Um <dialog> modal usa a camada superior do navegador, onde nenhum z-index
-  // comum alcança. O Popover mantém o toast no mesmo canto, sem backdrop e sem
-  // alterar seu layout, mas o coloca nessa mesma camada acima do painel aberto.
-  const promoteToastRegion = () => {
-    if (!region || typeof region.showPopover !== 'function') return;
-    try {
-      region.setAttribute('popover', 'manual');
-      if (region.matches(':popover-open')) region.hidePopover();
-      region.showPopover();
-    } catch {
-      // Em navegadores antigos, o posicionamento fixo e o z-index do CSS
-      // continuam sendo usados como alternativa visual.
-    }
-  };
-  const hideToastRegionWhenEmpty = () => {
-    if (!region || region.childElementCount || typeof region.hidePopover !== 'function') return;
-    try { if (region.matches(':popover-open')) region.hidePopover(); } catch {}
-  };
+  const activeToasts = new Map();
 
   const createToast = (type, message, options = {}) => {
     if (!region) return;
     const definition = definitions[type] || definitions.info;
+    const cleanMessage = safeMessage(message);
+    const key = `${type}:${cleanMessage}`;
+    const existing = activeToasts.get(key);
+    if (existing?.isConnected) return existing;
     const item = document.createElement('div');
-    item.className = `toast toast--${type} ${definition.durationClass}`;
+    item.className = `toast toast--${type}`;
     item.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    item.innerHTML = '<span class="toast__icon" aria-hidden="true"></span><span class="toast__content"><strong class="toast__title"></strong><span class="toast__message"></span></span><button class="toast__close" type="button" aria-label="Fechar notificação">×</button><span class="toast__progress" aria-hidden="true"></span>';
+    item.innerHTML = '<span class="toast__icon" aria-hidden="true"></span><span class="toast__content"><strong class="toast__title"></strong><span class="toast__message"></span></span><button class="toast__close" type="button" aria-label="Fechar notificação">×</button>';
     item.querySelector('.toast__icon').textContent = definition.icon;
     item.querySelector('.toast__title').textContent = definition.title;
-    item.querySelector('.toast__message').textContent = safeMessage(message);
+    item.querySelector('.toast__message').textContent = cleanMessage;
+    activeToasts.set(key, item);
+    let dismissTimer = null;
+    let removalTimer = null;
     const dismiss = () => {
-      if (!item.isConnected) return;
+      if (!item.isConnected || item.classList.contains('is-leaving')) return;
+      if (dismissTimer) window.clearTimeout(dismissTimer);
       item.classList.add('is-leaving');
-      window.setTimeout(() => { item.remove(); hideToastRegionWhenEmpty(); }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180);
+      const remove = () => {
+        if (removalTimer) window.clearTimeout(removalTimer);
+        activeToasts.delete(key);
+        item.remove();
+      };
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) remove();
+      else {
+        item.addEventListener('animationend', remove, { once:true });
+        removalTimer = window.setTimeout(remove, 220);
+      }
     };
     item.querySelector('.toast__close').addEventListener('click', dismiss);
     region.append(item);
-    promoteToastRegion();
     const timeout = options.duration === undefined ? definition.duration : options.duration;
-    if (timeout > 0) window.setTimeout(dismiss, timeout);
-    else item.querySelector('.toast__progress').hidden = true;
+    if (timeout > 0) dismissTimer = window.setTimeout(dismiss, timeout);
+    return item;
   };
 
   const toast = Object.freeze({

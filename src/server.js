@@ -594,7 +594,7 @@ const validatedProcess = (raw, { rucManual = false, dueOnly = false } = {}) => {
     processNumber: cleanText(raw.processNumber, 80, 'Número técnico do processo'), displayProcessNumber: cleanText(raw.displayProcessNumber, 80, 'Número do processo'),
     status: cleanText(raw.status || 'Em andamento', 40, 'Status', { required: true }), clientId: cleanText(raw.clientId, 36, 'Exportador', { required: true }),
     importer: cleanText(raw.importer, 200, 'Importador', { required: true }), invoice: cleanText(raw.invoice, 120, 'Fatura', { required: true }), booking: cleanText(raw.booking, 120, 'Booking', { required: true }),
-    dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: !rucManual }), dueIssueDate: (rucManual || dueOnly) ? cleanOptionalDate(raw.dueIssueDate, 'Data da DUE') : cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: true }),
+    dueNumber: cleanText(raw.dueNumber, 120, 'DUE', { required: !rucManual }), dueIssueDate: (rucManual || dueOnly) ? cleanOptionalDate(raw.dueIssueDate, 'Data da DUE') : cleanRequiredDate(raw.dueIssueDate, 'Data da DUE'), rucNumber: cleanText(raw.rucNumber, 120, 'RUC', { required: !dueOnly }),
     originPort: cleanText(raw.originPort, 120, 'Porto de origem', { required: true }), destinationPort: cleanText(raw.destinationPort, 120, 'Porto de destino', { required: true }),
     vessel: cleanText(raw.vessel, 160, 'Navio', { required: true }), agency: cleanText(raw.agency, 160, 'Agência', { required: !dueOnly }), carrier: cleanText(raw.carrier, 160, 'Armador', { required: !dueOnly }),
     deadline: dueOnly ? null : cleanRequiredDateTime(raw.deadline, 'Deadline de draft'), shippingDate: dueOnly ? null : cleanRequiredDate(raw.shippingDate, 'Data de envio do Draft'), containerCollectionDate: dueOnly ? null : cleanOptionalDate(raw.containerCollectionDate, 'Data da coleta'),
@@ -1167,7 +1167,22 @@ app.get('/api/reports/operational-monthly', authenticate, adminOnly, asyncRoute(
       SELECT
         COUNT(*) FILTER (WHERE p.created_at AT TIME ZONE 'America/Sao_Paulo' >= m.starts_at AND p.created_at AT TIME ZONE 'America/Sao_Paulo' < m.starts_at + INTERVAL '1 month')::int AS launched,
         COUNT(*) FILTER (WHERE p.release_date >= m.starts_at AND p.release_date < m.starts_at + INTERVAL '1 month')::int AS released,
-        COUNT(*) FILTER (WHERE p.post_shipment_date >= m.starts_at AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date)::int AS shipped
+        COUNT(*) FILTER (WHERE p.post_shipment_date >= m.starts_at AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date)::int AS shipped,
+        COALESCE(ARRAY_AGG(DISTINCT p.booking ORDER BY p.booking) FILTER (
+          WHERE p.created_at AT TIME ZONE 'America/Sao_Paulo' >= m.starts_at
+            AND p.created_at AT TIME ZONE 'America/Sao_Paulo' < m.starts_at + INTERVAL '1 month'
+            AND NULLIF(BTRIM(p.booking), '') IS NOT NULL
+        ), ARRAY[]::text[]) AS launched_bookings,
+        COALESCE(ARRAY_AGG(DISTINCT p.booking ORDER BY p.booking) FILTER (
+          WHERE p.release_date >= m.starts_at
+            AND p.release_date < m.starts_at + INTERVAL '1 month'
+            AND NULLIF(BTRIM(p.booking), '') IS NOT NULL
+        ), ARRAY[]::text[]) AS released_bookings,
+        COALESCE(ARRAY_AGG(DISTINCT p.booking ORDER BY p.booking) FILTER (
+          WHERE p.post_shipment_date >= m.starts_at
+            AND p.post_shipment_date < (m.starts_at + INTERVAL '1 month')::date
+            AND NULLIF(BTRIM(p.booking), '') IS NOT NULL
+        ), ARRAY[]::text[]) AS shipped_bookings
       FROM processes p CROSS JOIN selected_month m
       WHERE ($2::uuid IS NULL OR p.client_id=$2::uuid)
     `, [selectedMonth, clientId]),
