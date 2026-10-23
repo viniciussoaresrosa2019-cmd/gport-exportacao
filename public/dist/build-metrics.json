@@ -1,111 +1,141 @@
 {
-  "generatedAt": "2026-09-17T03:00:14.760Z",
+  "generatedAt": "2026-10-23T23:27:41.055Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 389552,
-    "gzipBytes": 104753,
+    "bytes": 415495,
+    "gzipBytes": 112438,
     "files": [
       {
         "file": "accessibility.js",
-        "bytes": 5141,
-        "gzipBytes": 1682
+        "bytes": 5255,
+        "gzipBytes": 1689
       },
       {
         "file": "api-client.js",
-        "bytes": 1461,
-        "gzipBytes": 737
+        "bytes": 2515,
+        "gzipBytes": 1134
       },
       {
         "file": "app-runtime.js",
-        "bytes": 190816,
-        "gzipBytes": 48215
+        "bytes": 195148,
+        "gzipBytes": 48829
+      },
+      {
+        "file": "app.css",
+        "bytes": 1621,
+        "gzipBytes": 773
+      },
+      {
+        "file": "app.js",
+        "bytes": 625,
+        "gzipBytes": 403
       },
       {
         "file": "braspine-ui.js",
-        "bytes": 1308,
-        "gzipBytes": 569
+        "bytes": 1331,
+        "gzipBytes": 573
       },
       {
         "file": "experience.css",
-        "bytes": 14227,
-        "gzipBytes": 3871
+        "bytes": 14272,
+        "gzipBytes": 3886
       },
       {
         "file": "experience.js",
-        "bytes": 11663,
-        "gzipBytes": 4100
+        "bytes": 11835,
+        "gzipBytes": 4110
       },
       {
         "file": "gport.css",
-        "bytes": 61990,
-        "gzipBytes": 11975
+        "bytes": 62052,
+        "gzipBytes": 11989
       },
       {
         "file": "legacy-ui.js",
-        "bytes": 44057,
-        "gzipBytes": 13815
+        "bytes": 44100,
+        "gzipBytes": 13822
       },
       {
         "file": "login-animation.css",
-        "bytes": 13210,
-        "gzipBytes": 3776
+        "bytes": 13584,
+        "gzipBytes": 3797
+      },
+      {
+        "file": "login-animation.js",
+        "bytes": 2747,
+        "gzipBytes": 967
       },
       {
         "file": "login-controls.js",
-        "bytes": 1289,
-        "gzipBytes": 559
+        "bytes": 1321,
+        "gzipBytes": 564
+      },
+      {
+        "file": "login-motion.js",
+        "bytes": 946,
+        "gzipBytes": 485
+      },
+      {
+        "file": "login-route-data.js",
+        "bytes": 2851,
+        "gzipBytes": 1071
       },
       {
         "file": "login-terminal-animation.js",
-        "bytes": 2589,
-        "gzipBytes": 1049
+        "bytes": 2652,
+        "gzipBytes": 1055
       },
       {
         "file": "login-view.js",
-        "bytes": 6438,
-        "gzipBytes": 2278
+        "bytes": 6521,
+        "gzipBytes": 2288
       },
       {
         "file": "login-water-motion.js",
-        "bytes": 6164,
-        "gzipBytes": 1774
+        "bytes": 6308,
+        "gzipBytes": 1782
+      },
+      {
+        "file": "login.css",
+        "bytes": 10788,
+        "gzipBytes": 3003
       },
       {
         "file": "module-loader.js",
-        "bytes": 1401,
-        "gzipBytes": 628
+        "bytes": 1435,
+        "gzipBytes": 637
       },
       {
         "file": "page-navigation.js",
-        "bytes": 1137,
-        "gzipBytes": 482
+        "bytes": 1173,
+        "gzipBytes": 486
       },
       {
         "file": "post-shipment-ui.js",
-        "bytes": 1532,
-        "gzipBytes": 671
+        "bytes": 1555,
+        "gzipBytes": 675
       },
       {
         "file": "reports.js",
-        "bytes": 15348,
-        "gzipBytes": 5041
+        "bytes": 16314,
+        "gzipBytes": 5302
       },
       {
         "file": "toasts.css",
-        "bytes": 4368,
-        "gzipBytes": 1491
+        "bytes": 3582,
+        "gzipBytes": 1274
       },
       {
         "file": "ui-feedback.js",
-        "bytes": 5413,
-        "gzipBytes": 2040
+        "bytes": 4964,
+        "gzipBytes": 1844
       }
     ]
   },
   "output": {
-    "bytes": 286140,
-    "gzipBytes": 84453,
+    "bytes": 286791,
+    "gzipBytes": 84996,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -113,14 +143,14 @@
         "gzipBytes": 1320
       },
       {
-        "file": "api-client-FDE25910CD77.js",
-        "bytes": 846,
-        "gzipBytes": 573
+        "file": "api-client-2DB4D3E653AC.js",
+        "bytes": 1298,
+        "gzipBytes": 821
       },
       {
-        "file": "app-runtime-CCA479E3069C.js",
-        "bytes": 116454,
-        "gzipBytes": 35340
+        "file": "app-runtime-0037381CE0E7.js",
+        "bytes": 117112,
+        "gzipBytes": 35604
       },
       {
         "file": "braspine-ui-440026B469EC.js",
@@ -128,8 +158,8 @@
         "gzipBytes": 468
       },
       {
-        "file": "experience-139D2DA54374.css",
-        "bytes": 13794,
+        "file": "experience-0EC12655AC7B.css",
+        "bytes": 13789,
         "gzipBytes": 3560
       },
       {
@@ -138,9 +168,9 @@
         "gzipBytes": 2831
       },
       {
-        "file": "gport-73D06E1698EC.css",
-        "bytes": 60975,
-        "gzipBytes": 11439
+        "file": "gport-58B86E0E7D6D.css",
+        "bytes": 60943,
+        "gzipBytes": 11438
       },
       {
         "file": "legacy-ui-F80133F576B4.js",
@@ -148,9 +178,9 @@
         "gzipBytes": 12759
       },
       {
-        "file": "login-animation-39E435D9A3BE.css",
-        "bytes": 10162,
-        "gzipBytes": 2951
+        "file": "login-animation-7755690B0EF4.css",
+        "bytes": 10154,
+        "gzipBytes": 2949
       },
       {
         "file": "login-controls-54AA75263ABF.js",
@@ -188,27 +218,27 @@
         "gzipBytes": 572
       },
       {
-        "file": "reports-D6A09C7C0ACA.js",
-        "bytes": 11361,
-        "gzipBytes": 4387
+        "file": "reports-B16CC9CC1CF5.js",
+        "bytes": 11997,
+        "gzipBytes": 4613
       },
       {
-        "file": "toasts-96DA909EBF79.css",
-        "bytes": 3798,
-        "gzipBytes": 1213
+        "file": "toasts-8A57C8E2950E.css",
+        "bytes": 3029,
+        "gzipBytes": 1053
       },
       {
-        "file": "ui-feedback-B75C8DB1E61A.js",
-        "bytes": 3222,
-        "gzipBytes": 1450
+        "file": "ui-feedback-54D7D3AFEEF2.js",
+        "bytes": 2941,
+        "gzipBytes": 1418
       }
     ]
   },
   "initial": {
-    "sourceBytes": 374204,
-    "sourceGzipBytes": 99712,
-    "outputBytes": 274779,
-    "outputGzipBytes": 80066,
+    "sourceBytes": 379603,
+    "sourceGzipBytes": 100434,
+    "outputBytes": 274794,
+    "outputGzipBytes": 80383,
     "deferred": [
       "reports.js"
     ]

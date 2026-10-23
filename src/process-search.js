@@ -110,11 +110,29 @@ export const buildProcessSearchQuery = query => {
     ? 'FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id'
     : 'FROM processes p LEFT JOIN clients c ON c.id=p.client_id';
   return {
+    pageSql:`${processProjection(projection).replace(/^SELECT\s/, 'SELECT COUNT(*) OVER()::int AS __total, ')} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`,
     itemsSql:`${processProjection(projection)} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`,
     countSql:`SELECT COUNT(*)::int AS total ${countRelations} ${where}`,
     params,
     pageParams:[...params, limit, offset],
     limit,
     offset
+  };
+};
+
+// A janela conta o resultado filtrado antes do LIMIT, no mesmo snapshot dos
+// itens. Evita repetir filtros e ocupar duas conexões por pesquisa.
+export const executeProcessSearch = async (query, filters) => {
+  const search = buildProcessSearchQuery(filters);
+  const result = await query(search.pageSql, search.pageParams);
+  let total = result.rows[0]?.__total ?? 0;
+  // Uma página além do fim não contém a contagem da janela. Preserve o total
+  // exato nesse caso (por exemplo, após excluir o último item da página).
+  if (!result.rows.length && search.offset > 0) {
+    total = (await query(search.countSql, search.params)).rows[0].total;
+  }
+  return {
+    items:result.rows.map(({ __total, ...item }) => item),
+    pagination:{ limit:search.limit, offset:search.offset, total, hasMore:search.offset + result.rows.length < total }
   };
 };

@@ -311,7 +311,7 @@
           if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
           return true;
         } catch (error) {
-          if (error?.name === 'AbortError') return false;
+          if (error?.name === 'AbortError' || version !== state.version) return false;
           state.loading = false;
           if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
           toast.error(error.message || 'Não foi possível atualizar a busca. Tente novamente.');
@@ -751,6 +751,8 @@
       };
       const nativeOpenProcess = open;
       open = p => {
+        lastSavedProcessSnapshot = null;
+        window.clearTimeout(processAutoSaveTimer);
         processFormHasPersistedDetails = !p || p.__persistedDetails === true;
         editingProcessUpdatedAt = p?.updatedAt || null;
         // Os campos dos contêineres são gerados dinamicamente. Limpe a tela
@@ -1150,14 +1152,33 @@
         limit.setHours(23, 59, 59, 999);
         return deadlineTime >= now.getTime() && deadlineTime <= limit.getTime();
       };
-      const refreshPersonalDeadlineStat = async () => {
+      let personalDeadlineStatExpiresAt = 0;
+      let personalDeadlineStatUserId = null;
+      let personalDeadlineStatRequest = null;
+      let personalDeadlineStatVersion = 0;
+      const refreshPersonalDeadlineStat = async ({ force = true } = {}) => {
+        const userId = currentUser?.id;
+        if (!force && personalDeadlineStatUserId === userId && Date.now() < personalDeadlineStatExpiresAt) return;
         try {
-          const prelaunches = await request('/api/prelaunches');
+          // Pesquisar processos não altera a agenda. Reutilize a consulta em
+          // andamento e renove o contador no máximo uma vez por minuto.
+          if (force || !personalDeadlineStatRequest || personalDeadlineStatRequest.userId !== userId) {
+            const pending = { userId, version:++personalDeadlineStatVersion };
+            pending.promise = request('/api/prelaunches').finally(() => {
+              if (personalDeadlineStatRequest === pending) personalDeadlineStatRequest = null;
+            });
+            personalDeadlineStatRequest = pending;
+          }
+          const pending = personalDeadlineStatRequest;
+          const prelaunches = await pending.promise;
+          if (currentUser?.id !== userId || pending.version !== personalDeadlineStatVersion) return;
           const prelaunchDeadlines = prelaunches.filter(prelaunch => isDeadlineInNextSevenDays(prelaunch.deadline)).length;
           const total = prelaunchDeadlines;
           const counter = el('dueSoon');
           counter.textContent = total;
           counter.setAttribute('aria-label', `${total} pré-lançamento(s) pessoal(is) com deadline de draft nos próximos 7 dias.`);
+          personalDeadlineStatExpiresAt = Date.now() + 60_000;
+          personalDeadlineStatUserId = userId;
         } catch {
           // Falha transitória na agenda não deve apagar o total já renderizado.
         }
@@ -1171,7 +1192,7 @@
         emptyState.innerHTML = '<strong>Carregando processos…</strong><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span>';
         emptyState.hidden = false;
         el('totalProcesses').textContent = '—';
-        el('dueSoon').textContent = '—';
+        if (personalDeadlineStatUserId !== currentUser?.id || Date.now() >= personalDeadlineStatExpiresAt) el('dueSoon').textContent = '—';
       };
       const applyProcessPage = (remoteProcesses, pageNumber = 1) => {
         const page = Array.isArray(remoteProcesses)
@@ -1183,7 +1204,7 @@
         el('empty')?.removeAttribute('aria-busy');
         processPagination = { ...page.pagination, page:pageNumber };
         renderProcessPage();
-        void refreshPersonalDeadlineStat();
+        void refreshPersonalDeadlineStat({ force:false });
         if (!data.length) {
           el('empty').textContent = 'Nenhum processo encontrado.';
           el('empty').hidden = false;
@@ -1571,6 +1592,7 @@
         catch (error) { toast.error(error.message); }
       };
       let processAutoSaveTimer = null, processSaveBusy = false, processSavePending = false, newProcessIdempotencyKey = null;
+      let lastSavedProcessSnapshot = null;
       // A validação é tratada pela própria rotina de salvamento, que apresenta
       // mensagens claras. Isso evita o bloqueio silencioso do navegador.
       form.noValidate = true;
@@ -1597,6 +1619,7 @@
         return reason ? `Não foi possível ${action} processo. Motivo: ${reason}` : `Não foi possível ${action} processo. Tente novamente.`;
       };
       const persistProcessForm = async ({ closeAfter = false, quiet = false } = {}) => {
+        window.clearTimeout(processAutoSaveTimer);
         if (processSaveBusy) { processSavePending = true; return false; }
         if (processIdFromForm() && !processFormHasPersistedDetails) {
           if (!quiet) toast.error('Os detalhes completos do processo não foram carregados. Feche e abra o processo novamente.');
@@ -1640,10 +1663,20 @@
           processSaveBusy = true;
           if (button) { button.disabled = true; showProcessSaveState('Salvando…'); }
           const payload = toApiProcess(values);
+          const snapshot = JSON.stringify(payload);
+          // O autosave pode já ter confirmado exatamente estes dados. O botão
+          // Salvar fecha o formulário sem repetir a gravação e a auditoria.
+          if (processId && lastSavedProcessSnapshot?.id === processId && lastSavedProcessSnapshot.value === snapshot) {
+            if (closeAfter) { dialog.close(); render(); editingProcessId = null; toast.success('Alterações já salvas.'); }
+            else showProcessSaveState('Salvo automaticamente');
+            return true;
+          }
           payload.updatedAt = values.updatedAt;
           if (isNewProcess) payload.idempotencyKey ||= (newProcessIdempotencyKey ||= crypto.randomUUID());
           if (!payload.clientId) throw new Error('Selecione um exportador cadastrado.');
           const saved = await request(processId ? `/api/processes/${processId}` : '/api/processes', { method:processId ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+          lastSavedProcessSnapshot = { id:saved.id, value:snapshot };
+          localProcessMutationQuietUntil.set(saved.id, Date.now() + 5_000);
           const client = clients.find(item => item.id === payload.clientId);
           const previous = data.find(item => item.id === processId) || {};
           const assignee = availableAssignees.find(person => person.id === payload.analystId);

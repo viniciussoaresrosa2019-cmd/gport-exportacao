@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildProcessSearchQuery, normalizeSearchTerm, processSearchFields } from '../src/process-search.js';
+import { buildProcessSearchQuery, executeProcessSearch, normalizeSearchTerm, processSearchFields } from '../src/process-search.js';
 
 test('busca normaliza acentos, caixa e espaços sem alterar SQL', () => {
   assert.equal(normalizeSearchTerm('  São   JOSÉ  '), 'sao jose');
@@ -64,4 +64,44 @@ test('processos Apenas DU-E são separados da planilha, VGM e Braspine no banco'
   assert.match(buildProcessSearchQuery({ view:'processes' }).itemsSql, /COALESCE\(c\.due_only,false\)=FALSE/);
   assert.match(buildProcessSearchQuery({ view:'vgm', projection:'vgm' }).itemsSql, /COALESCE\(c\.due_only,false\)=FALSE/);
   assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /COALESCE\(c\.due_only,false\)=TRUE/);
+});
+
+test('pesquisa devolve página e total com uma consulta e sem expor coluna interna', async () => {
+  let calls = 0;
+  const result = await executeProcessSearch(async (sql, params) => {
+    calls++;
+    assert.match(sql, /SELECT COUNT\(\*\) OVER\(\)::int AS __total,/);
+    assert.match(sql, /LIMIT \$2 OFFSET \$3/);
+    assert.deepEqual(params, ['booking', 1, 1]);
+    return { rows:[{ id:'process-2', booking:'BOOKING', __total:3 }] };
+  }, { search:'booking', field:'booking', limit:1, offset:1 });
+  assert.equal(calls, 1);
+  assert.deepEqual(result, {
+    items:[{ id:'process-2', booking:'BOOKING' }],
+    pagination:{ limit:1, offset:1, total:3, hasMore:true }
+  });
+});
+
+test('primeira página vazia não dispara contagem redundante', async () => {
+  let calls = 0;
+  const result = await executeProcessSearch(async () => { calls++; return { rows:[] }; }, {});
+  assert.equal(calls, 1);
+  assert.equal(result.pagination.total, 0);
+  assert.equal(result.pagination.hasMore, false);
+});
+
+test('página além do fim mantém total correto após exclusão de itens', async () => {
+  let calls = 0;
+  const result = await executeProcessSearch(async sql => {
+    calls++;
+    if (calls === 1) return { rows:[] };
+    assert.match(sql, /^SELECT COUNT\(\*\)::int AS total/);
+    return { rows:[{ total:2 }] };
+  }, { limit:2, offset:2 });
+  assert.equal(calls, 2);
+  assert.deepEqual(result.pagination, { limit:2, offset:2, total:2, hasMore:false });
+});
+
+test('filtro inválido é rejeitado antes de consultar o banco', async () => {
+  await assert.rejects(executeProcessSearch(() => assert.fail('não deve consultar'), { field:'injection' }), { status:400 });
 });

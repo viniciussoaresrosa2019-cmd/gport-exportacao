@@ -494,7 +494,7 @@ test('listagem paginada compartilha processos entre usuários autenticados', asy
   const search = await read('src/process-search.js');
   assert.match(server, /const canReadAllProcesses = \(\) => true/);
   assert.ok(search.includes('LIMIT $${next} OFFSET $${next + 1}'));
-  assert.match(server, /pagination:\{ limit:search\.limit, offset:search\.offset, total:/);
+  assert.match(search, /pagination:\{ limit:search\.limit, offset:search\.offset, total,/);
   assert.match(search, /processSearchFields/);
 });
 
@@ -512,7 +512,7 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   assert.match(runtime, /const openCalendarProcess = async id => \{\s*try \{ const item = await loadPersistedProcess\(id\)/);
   assert.match(runtime, /processFormHasPersistedDetails/);
   assert.match(runtime, /values\.updatedAt = editingProcessUpdatedAt \|\| data\.find/);
-  assert.match(server, /buildProcessSearchQuery\(req\.query\)/);
+  assert.match(server, /executeProcessSearch\(query, req\.query\)/);
   assert.match(search, /processProjection\(projection\)/);
   assert.match(search, /supportedProcessProjections\.has\(projection\)/);
   assert.match(projections, /processDetailSelect = `SELECT p\.\*/);

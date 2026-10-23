@@ -27,7 +27,10 @@ if (isProduction && allowUnverifiedTls) console.warn('ATENÇÃO: TLS do banco es
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.DB_POOL_MAX || 5),
-  idleTimeoutMillis: 20_000,
+  // Reutilize conexões entre ações normais do operador, evitando negociar
+  // TCP/TLS novamente a cada pequena pausa. O limite do pool permanece igual.
+  idleTimeoutMillis: 60_000,
+  keepAlive: true,
   // Em desenvolvimento é possível manter compatibilidade temporária com
   // poolers antigos; em produção a validação do certificado é obrigatória.
   ssl: isLocal ? false : {
