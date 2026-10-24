@@ -29,6 +29,8 @@ function harness() {
       return { id:'process-1', invoice:JSON.parse(options.body).invoice, updated_at:`v${calls+1}` };
     },
     toViewProcess:value => value, el:() => ({ setAttribute() {} }),
+    invalidatePersistedProcess() {},
+    cachePersistedProcess:value => value,
     dialog:{ close:() => { closed++; } }, render() {},
     toast:{ success() {}, error() {} }, showProcessSaveState() {},
     processSaveFailureMessage:error => error.message,

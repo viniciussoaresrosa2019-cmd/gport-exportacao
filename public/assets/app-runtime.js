@@ -756,6 +756,17 @@
         syncSelectedName();
       };
       const nativeOpenProcess = open;
+      const rememberCurrentProcessSnapshot = processId => {
+        try {
+          syncContainerDetails();
+          const values = Object.fromEntries(new FormData(form));
+          lastSavedProcessSnapshot = { id:processId, value:JSON.stringify(toApiProcess(values)) };
+        } catch {
+          // Se um processo histórico não puder ser normalizado, mantenha o
+          // fluxo tradicional e deixe a API validar quando houver salvamento.
+          lastSavedProcessSnapshot = null;
+        }
+      };
       open = p => {
         lastSavedProcessSnapshot = null;
         window.clearTimeout(processAutoSaveTimer);
@@ -803,6 +814,9 @@
         form.elements.envio.value = dateForField(p.envio);
         form.elements.coleta.value = dateForField(p.coleta);
         syncDueOnlyLaunchFields();
+        // O processo acabou de vir do servidor. Registrar o estado inicial
+        // permite fechar pelo botão Salvar sem enviar um PATCH sem alterações.
+        rememberCurrentProcessSnapshot(p.id);
         form.dispatchEvent(new Event('gport:review-update'));
         form.dispatchEvent(new CustomEvent('gport:process-form-opened', { detail:{ mode:'edit' } }));
       };
@@ -835,15 +849,51 @@
       };
       // A listagem usa uma projeção enxuta. Edição e capa buscam o contrato
       // completo somente quando o usuário executa a ação correspondente.
-      const loadPersistedProcess = async id => {
-        const persisted = await request(`/api/processes/${id}`);
-        return {
-          ...toViewProcess(persisted),
-          createdAt:persisted.created_at || '',
-          updatedAt:persisted.updated_at || '',
-          __persistedDetails:true
-        };
+      const processDetailCache = new Map();
+      const processDetailLoads = new Map();
+      const processDetailVersions = new Map();
+      const processDetailCacheMs = 30_000;
+      const cachePersistedProcess = process => {
+        if (!process?.id) return process;
+        const cached = { ...process, __persistedDetails:true };
+        processDetailCache.set(process.id, { process:cached, expiresAt:Date.now() + processDetailCacheMs });
+        return cached;
       };
+      const invalidatePersistedProcess = id => {
+        processDetailVersions.set(id, Number(processDetailVersions.get(id) || 0) + 1);
+        processDetailCache.delete(id);
+        processDetailLoads.delete(id);
+      };
+      const loadPersistedProcess = id => {
+        const cached = processDetailCache.get(id);
+        if (cached?.expiresAt > Date.now()) return Promise.resolve(cached.process);
+        if (cached) processDetailCache.delete(id);
+        if (processDetailLoads.has(id)) return processDetailLoads.get(id);
+        const version = Number(processDetailVersions.get(id) || 0);
+        const pending = request(`/api/processes/${id}`)
+          .then(persisted => {
+            const process = {
+              ...toViewProcess(persisted),
+              createdAt:persisted.created_at || '',
+              updatedAt:persisted.updated_at || '',
+              __persistedDetails:true
+            };
+            return Number(processDetailVersions.get(id) || 0) === version ? cachePersistedProcess(process) : process;
+          })
+          .finally(() => { if (processDetailLoads.get(id) === pending) processDetailLoads.delete(id); });
+        processDetailLoads.set(id, pending);
+        return pending;
+      };
+      const prefetchPersistedProcess = event => {
+        const id = event.target.closest?.('tr[data-id]')?.dataset.id;
+        if (id) void loadPersistedProcess(id).catch(() => {});
+      };
+      // No desktop o tempo entre apontar e clicar normalmente basta para
+      // buscar os detalhes. No toque, pointerdown inicia a mesma requisição e
+      // o clique reutiliza a Promise em andamento, sem duplicar tráfego.
+      el('rows').addEventListener('pointerover', prefetchPersistedProcess, { passive:true });
+      el('rows').addEventListener('pointerdown', prefetchPersistedProcess, { passive:true });
+      el('rows').addEventListener('focusin', prefetchPersistedProcess);
       el('rows').onclick = async event => {
         const pdfButton = event.target.closest('[data-pdf]');
         const row = event.target.closest('tr[data-id]');
@@ -1327,6 +1377,7 @@
           clients = remoteClients.map(toViewClient); availableAssignees = remoteAssignees;
           if (dialog.open) setupProcessAssigneeSelector(form.elements.analystId?.value || '', form.elements.analista?.value || '');
           if (remoteUsers) users = remoteUsers;
+          for (const id of new Set([...processDetailCache.keys(), ...processDetailLoads.keys()])) invalidatePersistedProcess(id);
           referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
           renderClients(); if (currentHasRole('admin')) renderUsers();
         } catch { /* o cache atual permanece utilizável até a próxima tentativa */ }
@@ -1337,6 +1388,7 @@
         // VGM/Liberação. Ignorar o eco imediato do SSE evita uma nova consulta
         // e impede que inputs sejam reconstruídos durante a digitação.
         if (Number(localProcessMutationQuietUntil.get(event.id) || 0) > Date.now()) return;
+        invalidatePersistedProcess(event.id);
         const position = data.findIndex(item => item.id === event.id);
         if (event.change === 'deleted') {
           if (position >= 0) data = data.filter(item => item.id !== event.id);
@@ -1358,7 +1410,7 @@
           if (event.change !== 'created') return;
           try {
             const remote = await request(`/api/processes/${event.id}`);
-            const view = { ...toViewProcess(remote), updatedAt:remote.updated_at || '' };
+            const view = cachePersistedProcess({ ...toViewProcess(remote), updatedAt:remote.updated_at || '' });
             if (processPagination.offset === 0) {
               const visibleCount = Math.max(data.length, processPagination.limit);
               data = [view, ...data].slice(0, visibleCount);
@@ -1371,7 +1423,7 @@
         try {
           const remote = await request(`/api/processes/${event.id}`);
           const previous = data[position];
-          const view = { ...toViewProcess(remote), updatedAt:remote.updated_at || '' };
+          const view = cachePersistedProcess({ ...toViewProcess(remote), updatedAt:remote.updated_at || '' });
           data = data.map(item => item.id === event.id ? { ...previous, ...view } : item);
           renderAffectedViews();
           if (event.change !== 'updated') setRealtimeNotice('Processo atualizado automaticamente.');
@@ -1517,6 +1569,14 @@
         el('usersNav').hidden = !currentHasRole('admin');
         applyRoleTabs();
       };
+      let secondaryModulePreloadScheduled = false;
+      const scheduleSecondaryModulePreload = () => {
+        if (secondaryModulePreloadScheduled || !currentHasRole('admin')) return;
+        secondaryModulePreloadScheduled = true;
+        const preload = () => void window.gportModules.loadReports().catch(() => { secondaryModulePreloadScheduled = false; });
+        if ('requestIdleCallback' in window) window.requestIdleCallback(preload, { timeout:3_000 });
+        else window.setTimeout(preload, 1_500);
+      };
       const applyBootstrapPayload = payload => {
         activateAuthenticatedUser(payload.user);
         clients = payload.clients.map(toViewClient);
@@ -1524,6 +1584,7 @@
         referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
         applyProcessPage(payload.processes, 1);
         renderClients();
+        scheduleSecondaryModulePreload();
       };
       async function signIn(credentials, persist) {
         if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
@@ -1709,6 +1770,8 @@
           const previous = data.find(item => item.id === processId) || {};
           const assignee = availableAssignees.find(person => person.id === payload.analystId);
           const view = { ...toViewProcess({ ...saved, exporter:client?.nome || previous.exportador || '', analyst:assignee?.username || previous.analista || currentUser?.username || '' }), updatedAt:saved.updated_at || '' };
+          invalidatePersistedProcess(view.id);
+          cachePersistedProcess(view);
           const isDueOnlyProcess = client?.dueOnly === true;
           if (!isDueOnlyProcess) {
             data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data].slice(0, Math.max(data.length, processPagination.limit));

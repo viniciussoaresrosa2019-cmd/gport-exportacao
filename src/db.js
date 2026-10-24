@@ -24,12 +24,17 @@ if (isProduction && !isLocal && process.env.DB_SSL_REJECT_UNAUTHORIZED === 'fals
   throw new Error('DB_SSL_REJECT_UNAUTHORIZED=false não é permitido em produção. Corrija o certificado do banco.');
 }
 if (isProduction && allowUnverifiedTls) console.warn('ATENÇÃO: TLS do banco está criptografado, mas sem validação de certificado. Configure DB_SSL_CA ou conexão com certificado válido assim que possível.');
+const poolMax = Math.max(1, Number(process.env.DB_POOL_MAX || 5));
+const poolMin = Math.min(poolMax, Math.max(0, Number(process.env.DB_POOL_MIN || 1)));
 export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  max: Number(process.env.DB_POOL_MAX || 5),
+  max: poolMax,
+  // Preserve uma conexão já utilizada durante a jornada normal do operador.
+  // Isso evita uma nova negociação TCP/TLS após pequenas pausas entre ações.
+  min: poolMin,
   // Reutilize conexões entre ações normais do operador, evitando negociar
   // TCP/TLS novamente a cada pequena pausa. O limite do pool permanece igual.
-  idleTimeoutMillis: 60_000,
+  idleTimeoutMillis: Math.max(60_000, Number(process.env.DB_POOL_IDLE_MS || 300_000)),
   keepAlive: true,
   // Em desenvolvimento é possível manter compatibilidade temporária com
   // poolers antigos; em produção a validação do certificado é obrigatória.

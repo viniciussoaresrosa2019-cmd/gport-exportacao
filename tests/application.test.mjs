@@ -268,6 +268,9 @@ test('configuração do banco não aceita TLS inseguro remotamente', async () =>
   assert.match(db, /DB_SSL_CA/);
   assert.match(db, /DB_SSL_CA_BASE64/);
   assert.match(db, /ALLOW_UNVERIFIED_DATABASE_TLS/);
+  assert.match(db, /DB_POOL_MIN \|\| 1/);
+  assert.match(db, /DB_POOL_IDLE_MS \|\| 300_000/);
+  assert.match(db, /min: poolMin/);
   const migration = await read('database/migrations/2026-07-26-session-security.sql');
   assert.match(migration, /token_version/);
   assert.match(migration, /REVOKE ALL/);
@@ -504,7 +507,13 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   const projections = await read('src/process-projections.js');
   const search = await read('src/process-search.js');
   assert.match(runtime, /projection:'summary'/);
-  assert.match(runtime, /loadPersistedProcess = async id => \{[\s\S]*?persisted = await request\(`\/api\/processes\/\$\{id\}`\)[\s\S]*?toViewProcess\(persisted\)[\s\S]*?updatedAt:persisted\.updated_at[\s\S]*?__persistedDetails:true/);
+  assert.match(runtime, /const processDetailCache = new Map\(\)/);
+  assert.match(runtime, /const processDetailCacheMs = 30_000/);
+  assert.match(runtime, /if \(cached\?\.expiresAt > Date\.now\(\)\) return Promise\.resolve\(cached\.process\)/);
+  assert.match(runtime, /processDetailLoads\.has\(id\)/);
+  assert.match(runtime, /request\(`\/api\/processes\/\$\{id\}`\)[\s\S]*?toViewProcess\(persisted\)[\s\S]*?updatedAt:persisted\.updated_at/);
+  assert.match(runtime, /addEventListener\('pointerover', prefetchPersistedProcess/);
+  assert.match(runtime, /addEventListener\('pointerdown', prefetchPersistedProcess/);
   assert.equal((runtime.match(/el\('rows'\)\.onclick\s*=/g) || []).length, 1, 'a tabela deve possuir somente um manipulador final de abertura');
   assert.match(runtime, /const process = await loadPersistedProcess\(id\)/);
   assert.match(runtime, /if \(pdfButton\) printCoverFromDocumentModel\(process\)/);
@@ -512,6 +521,7 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   assert.match(runtime, /const openCalendarProcess = async id => \{\s*try \{ const item = await loadPersistedProcess\(id\)/);
   assert.match(runtime, /processFormHasPersistedDetails/);
   assert.match(runtime, /values\.updatedAt = editingProcessUpdatedAt \|\| data\.find/);
+  assert.match(runtime, /rememberCurrentProcessSnapshot\(p\.id\)/);
   assert.match(server, /executeProcessSearch\(query, req\.query\)/);
   assert.match(search, /processProjection\(projection\)/);
   assert.match(search, /supportedProcessProjections\.has\(projection\)/);
@@ -659,6 +669,8 @@ test('relatórios possuem módulo próprio sem alterar o contrato da interface a
   assert.match(loader, /loadReports/);
   assert.match(loader, /pending = new Map\(\)/);
   assert.match(html, /await window\.gportModules\.loadReports\(\)/);
+  assert.match(html, /requestIdleCallback' in window/);
+  assert.match(html, /scheduleSecondaryModulePreload\(\)/);
   assert.match(html, /reportsPage'\)\.setAttribute\('aria-busy', 'true'\)/);
   assert.match(reports, /window\.gportRequest\(`\/api\/reports\?\$\{params\}`\)/);
   assert.match(reports, /window\.gportReports = \{ render: renderReports, syncView: syncReportView \}/);

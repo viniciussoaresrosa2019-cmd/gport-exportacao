@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-10-24T22:47:06.446Z",
+  "generatedAt": "2026-10-24T23:56:55.791Z",
   "deployEnvironment": "development",
   "sourceMaps": false,
   "source": {
-    "bytes": 417012,
-    "gzipBytes": 112800,
+    "bytes": 420721,
+    "gzipBytes": 113742,
     "files": [
       {
         "file": "accessibility.js",
@@ -18,8 +18,8 @@
       },
       {
         "file": "app-runtime.js",
-        "bytes": 196660,
-        "gzipBytes": 49190
+        "bytes": 200369,
+        "gzipBytes": 50132
       },
       {
         "file": "app.css",
@@ -134,8 +134,8 @@
     ]
   },
   "output": {
-    "bytes": 287321,
-    "gzipBytes": 85210,
+    "bytes": 288520,
+    "gzipBytes": 85660,
     "files": [
       {
         "file": "accessibility-9E2CA78A94D1.js",
@@ -148,9 +148,9 @@
         "gzipBytes": 821
       },
       {
-        "file": "app-runtime-32097AF057D7.js",
-        "bytes": 117590,
-        "gzipBytes": 35812
+        "file": "app-runtime-0DF2F5197157.js",
+        "bytes": 118789,
+        "gzipBytes": 36262
       },
       {
         "file": "braspine-ui-440026B469EC.js",
@@ -235,10 +235,10 @@
     ]
   },
   "initial": {
-    "sourceBytes": 381120,
-    "sourceGzipBytes": 100796,
-    "outputBytes": 275324,
-    "outputGzipBytes": 80597,
+    "sourceBytes": 384829,
+    "sourceGzipBytes": 101738,
+    "outputBytes": 276523,
+    "outputGzipBytes": 81047,
     "deferred": [
       "reports.js"
     ]
