@@ -33,11 +33,13 @@ function harness({ exists = true, clientExists = true, dueOnly = true } = {}) {
 test('edição lê processo e regras atuais do exportador em uma consulta', async () => {
   const h = harness();
   await h.run();
-  assert.equal(h.queries.length, 2); // leitura combinada + UPDATE (auditoria continua aguardada)
+  assert.equal(h.queries.length, 2); // leitura combinada + UPDATE/auditoria atômicos
   assert.match(h.queries[0].sql, /LEFT JOIN clients c ON c.id=\$2::uuid WHERE p.id=\$1/);
   assert.equal(h.queries[0].params[1], 'client-id');
   assert.equal(h.validations[0].dueOnly, true);
-  assert.equal(h.audits.length, 1);
+  assert.match(h.queries[1].sql, /^WITH updated AS/);
+  assert.match(h.queries[1].sql, /INSERT INTO audit_log/);
+  assert.equal(h.audits.length, 0);
   assert.equal(h.response.body.booking, 'UPDATED');
   assert.equal(h.request.body.processNumber, undefined);
   assert.equal('validation_client_id' in h.response.body, false);

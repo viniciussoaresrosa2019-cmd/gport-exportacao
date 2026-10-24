@@ -13,9 +13,9 @@
             <ul class="login-areas" aria-label="Áreas do sistema"><li>Processos</li><li>Prazos</li><li>VGM</li><li>Liberação</li></ul>
           </div>
           <div class="login-ship-sea-scene" aria-hidden="true">
-            <div class="login-sea-motion"><img src="login-sea.png" alt=""></div>
+            <div class="login-sea-motion"><img src="login-sea.webp" alt=""></div>
             <div class="login-ship-motion">
-              <img src="login-ship.png" alt="">
+              <img src="login-ship.webp" alt="">
               <svg class="login-ship-hull-detail" viewBox="0 0 1774 887" preserveAspectRatio="none">
                 <path class="login-hull-waterline" d="M54 704 C216 724 412 716 596 711 C811 705 974 694 1168 703 C1391 713 1551 694 1707 652"/>
                 <path class="login-hull-seam" d="M368 627 C354 653 351 681 359 707"/>
@@ -35,10 +35,10 @@
                 <clipPath id="loginTerminalTrolleyClip"><path d="M541 318 L557 307 L581 313 L581 308 L648 318 L650 344 L639 347 L638 360 L598 360 L596 349 L543 341 Z"/></clipPath>
                 <clipPath id="loginTerminalLoadClip"><path d="M493 581 L493 494 L497 487 L498 476 L504 469 L510 472 L510 482 L524 476 L525 466 L532 463 L537 468 L537 477 L554 472 L554 454 L560 450 L560 445 L566 440 L573 444 L578 444 L580 439 L586 440 L588 452 L610 454 L612 443 L618 442 L623 448 L628 442 L635 445 L641 455 L644 470 L684 479 L689 473 L697 475 L699 496 L704 502 L704 581 Z"/></clipPath>
               </defs>
-              <image href="login-terminal-base-alpha.png" width="1536" height="1024"/>
-              <g id="loginTerminalTrolley"><image href="login-terminal-source-alpha.png" width="1536" height="1024" clip-path="url(#loginTerminalTrolleyClip)"/></g>
+              <image href="login-terminal-base-alpha.webp" width="1536" height="1024"/>
+              <g id="loginTerminalTrolley"><image href="login-terminal-source-alpha.webp" width="1536" height="1024" clip-path="url(#loginTerminalTrolleyClip)"/></g>
               <g id="loginTerminalCables" fill="none" stroke-linecap="round"><path class="login-terminal-cable-shadow"/><path class="login-terminal-cable-line"/></g>
-              <g id="loginTerminalLoad"><image href="login-terminal-source-alpha.png" width="1536" height="1024" clip-path="url(#loginTerminalLoadClip)"/></g>
+              <g id="loginTerminalLoad"><image href="login-terminal-source-alpha.webp" width="1536" height="1024" clip-path="url(#loginTerminalLoadClip)"/></g>
             </svg>
           </div>
         </section>
@@ -70,4 +70,4 @@
           </div>
         </section>
       </div>
-    </dialog>`;const a=document.querySelector('meta[name="gport-turnstile-site-key"]')?.content||"";document.getElementById("turnstileWidget").dataset.sitekey=a})();
+    </dialog>`;const e=document.querySelector('meta[name="gport-turnstile-site-key"]')?.content||"";document.getElementById("turnstileWidget").dataset.sitekey=e})();

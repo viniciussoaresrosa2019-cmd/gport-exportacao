@@ -516,7 +516,7 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   assert.match(search, /processProjection\(projection\)/);
   assert.match(search, /supportedProcessProjections\.has\(projection\)/);
   assert.match(projections, /processDetailSelect = `SELECT p\.\*/);
-  assert.doesNotMatch(projections.match(/processSummarySelect[\s\S]*?`;\n/)[0], /container_details/);
+  assert.doesNotMatch(projections.match(/processSummarySelect[\s\S]*?`;\r?\n/)[0], /container_details/);
 });
 
 test('camadas de entrada impedem undefined de virar dado do processo', async () => {
@@ -822,8 +822,8 @@ test('busca operacional é normalizada, paginada no servidor e cancela consultas
   const html = await readInterface();
   assert.match(search, /normalizeSearchTerm/);
   assert.match(search, /escapeLikeTerm/);
-  assert.match(search, /p\.due_number,p\.ruc_number/);
-  assert.match(search, /p\.container_details::text/);
+  assert.match(search, /todos:'p\.search_text'/);
+  assert.match(search, /gport_normalize_search_text/);
   assert.match(search, /vgmStatus/);
   assert.match(search, /releaseStatus/);
   assert.match(search, /postShipmentStatus/);
@@ -849,7 +849,7 @@ test('processos históricos não somem quando referências falham e qualquer usu
   const search = await read('src/process-search.js');
   const html = await readInterface();
   assert.match(server, /app\.post\('\/api\/clients', authenticate, clientCreatorOnly/);
-  assert.match(search, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
+  assert.match(await read('src/process-projections.js'), /FROM processes p\s+LEFT JOIN clients c ON c\.id=p\.client_id\s+LEFT JOIN users u ON u\.id=p\.analyst_id/);
   assert.match(html, /remoteProcesses = await processRequest/);
   assert.match(html, /Promise\.allSettled\(\[\s*request\('\/api\/clients'\), request\('\/api\/assignees'\)/);
 });
@@ -895,6 +895,11 @@ test('login e carregamento inicial não aguardam dados auxiliares para exibir pr
   assert.match(html, /applyProcessPage\(remoteProcesses, requestedPage\)/);
   assert.match(html, /showProcessLoading\(\)/);
   assert.match(html, /void referenceRequests\.then/);
+  assert.match(server, /app\.get\('\/api\/bootstrap', authenticate/);
+  assert.match(server, /const \[processes, clientsResult, assigneesResult\] = await Promise\.all/);
+  assert.match(html, /request\(`\/api\/bootstrap\?limit=\$\{processPagination\.limit \|\| 50\}`\)/);
+  assert.match(server, /authenticatedUserCacheMs/);
+  assert.match(server, /invalidateAuthenticatedUser\(req\.params\.id\)/);
 });
 
 test('rate limit distribuído tem fallback local e não exige segredo no cliente', async () => {
@@ -926,7 +931,7 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont�
   assert.match(runtime, /analystId:p\.analyst_id/);
   assert.match(runtime, /analystId:p\.analystId \|\| currentUser\?\.id/);
   assert.match(server, /const resolveProcessAnalystId = async/);
-  assert.match(server, /analyst_id=\$\$\{values\.length \+ 1\}/);
+  assert.match(server, /analyst_id=\$\$\{analystParameter\}/);
   assert.doesNotMatch(runtime, /function printOperationalCover\(p\)/);
   assert.match(html, /DEADLINES \/ PRAZOS/);
   assert.match(html, /CHECK LIST/);

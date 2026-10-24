@@ -281,16 +281,22 @@
         const state = sectionSearchStates[name]; if (!state || !anchor) return;
         let navigation = el(`${name}SearchPagination`);
         if (!navigation) { navigation = document.createElement('nav'); navigation.id = `${name}SearchPagination`; navigation.className = 'process-pagination section-pagination'; navigation.setAttribute('aria-label', `Paginação de ${name}`); anchor.insertAdjacentElement('afterend', navigation); }
+        const totalExact = state.pagination.totalExact !== false;
         const totalPages = Math.max(1, Math.ceil(Number(state.pagination.total || 0) / Number(state.pagination.limit || 50)));
-        if (totalPages <= 1) { navigation.hidden = true; navigation.replaceChildren(); return; }
+        if (Number(state.pagination.page || 1) === 1 && !state.pagination.hasMore) { navigation.hidden = true; navigation.replaceChildren(); return; }
         navigation.hidden = false; navigation.replaceChildren();
         const current = Number(state.pagination.page || 1);
         const button = (label, page, disabled=false) => { const item = document.createElement('button'); item.type = 'button'; item.className = `btn secondary pagination-button${page === current ? ' active' : ''}`; item.textContent = label; item.disabled = disabled; item.setAttribute('aria-label', `Ir para a página ${page}`); if (page === current) item.setAttribute('aria-current', 'page'); item.onclick = () => { if (!disabled) void refreshSectionData(name, { page }); }; return item; };
         navigation.append(button('‹', Math.max(1,current-1), current === 1));
-        const pages = new Set([1,totalPages,current-1,current,current+1]);
-        [...pages].filter(page => page >= 1 && page <= totalPages).sort((a,b) => a-b).forEach(page => navigation.append(button(String(page), page)));
-        navigation.append(button('›', Math.min(totalPages,current+1), current === totalPages));
-        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = `Página ${current} de ${totalPages} · ${state.pagination.total} resultado(s)`; navigation.append(info);
+        if (totalExact) {
+          const pages = new Set([1,totalPages,current-1,current,current+1]);
+          [...pages].filter(page => page >= 1 && page <= totalPages).sort((a,b) => a-b).forEach(page => navigation.append(button(String(page), page)));
+        } else navigation.append(button(String(current), current));
+        navigation.append(button('›', current + 1, !state.pagination.hasMore));
+        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = totalExact
+          ? `Página ${current} de ${totalPages} · ${state.pagination.total} resultado(s)`
+          : `Página ${current} · mais de ${state.pagination.total} resultado(s)`;
+        navigation.append(info);
       };
       async function refreshSectionData(name, { page=1 } = {}) {
         const state = sectionSearchStates[name]; if (!state) return false;
@@ -1089,9 +1095,12 @@
           const panel = document.querySelector('#processesPage .process-board');
           if (panel) panel.after(navigation);
         }
+        const totalExact = processPagination.totalExact !== false;
         const totalPages = Math.max(1, Math.ceil(Number(processPagination.total || 0) / Number(processPagination.limit || 50)));
-        const current = Math.min(Math.max(1, Number(processPagination.page || 1)), totalPages);
-        if (totalPages <= 1) { navigation.hidden = true; navigation.replaceChildren(); return; }
+        const current = totalExact
+          ? Math.min(Math.max(1, Number(processPagination.page || 1)), totalPages)
+          : Math.max(1, Number(processPagination.page || 1));
+        if (current === 1 && !processPagination.hasMore) { navigation.hidden = true; navigation.replaceChildren(); return; }
         navigation.hidden = false; navigation.replaceChildren();
         const createButton = (label, page, { currentPage=false, disabled=false } = {}) => {
           const button = document.createElement('button'); button.type = 'button'; button.className = `btn secondary pagination-button${currentPage ? ' active' : ''}`;
@@ -1101,15 +1110,20 @@
           return button;
         };
         navigation.appendChild(createButton('‹', current - 1, { disabled:current === 1 }));
-        const visiblePages = new Set([1, totalPages]);
-        for (let page = Math.max(1, current - 2); page <= Math.min(totalPages, current + 2); page += 1) visiblePages.add(page);
-        let previous = 0;
-        [...visiblePages].sort((a, b) => a - b).forEach(page => {
-          if (page - previous > 1) { const gap = document.createElement('span'); gap.className = 'pagination-gap'; gap.textContent = '…'; navigation.appendChild(gap); }
-          navigation.appendChild(createButton(String(page), page, { currentPage:page === current })); previous = page;
-        });
-        navigation.appendChild(createButton('›', current + 1, { disabled:current === totalPages }));
-        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = `Página ${current} de ${totalPages}`; navigation.appendChild(info);
+        if (totalExact) {
+          const visiblePages = new Set([1, totalPages]);
+          for (let page = Math.max(1, current - 2); page <= Math.min(totalPages, current + 2); page += 1) visiblePages.add(page);
+          let previous = 0;
+          [...visiblePages].sort((a, b) => a - b).forEach(page => {
+            if (page - previous > 1) { const gap = document.createElement('span'); gap.className = 'pagination-gap'; gap.textContent = '…'; navigation.appendChild(gap); }
+            navigation.appendChild(createButton(String(page), page, { currentPage:page === current })); previous = page;
+          });
+        } else navigation.appendChild(createButton(String(current), current, { currentPage:true }));
+        navigation.appendChild(createButton('›', current + 1, { disabled:!processPagination.hasMore }));
+        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = totalExact
+          ? `Página ${current} de ${totalPages}`
+          : `Página ${current} · mais de ${processPagination.total} resultado(s)`;
+        navigation.appendChild(info);
       };
       const processFilterSessionKey = 'gport:process-filter:v1';
       let serverProcessFilter = null;
@@ -1134,11 +1148,14 @@
         const summary = el('processListMeta');
         if (summary) {
           const total = Number(processPagination.total || data.length);
+          const totalExact = processPagination.totalExact !== false;
           const totalPages = Math.max(1, Math.ceil(total / Number(processPagination.limit || 50)));
-          summary.textContent = `${total} processo${total === 1 ? '' : 's'} na visualização · página ${processPagination.page || 1} de ${totalPages}`;
+          summary.textContent = totalExact
+            ? `${total} processo${total === 1 ? '' : 's'} na visualização · página ${processPagination.page || 1} de ${totalPages}`
+            : `Mais de ${total} processos na visualização · página ${processPagination.page || 1}`;
         }
         const totalProcesses = el('totalProcesses');
-        if (totalProcesses) totalProcesses.textContent = String(Number(processPagination.total || data.length));
+        if (totalProcesses) totalProcesses.textContent = `${Number(processPagination.total || data.length)}${processPagination.totalExact === false ? '+' : ''}`;
       };
       // O cartão mostra somente os pré-lançamentos pessoais ainda pendentes.
       // Processos definitivos não entram neste indicador operacional.
@@ -1427,7 +1444,7 @@
           const applied = await refreshData();
           if (!applied || `${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` !== filterKey) return;
           const periodText = launchedFrom || launchedTo ? ` no período selecionado` : '';
-          summary.textContent = `${processPagination.total} processo(s) encontrado(s)${periodText}.`;
+          summary.textContent = `${processPagination.totalExact === false ? 'Mais de ' : ''}${processPagination.total} processo(s) encontrado(s)${periodText}.`;
         }
         catch (error) { toast.error(error.message); }
         finally { if (`${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` === filterKey) summary.removeAttribute('aria-busy'); }
@@ -1493,29 +1510,40 @@
         turnstileWidgetId = null;
         window.initializeTurnstile();
       });
-      async function signIn(credentials, persist) {
-        if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
-        if (turnstileSiteKey) credentials.turnstileToken = turnstileToken;
-        const result = await request('/api/auth/login', { method:'POST', body:JSON.stringify(credentials) });
-        currentUser = result.user;
+      const activateAuthenticatedUser = user => {
+        currentUser = user;
         sessionRecoveryRequired = false; lastSessionCheckAt = Date.now();
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = !currentHasRole('admin');
         applyRoleTabs();
+      };
+      const applyBootstrapPayload = payload => {
+        activateAuthenticatedUser(payload.user);
+        clients = payload.clients.map(toViewClient);
+        availableAssignees = payload.assignees;
+        referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
+        applyProcessPage(payload.processes, 1);
+        renderClients();
+      };
+      async function signIn(credentials, persist) {
+        if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
+        if (turnstileSiteKey) credentials.turnstileToken = turnstileToken;
+        const result = await request('/api/auth/login', { method:'POST', body:JSON.stringify(credentials) });
+        activateAuthenticatedUser(result.user);
         // A sessão já está válida neste ponto. Fechamos o login e exibimos
         // feedback imediato; processos e referências continuam em paralelo.
         el('loginDialog').close(); showProcessLoading(); connectRealtime();
-        void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('A sessão foi iniciada, mas os processos ainda estão carregando.'));
+        void request(`/api/bootstrap?limit=${processPagination.limit || 50}`)
+          .then(applyBootstrapPayload)
+          .catch(() => refreshData({ refreshReferenceData:true }))
+          .catch(() => toast.warning('A sessão foi iniciada, mas os processos ainda estão carregando.'));
         toast.success('Login realizado com sucesso.');
       }
       async function restoreSession() {
         try {
-          const result = await request('/api/me'); currentUser = result.user; lastSessionCheckAt = Date.now();
-          el('currentUserName').textContent = currentUser.username;
-          el('usersNav').hidden = !currentHasRole('admin');
-          applyRoleTabs();
-          el('loginDialog').close(); showProcessLoading(); connectRealtime();
-          void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('Não foi possível atualizar os processos agora. Tente novamente em instantes.'));
+          const result = await request(`/api/bootstrap?limit=${processPagination.limit || 50}`);
+          applyBootstrapPayload(result);
+          el('loginDialog').close(); connectRealtime();
         } catch { currentUser = null; }
       }
       el('loginForm').onsubmit = async e => {
@@ -1726,7 +1754,9 @@
       const scheduleProcessAutoSave = () => {
         if (!processIdFromForm()) return;
         window.clearTimeout(processAutoSaveTimer);
-        processAutoSaveTimer = window.setTimeout(() => { persistProcessForm({ quiet:true }); }, 900);
+        // Consolida mudanças consecutivas em uma única gravação. O botão
+        // Salvar continua imediato e não depende deste intervalo.
+        processAutoSaveTimer = window.setTimeout(() => { persistProcessForm({ quiet:true }); }, 1800);
       };
       form.addEventListener('input', scheduleProcessAutoSave);
       form.addEventListener('change', scheduleProcessAutoSave);

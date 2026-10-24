@@ -4,7 +4,7 @@ const requiredColumns = new Map([
   ['processes', [
     'client_id', 'booking', 'deadline', 'container_details', 'updated_at',
     'idempotency_key', 'vgm_sent_date', 'release_deadline', 'followup_status',
-    'post_shipment_date'
+    'post_shipment_date', 'search_text'
   ]],
   ['process_attachments', ['scan_status', 'scan_provider']]
 ]);

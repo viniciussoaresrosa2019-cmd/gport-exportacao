@@ -10,10 +10,13 @@ export const normalizeSearchTerm = value => String(value || '')
   .toLocaleLowerCase('pt-BR');
 
 const escapeLikeTerm = value => normalizeSearchTerm(value).replace(/[\\%_]/g, match => `\\${match}`);
-const normalizedSearchExpression = expression => `regexp_replace(translate(lower(COALESCE((${expression})::text,'')), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'), '\\s+', ' ', 'g')`;
+// A função imutável é instalada pela migração de desempenho. Além
+// de centralizar a mesma normalização usada no navegador, ela permite que
+// o PostgreSQL utilize índices GIN de trigramas nas buscas parciais.
+const normalizedSearchExpression = expression => `gport_normalize_search_text((${expression})::text)`;
 
 export const processSearchFields = Object.freeze({
-  todos:"CONCAT_WS(' ',p.booking,p.process_number,p.display_process_number,p.status,c.name,p.importer,p.invoice,p.due_number,p.ruc_number,p.origin_port,p.destination_port,p.vessel,p.agency,p.carrier,p.bl_type,p.freight_type,p.vgm_status,p.release_status,p.release_channel,p.container_details::text,u.username)",
+  todos:'p.search_text',
   booking:'p.booking', exportador:'c.name', importador:'p.importer', fatura:'p.invoice',
   origem:'p.origin_port', destino:'p.destination_port', porto:"CONCAT_WS(' ',p.origin_port,p.destination_port)", navio:'p.vessel', analista:'u.username',
   prazo:"TO_CHAR(p.deadline,'DD/MM HH24:MI')", envio:"TO_CHAR(p.shipping_date,'DD/MM')", coleta:"TO_CHAR(p.container_collection_date,'DD/MM')",
@@ -64,7 +67,17 @@ export const buildProcessSearchQuery = query => {
   };
   const conditions = [];
   if (status) conditions.push(`p.status=${addParam(status)}`);
-  if (term) conditions.push(`${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||${addParam(term)}||'%' ESCAPE E'\\\\'`);
+  if (term) {
+    const parameter = addParam(term);
+    if (field === 'todos') {
+      // Os dados do processo ficam em uma coluna gerada e indexada. Exportador
+      // e responsável pertencem a outras tabelas e permanecem como alternativas
+      // pequenas, também normalizadas, sem impedir o índice principal.
+      conditions.push(`(p.search_text LIKE '%'||${parameter}||'%' ESCAPE E'\\\\'
+        OR ${normalizedSearchExpression('c.name')} LIKE '%'||${parameter}||'%' ESCAPE E'\\\\'
+        OR ${normalizedSearchExpression('u.username')} LIKE '%'||${parameter}||'%' ESCAPE E'\\\\')`);
+    } else conditions.push(`${normalizedSearchExpression(processSearchFields[field])} LIKE '%'||${parameter}||'%' ESCAPE E'\\\\'`);
+  }
   // O seletor da interface sempre possui o UUID do exportador. Filtrar
   // diretamente por ele permite usar processes_client_created_at_idx. A
   // comparação pelo nome continua apenas para consumidores legados da API que
@@ -106,33 +119,25 @@ export const buildProcessSearchQuery = query => {
     ? 'p.created_at DESC,p.id DESC'
     : defaultOrderBy;
   const next = params.length + 1;
-  const countRelations = ['todos', 'analista'].includes(field)
-    ? 'FROM processes p LEFT JOIN clients c ON c.id=p.client_id LEFT JOIN users u ON u.id=p.analyst_id'
-    : 'FROM processes p LEFT JOIN clients c ON c.id=p.client_id';
   return {
-    pageSql:`${processProjection(projection).replace(/^SELECT\s/, 'SELECT COUNT(*) OVER()::int AS __total, ')} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`,
     itemsSql:`${processProjection(projection)} ${where} ORDER BY ${orderBy} LIMIT $${next} OFFSET $${next + 1}`,
-    countSql:`SELECT COUNT(*)::int AS total ${countRelations} ${where}`,
     params,
-    pageParams:[...params, limit, offset],
+    // Um item adicional informa se existe próxima página sem obrigar o
+    // banco a contar todos os registros que combinam com a pesquisa.
+    pageParams:[...params, limit + 1, offset],
     limit,
     offset
   };
 };
 
-// A janela conta o resultado filtrado antes do LIMIT, no mesmo snapshot dos
-// itens. Evita repetir filtros e ocupar duas conexões por pesquisa.
 export const executeProcessSearch = async (query, filters) => {
   const search = buildProcessSearchQuery(filters);
-  const result = await query(search.pageSql, search.pageParams);
-  let total = result.rows[0]?.__total ?? 0;
-  // Uma página além do fim não contém a contagem da janela. Preserve o total
-  // exato nesse caso (por exemplo, após excluir o último item da página).
-  if (!result.rows.length && search.offset > 0) {
-    total = (await query(search.countSql, search.params)).rows[0].total;
-  }
+  const result = await query(search.itemsSql, search.pageParams);
+  const hasMore = result.rows.length > search.limit;
+  const items = result.rows.slice(0, search.limit);
+  const total = search.offset + items.length;
   return {
-    items:result.rows.map(({ __total, ...item }) => item),
-    pagination:{ limit:search.limit, offset:search.offset, total, hasMore:search.offset + result.rows.length < total }
+    items,
+    pagination:{ limit:search.limit, offset:search.offset, total, totalExact:!hasMore, hasMore }
   };
 };

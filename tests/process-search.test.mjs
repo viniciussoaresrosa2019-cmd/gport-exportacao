@@ -8,7 +8,7 @@ test('busca normaliza acentos, caixa e espaços sem alterar SQL', () => {
   assert.equal(query.params[0], 'sao jose');
   assert.equal(query.limit, 25);
   assert.equal(query.offset, 50);
-  assert.equal(query.pageParams.at(-2), 25);
+  assert.equal(query.pageParams.at(-2), 26);
   assert.equal(query.pageParams.at(-1), 50);
   assert.match(query.itemsSql, /LIMIT \$2 OFFSET \$3/);
 });
@@ -24,8 +24,7 @@ test('busca cobre identificadores e campos operacionais esperados', () => {
   for (const field of ['todos','booking','exportador','importador','fatura','due','ruc','containers','tipobl','tipofrete','porto','navio','analista']) {
     assert.ok(processSearchFields[field], `campo ausente: ${field}`);
   }
-  assert.match(processSearchFields.todos, /process_number/);
-  assert.match(processSearchFields.todos, /container_details/);
+  assert.equal(processSearchFields.todos, 'p.search_text');
 });
 
 test('filtros inválidos, termos longos e paginação excessiva são recusados', () => {
@@ -66,19 +65,19 @@ test('processos Apenas DU-E são separados da planilha, VGM e Braspine no banco'
   assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /COALESCE\(c\.due_only,false\)=TRUE/);
 });
 
-test('pesquisa devolve página e total com uma consulta e sem expor coluna interna', async () => {
+test('pesquisa descobre a próxima página com um item extra e sem contagem completa', async () => {
   let calls = 0;
   const result = await executeProcessSearch(async (sql, params) => {
     calls++;
-    assert.match(sql, /SELECT COUNT\(\*\) OVER\(\)::int AS __total,/);
+    assert.doesNotMatch(sql, /COUNT\(\*\)/);
     assert.match(sql, /LIMIT \$2 OFFSET \$3/);
-    assert.deepEqual(params, ['booking', 1, 1]);
-    return { rows:[{ id:'process-2', booking:'BOOKING', __total:3 }] };
+    assert.deepEqual(params, ['booking', 2, 1]);
+    return { rows:[{ id:'process-2', booking:'BOOKING' }, { id:'process-3', booking:'BOOKING' }] };
   }, { search:'booking', field:'booking', limit:1, offset:1 });
   assert.equal(calls, 1);
   assert.deepEqual(result, {
     items:[{ id:'process-2', booking:'BOOKING' }],
-    pagination:{ limit:1, offset:1, total:3, hasMore:true }
+    pagination:{ limit:1, offset:1, total:2, totalExact:false, hasMore:true }
   });
 });
 
@@ -87,19 +86,18 @@ test('primeira página vazia não dispara contagem redundante', async () => {
   const result = await executeProcessSearch(async () => { calls++; return { rows:[] }; }, {});
   assert.equal(calls, 1);
   assert.equal(result.pagination.total, 0);
+  assert.equal(result.pagination.totalExact, true);
   assert.equal(result.pagination.hasMore, false);
 });
 
-test('página além do fim mantém total correto após exclusão de itens', async () => {
+test('página além do fim não dispara uma contagem adicional', async () => {
   let calls = 0;
-  const result = await executeProcessSearch(async sql => {
+  const result = await executeProcessSearch(async () => {
     calls++;
-    if (calls === 1) return { rows:[] };
-    assert.match(sql, /^SELECT COUNT\(\*\)::int AS total/);
-    return { rows:[{ total:2 }] };
+    return { rows:[] };
   }, { limit:2, offset:2 });
-  assert.equal(calls, 2);
-  assert.deepEqual(result.pagination, { limit:2, offset:2, total:2, hasMore:false });
+  assert.equal(calls, 1);
+  assert.deepEqual(result.pagination, { limit:2, offset:2, total:2, totalExact:true, hasMore:false });
 });
 
 test('filtro inválido é rejeitado antes de consultar o banco', async () => {
