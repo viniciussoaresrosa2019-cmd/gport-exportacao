@@ -316,6 +316,10 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.doesNotMatch(toastCss, /gport-toast-progress/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
+  assert.match(html, /let activeSelection = null/);
+  assert.match(html, /if \(activeSelection\?\.isConnected\)/);
+  assert.match(html, /deferredToasts\.push/);
+  assert.match(html, /window\.setTimeout\(flushDeferredToasts, 80\)/);
 });
 
 test('VGM e Liberação refletem alterações imediatamente sem depender da troca de aba', async () => {
@@ -327,6 +331,9 @@ test('VGM e Liberação refletem alterações imediatamente sem depender da troc
   assert.match(html, /enqueueProcessMutation\(id, \(\) => request\(`\/api\/processes\/\$\{id\}\/vgm`/);
   assert.match(html, /enqueueProcessMutation\(id, \(\) => request\(`\/api\/processes\/\$\{id\}\/release`/);
   assert.match(html, /saveReleaseRow\(id, \{ renderView:false \}\)/);
+  assert.match(html, /updateVisibleProcess\('vgm',[\s\S]*?\{ renderView:false \}\)/);
+  assert.match(html, /reconcileVisibleProcess\('vgm', id, updated, \{ renderView:false \}\)/);
+  assert.match(html, /reconcileVisibleProcess\('postShipment', id, updated, \{ renderView:false \}\)/);
   assert.match(html, /localProcessMutationQuietUntil\.get\(event\.id\)/);
 });
 

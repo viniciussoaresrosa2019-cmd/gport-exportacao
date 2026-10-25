@@ -15,6 +15,48 @@
     info: { icon: 'i', duration: 4000, title: 'Informação' }
   };
   const activeToasts = new Map();
+  const deferredToasts = [];
+  const deferredToastKeys = new Set();
+  let activeSelection = null;
+  let selectionFinishTimer = null;
+
+  const flushDeferredToasts = () => {
+    if (activeSelection?.isConnected) return;
+    while (deferredToasts.length) {
+      const pending = deferredToasts.shift();
+      deferredToastKeys.delete(pending.key);
+      createToast(pending.type, pending.message, pending.options);
+    }
+  };
+
+  const finishSelection = select => {
+    if (select && activeSelection !== select) return;
+    activeSelection = null;
+    if (selectionFinishTimer) window.clearTimeout(selectionFinishTimer);
+    // O evento change acontece antes de alguns seletores nativos terminarem
+    // de fechar. Aguarde esse ciclo para não interromper a escolha seguinte.
+    selectionFinishTimer = window.setTimeout(flushDeferredToasts, 80);
+  };
+
+  document.addEventListener('pointerdown', event => {
+    const select = event.target.closest?.('select');
+    if (select && !select.disabled) {
+      activeSelection = select;
+      if (selectionFinishTimer) window.clearTimeout(selectionFinishTimer);
+    } else if (activeSelection) finishSelection(activeSelection);
+  }, true);
+  document.addEventListener('keydown', event => {
+    const select = document.activeElement;
+    if (!(select instanceof HTMLSelectElement) || select.disabled) return;
+    if (event.key === 'Escape') finishSelection(select);
+    else if (event.key === 'Enter' || event.key === ' ' || event.key.startsWith('Arrow')) activeSelection = select;
+  }, true);
+  document.addEventListener('change', event => {
+    if (event.target === activeSelection) finishSelection(activeSelection);
+  }, true);
+  document.addEventListener('blur', event => {
+    if (event.target === activeSelection) finishSelection(activeSelection);
+  }, true);
 
   const createToast = (type, message, options = {}) => {
     if (!region) return;
@@ -23,6 +65,13 @@
     const key = `${type}:${cleanMessage}`;
     const existing = activeToasts.get(key);
     if (existing?.isConnected) return existing;
+    if (activeSelection?.isConnected) {
+      if (!deferredToastKeys.has(key)) {
+        deferredToastKeys.add(key);
+        deferredToasts.push({ type, message:cleanMessage, options, key });
+      }
+      return;
+    }
     const item = document.createElement('div');
     item.className = `toast toast--${type}`;
     item.setAttribute('role', type === 'error' ? 'alert' : 'status');

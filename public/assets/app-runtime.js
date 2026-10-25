@@ -393,7 +393,7 @@
         if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
         if (canEdit) el('releaseList').querySelectorAll('[data-release-deadline]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); })); if (canEdit) el('releaseList').querySelectorAll('[data-release-date]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value); }));
         if (canEdit) {
-          el('releaseList').querySelectorAll('select[data-release-status],select[data-release-channel]').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { toast.error(error.message); renderRelease(); } }));
+          el('releaseList').querySelectorAll('select[data-release-status],select[data-release-channel]').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel, { renderView:false }); } catch (error) { toast.error(error.message); renderRelease(); } }));
           el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-date]').forEach(input => input.addEventListener('input', () => {
             const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseDate;
             const schedule = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
@@ -1873,11 +1873,11 @@
         const mutationVersion = beginSectionMutation(id);
         // A tela responde imediatamente. Se o servidor recusar a alteração,
         // restauramos a lista exatamente como estava antes do envio.
-        updateVisibleProcess('vgm', id, { vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' });
+        updateVisibleProcess('vgm', id, { vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' }, { renderView:false });
         try {
           const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst, releaseSchedule, releaseDeadline }) }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
-          reconcileVisibleProcess('vgm', id, updated);
+          reconcileVisibleProcess('vgm', id, updated, { renderView:false });
           toast.success('Status de VGM atualizado.');
         } catch (error) {
           if (!isLatestSectionMutation(id, mutationVersion)) return;
@@ -1926,7 +1926,7 @@
             method:'PATCH', body:JSON.stringify({ postShipmentDate })
           }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
-          reconcileVisibleProcess('postShipment', id, updated);
+          reconcileVisibleProcess('postShipment', id, updated, { renderView:false });
           toast.success(postShipmentDate ? 'Data de embarque registrada.' : 'Data de embarque removida.');
         } catch (error) {
           if (!isLatestSectionMutation(id, mutationVersion)) return;
