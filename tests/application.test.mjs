@@ -781,8 +781,13 @@ test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto d
   assert.match(html, /releasePortFilters/);
   assert.match(html, /data-release-port/);
   assert.match(html, /deadlineOrder\(a\) - deadlineOrder\(b\)/);
-  assert.match(html, /PORTO<\/th><th>CLIENTE<\/th><th>BOOKING<\/th><th>FATURA<\/th><th>NAVIO<\/th><th>DEADLINE<\/th><th>AGENDAMENTO<\/th><th>DUE<\/th><th>ONDE ESTÁ<\/th><th>VISTO<\/th><th>CANAL<\/th><th>OBS/);
+  assert.match(html, /\{ key:'port', label:'PORTO' \}/);
+  assert.match(html, /\{ key:'location', label:'ONDE ESTÁ' \}/);
+  assert.match(html, /\{ key:'note', label:'OBS' \}/);
   assert.doesNotMatch(html, /<th>RECEBIMENTO<\/th>/);
+  assert.match(html, /data-release-column-filter/);
+  assert.match(html, /releaseColumnFilters = nextFilters/);
+  assert.match(html, /data-release-clear-columns/);
   assert.match(html, /data-release-analyst/);
   assert.match(html, /data-release-seen/);
   assert.match(html, /data-release-note/);
@@ -798,6 +803,10 @@ test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto d
   assert.match(migration, /release_seen_on DATE/);
   assert.match(migration, /release_note VARCHAR\(500\)/);
   assert.match(sheetCss, /\.release-sheet-wrap \.release-sheet th\{[\s\S]*position:sticky/);
+  assert.match(sheetCss, /\.release-sheet-wrap\{[\s\S]*overflow:hidden/);
+  assert.match(sheetCss, /min-width:0!important/);
+  assert.match(sheetCss, /background:var\(--navy\)!important/);
+  assert.match(sheetCss, /\.release-filter-icon\{[\s\S]*clip-path:polygon/);
   assert.match(sheetCss, /\.release-port-cell\.release-port-itajai/);
   assert.match(sheetCss, /\.release-seen-cell\.is-seen/);
   assert.match(await read('public/assets/gport.css'), /\.followup-card\{display:grid/);

@@ -205,6 +205,7 @@
       // VGM, Liberação e Follow up têm a própria página de dados. Assim a
       // busca dessas áreas não fica limitada aos 50 processos da planilha.
       const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup', 'braspine'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
+      let releaseColumnFilters = {};
       const sectionItems = name => sectionSearchStates[name]?.items || [];
       // As páginas operacionais usam listas próprias e paginadas. Atualizar
       // somente `data` (a lista da página Processos) fazia VGM e Liberação
@@ -408,6 +409,7 @@
           if (filter?.clear) {
             releaseFilter = 'all';
             releasePortFilter = 'all';
+            releaseColumnFilters = {};
             releaseSearchFilter = null;
             sectionSearchStates.release.filter = null;
           } else {
@@ -431,32 +433,84 @@
           if (key && !knownPortMap.has(key)) knownPortMap.set(key, port);
         });
         const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b, 'pt-BR', { sensitivity:'base' }));
-        portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`;
+        const hasColumnFilters = Object.values(releaseColumnFilters).some(Boolean);
+        portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}${hasColumnFilters ? '<button type="button" class="btn secondary release-clear-column-filters" data-release-clear-columns>Limpar filtros da tabela</button>' : ''}`;
         portControls.querySelectorAll('[data-release-port]').forEach(button => {
           button.onclick = () => {
             releasePortFilter = button.dataset.releasePort;
             void refreshSectionData('release');
           };
         });
+        portControls.querySelector('[data-release-clear-columns]')?.addEventListener('click', () => {
+          releaseColumnFilters = {};
+          renderRelease();
+        });
 
-        const releaseProcesses = (releaseFilter === 'released'
+        const today = releaseTodayKey();
+        const releaseColumnDefinitions = [
+          { key:'port', label:'PORTO' },
+          { key:'client', label:'CLIENTE' },
+          { key:'booking', label:'BOOKING' },
+          { key:'invoice', label:'FATURA' },
+          { key:'vessel', label:'NAVIO' },
+          { key:'deadline', label:'DEADLINE' },
+          { key:'schedule', label:'AGENDAMENTO' },
+          { key:'due', label:'DUE' },
+          { key:'location', label:'ONDE ESTÁ' },
+          { key:'seen', label:'VISTO' },
+          { key:'channel', label:'CANAL' },
+          { key:'note', label:'OBS' }
+        ];
+        const releaseColumnValue = (process, key) => ({
+          port:process.origem || 'Não informado',
+          client:process.exportador || 'Não informado',
+          booking:process.booking || 'Não informado',
+          invoice:process.fatura || 'Não informado',
+          vessel:process.navio || 'Não informado',
+          deadline:process.deadlineLiberacao || 'Não informado',
+          schedule:process.agendamentoLiberacao || 'Não informado',
+          due:process.due || 'Pendente',
+          location:process.analistaFisico || 'Não definido',
+          seen:String(process.liberacaoVistoEm || '').slice(0, 10) === today ? 'Visto' : 'Não visto',
+          channel:process.canalLiberacao || 'Sem canal',
+          note:process.observacaoLiberacao || 'Sem observação'
+        })[key] || '';
+        const releaseBaseProcesses = (releaseFilter === 'released'
           ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim')
           : releaseFilter === 'pending'
             ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim')
             : sectionItems('release'))
           .filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter))
-          .filter(process => matchesSectionSearch(process, releaseSearchFilter))
+          .filter(process => matchesSectionSearch(process, releaseSearchFilter));
+        const releaseProcesses = releaseBaseProcesses
+          .filter(process => releaseColumnDefinitions.every(definition => {
+            const selected = releaseColumnFilters[definition.key];
+            return !selected || normalizePort(releaseColumnValue(process, definition.key)) === selected;
+          }))
           .slice()
           .sort((a,b) => normalizePort(a.origem).localeCompare(normalizePort(b.origem), 'pt-BR')
             || deadlineOrder(a) - deadlineOrder(b)
             || String(a.booking || '').localeCompare(String(b.booking || ''), 'pt-BR'));
+        const releaseColumnHeader = definition => {
+          const values = new Map();
+          releaseBaseProcesses.forEach(process => {
+            const display = String(releaseColumnValue(process, definition.key));
+            const normalized = normalizePort(display);
+            if (normalized && !values.has(normalized)) values.set(normalized, display);
+          });
+          const selected = releaseColumnFilters[definition.key] || '';
+          const options = [...values.entries()]
+            .sort((left, right) => left[1].localeCompare(right[1], 'pt-BR', { sensitivity:'base', numeric:true }))
+            .map(([value, label]) => `<option value="${esc(value)}" ${selected === value ? 'selected' : ''}>${esc(label)}</option>`)
+            .join('');
+          return `<th scope="col"><div class="release-column-heading"><span>${definition.label}</span><label class="release-filter-control ${selected ? 'is-active' : ''}" title="Filtrar ${definition.label}"><span class="release-filter-icon" aria-hidden="true"></span><select data-release-column-filter="${definition.key}" aria-label="Filtrar coluna ${definition.label}"><option value="">Todos</option>${options}</select></label></div></th>`;
+        };
 
         const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
         const assignees = p => {
           const people = [...availableAssignees, ...(p.analistaFisico && !availableAssignees.some(person => person.username === p.analistaFisico) ? [{ username:p.analistaFisico }] : [])];
           return `<option value="">Selecione</option>${people.map(person => `<option value="${esc(person.username)}" ${p.analistaFisico === person.username ? 'selected' : ''}>${esc(person.username)}</option>`).join('')}`;
         };
-        const today = releaseTodayKey();
         const releaseRow = p => {
           const key = esc(p.id);
           const booking = esc(p.booking || '—');
@@ -478,9 +532,19 @@
           </tr>`;
         };
         el('releaseList').innerHTML = releaseProcesses.length
-          ? `<div class="release-sheet-wrap"><table class="release-table release-sheet" aria-label="Planilha de liberação"><colgroup><col class="col-port"><col class="col-client"><col class="col-booking"><col class="col-invoice"><col class="col-vessel"><col class="col-deadline"><col class="col-schedule"><col class="col-due"><col class="col-location"><col class="col-seen"><col class="col-channel"><col class="col-note"></colgroup><thead><tr><th>PORTO</th><th>CLIENTE</th><th>BOOKING</th><th>FATURA</th><th>NAVIO</th><th>DEADLINE</th><th>AGENDAMENTO</th><th>DUE</th><th>ONDE ESTÁ</th><th>VISTO</th><th>CANAL</th><th>OBS</th></tr></thead><tbody>${releaseProcesses.map(releaseRow).join('')}</tbody></table></div>`
+          ? `<div class="release-sheet-wrap"><table class="release-table release-sheet" aria-label="Planilha de liberação"><colgroup><col class="col-port"><col class="col-client"><col class="col-booking"><col class="col-invoice"><col class="col-vessel"><col class="col-deadline"><col class="col-schedule"><col class="col-due"><col class="col-location"><col class="col-seen"><col class="col-channel"><col class="col-note"></colgroup><thead><tr>${releaseColumnDefinitions.map(releaseColumnHeader).join('')}</tr></thead><tbody>${releaseProcesses.map(releaseRow).join('')}</tbody></table></div>`
           : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
         renderSectionPagination('release', el('releaseList'));
+
+        el('releaseList').querySelectorAll('[data-release-column-filter]').forEach(select => {
+          select.addEventListener('change', () => {
+            const nextFilters = { ...releaseColumnFilters };
+            if (select.value) nextFilters[select.dataset.releaseColumnFilter] = select.value;
+            else delete nextFilters[select.dataset.releaseColumnFilter];
+            releaseColumnFilters = nextFilters;
+            renderRelease();
+          });
+        });
 
         if (!canEdit) return;
         el('releaseList').querySelectorAll('[data-release-schedule],[data-release-deadline]').forEach(input => {
