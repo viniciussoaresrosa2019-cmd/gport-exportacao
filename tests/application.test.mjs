@@ -304,7 +304,7 @@ test('interface possui notificações toast acessíveis para ações principais'
   for (const type of ['success', 'error', 'warning', 'info']) assert.match(html, new RegExp(`${type}: message => createToast`));
   assert.match(html, /toast\.success\('Login realizado com sucesso\.'/);
   assert.match(html, /toast\.success\('Status de VGM atualizado\.'/);
-  assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
+  assert.match(html, /toast\.success\('Liberação atualizada\.'/);
   assert.match(html, /toast\.warning\('Selecione um campo para buscar\.'/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /#toastRegion \.toast\{[\s\S]*pointer-events:none/);
@@ -764,28 +764,42 @@ test('relatório de VGM permite abrir os processos enviados em cada dia', async 
   assert.match(html, /class="vgm-report-day-card/);
   assert.match(html, /class="vgm-day-process process-status-row/);
   assert.match(html, /class="process-status-row \$\{p\.canalLiberacao/);
-  assert.match(html, /const releaseGroups = new Map\(\)/);
-  assert.match(html, /class="release-port-group"/);
+  assert.match(html, /class="release-sheet-row process-status-row/);
   assert.match(html, /followupProcesses\.map\(p => `<article class="followup-card process-status-row/);
   assert.match(await read('public/assets/gport.css'), /\.process-status-row\.process-channel-verde td:first-child\{box-shadow:inset 4px 0 #16a34a/);
   assert.match(await read('public/assets/gport.css'), /\.vgm-report-panel\{display:grid;grid-template-columns/);
   assert.match(await read('public/assets/legacy-ui.js'), /class="report-rank-list" role="list"/);
 });
 
-test('liberação permite filtrar por porto e ordena pelo deadline crescente', async () => {
+test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto diário e observação conectados', async () => {
   const html = await readInterface();
+  const server = await read('src/server.js');
+  const projection = await read('src/process-projections.js');
+  const migration = await read('database/migrations/2026-10-25-001-release-sheet-layout.sql');
+  const sheetCss = await read('public/assets/release-sheet.css');
   assert.match(html, /releasePortFilter='all'/);
   assert.match(html, /releasePortFilters/);
   assert.match(html, /data-release-port/);
   assert.match(html, /deadlineOrder\(a\) - deadlineOrder\(b\)/);
-  assert.match(html, /const releaseLabels = \['BOOKING','EXPORTADOR \/ IMPORTADOR'/);
-  assert.match(html, /cell\.dataset\.label = releaseLabels\[index\]/);
-  assert.match(await read('public/assets/gport.css'), /\.release-table tbody tr\{display:grid;grid-template-columns:repeat\(4/);
+  assert.match(html, /PORTO<\/th><th>CLIENTE<\/th><th>BOOKING<\/th><th>FATURA<\/th><th>NAVIO<\/th><th>DEADLINE<\/th><th>AGENDAMENTO<\/th><th>DUE<\/th><th>ONDE ESTÁ<\/th><th>VISTO<\/th><th>CANAL<\/th><th>OBS/);
+  assert.doesNotMatch(html, /<th>RECEBIMENTO<\/th>/);
+  assert.match(html, /data-release-analyst/);
+  assert.match(html, /data-release-seen/);
+  assert.match(html, /data-release-note/);
+  assert.match(html, /releaseTodayKey/);
+  assert.match(html, /timeZone:'America\/Sao_Paulo'/);
   assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
   assert.match(html, /const knownPortMap = new Map\(\)/);
-  assert.match(html, /if\(key&&!knownPortMap\.has\(key\)\)knownPortMap\.set\(key,port\)/);
-  assert.match(html, /releaseGroups\.get\(key\)\.processes\.push\(process\)/);
-  assert.match(await read('public/assets/gport.css'), /\.release-port-group\{overflow:hidden/);
+  assert.match(html, /if \(key && !knownPortMap\.has\(key\)\) knownPortMap\.set\(key, port\)/);
+  assert.match(projection, /p\.physical_process_analyst,p\.release_seen_on,p\.release_note/);
+  assert.match(server, /physical_process_analyst=\$6/);
+  assert.match(server, /CURRENT_TIMESTAMP AT TIME ZONE 'America\/Sao_Paulo'/);
+  assert.match(server, /release_note=\$8/);
+  assert.match(migration, /release_seen_on DATE/);
+  assert.match(migration, /release_note VARCHAR\(500\)/);
+  assert.match(sheetCss, /\.release-sheet-wrap \.release-sheet th\{[\s\S]*position:sticky/);
+  assert.match(sheetCss, /\.release-port-cell\.release-port-itajai/);
+  assert.match(sheetCss, /\.release-seen-cell\.is-seen/);
   assert.match(await read('public/assets/gport.css'), /\.followup-card\{display:grid/);
   assert.doesNotMatch(html, /new Set\(\[\.\.\.standardPorts/);
 });
@@ -885,7 +899,7 @@ test('canal verde libera o processo automaticamente no servidor e na interface',
   const server = await read('src/server.js');
   const html = await readInterface();
   assert.match(server, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : requestedReleaseStatus/);
-  assert.match(html, /if \(releaseChannel === 'Verde'\) \{ releaseStatus = 'Sim'/);
+  assert.match(html, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : 'Não'/);
 });
 
 test('edição preserva o identificador técnico único do processo', async () => {

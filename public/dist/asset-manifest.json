@@ -2,6 +2,7 @@
   "assets/gport.css": "assets/gport-73D06E1698EC.css",
   "assets/toasts.css": "assets/toasts-5E5ACE623528.css",
   "assets/experience.css": "assets/experience-139D2DA54374.css",
+  "assets/release-sheet.css": "assets/release-sheet-4BCE3C294FE5.css",
   "assets/login-animation.css": "assets/login-animation-39E435D9A3BE.css",
   "assets/login-view.js": "assets/login-view-602EDDA9FBEA.js",
   "assets/login-water-motion.js": "assets/login-water-motion-D7CFE10D18FC.js",
@@ -14,7 +15,7 @@
   "assets/login-controls.js": "assets/login-controls-54AA75263ABF.js",
   "assets/post-shipment-ui.js": "assets/post-shipment-ui-7822AEE6361A.js",
   "assets/braspine-ui.js": "assets/braspine-ui-440026B469EC.js",
-  "assets/app-runtime.js": "assets/app-runtime-CA4F79640FFF.js",
+  "assets/app-runtime.js": "assets/app-runtime-B1F1C69FCA56.js",
   "assets/accessibility.js": "assets/accessibility-9E2CA78A94D1.js",
   "assets/experience.js": "assets/experience-3BC7E1A7AF6C.js",
   "assets/reports.js": "assets/reports-B16CC9CC1CF5.js"

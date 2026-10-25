@@ -1118,6 +1118,9 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
   const vessel = cleanText(req.body.vessel, 160, 'Navio');
   const releaseChannel = String(req.body.releaseChannel || '').trim() || null;
   const releaseDate = cleanOptionalDate(req.body.releaseDate, 'Data de liberação');
+  const physicalProcessAnalyst = cleanText(req.body.physicalProcessAnalyst, 120, 'Onde está');
+  const releaseSeenToday = req.body.releaseSeenToday === true;
+  const releaseNote = cleanText(req.body.releaseNote, 500, 'Observação da liberação');
   if (!['Não', 'Sim'].includes(requestedReleaseStatus)) return res.status(400).json({ error: 'Status de liberação inválido.' });
   if (releaseChannel && !['Verde', 'Laranja', 'Vermelho'].includes(releaseChannel)) return res.status(400).json({ error: 'Canal de liberação inválido.' });
   // Canal Verde representa desembaraço concluído. A regra também fica no
@@ -1131,17 +1134,20 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
            release_deadline=$3,
            vessel=$4,
            release_channel=$5,
+            physical_process_analyst=$6,
+            release_seen_on=CASE WHEN $7::boolean THEN (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date ELSE NULL END,
+            release_note=$8,
            release_date=CASE
              WHEN $1::varchar(10)='Não' THEN NULL
-             WHEN $6::timestamp IS NOT NULL THEN $6::timestamp
+              WHEN $9::timestamp IS NOT NULL THEN $9::timestamp
              WHEN $1::varchar(10)='Sim' AND release_date IS NULL THEN NOW()
              ELSE release_date
            END
-     WHERE id=$7
+     WHERE id=$10
      RETURNING *
-  `, [releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate, req.params.id]);
+  `, [releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, physicalProcessAnalyst, releaseSeenToday, releaseNote, releaseDate, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
-  await audit(req.user.sub, 'process.release_updated', 'process', req.params.id, { releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate: result.rows[0].release_date });
+  await audit(req.user.sub, 'process.release_updated', 'process', req.params.id, { releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, physicalProcessAnalyst, releaseSeenToday, releaseNote, releaseDate: result.rows[0].release_date });
   notifyProcessChange(result.rows[0], 'release-updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'release-updated');
   res.json(result.rows[0]);
@@ -1349,6 +1355,8 @@ const legacyEnsureProcessFields = async () => {
   await query('ALTER TABLE processes ALTER COLUMN release_deadline TYPE TIMESTAMP WITHOUT TIME ZONE USING release_deadline::timestamp');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_channel VARCHAR(10)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_date TIMESTAMP WITHOUT TIME ZONE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_seen_on DATE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_note VARCHAR(500)');
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_status VARCHAR(15) NOT NULL DEFAULT 'Pendente'");
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_note VARCHAR(500)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');

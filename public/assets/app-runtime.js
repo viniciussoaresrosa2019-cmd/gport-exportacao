@@ -367,43 +367,163 @@
         document.querySelectorAll('[data-vgm-report-day]').forEach(button => button.onclick = () => selectVgmDay(button.dataset.vgmReportDay));
         el('clearVgmReportDay')?.addEventListener('click', () => { selectedVgmReportDay = null; renderVgmReport(); });
       };
+      const releaseTodayKey = () => {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('pt-BR', {
+          timeZone:'America/Sao_Paulo', year:'numeric', month:'2-digit', day:'2-digit'
+        }).formatToParts(new Date()).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+        return `${parts.year}-${parts.month}-${parts.day}`;
+      };
+      const releasePortClass = value => {
+        const key = normalizeSearchText(value);
+        return {
+          itajai:'release-port-itajai',
+          itapoa:'release-port-itapoa',
+          navegantes:'release-port-navegantes',
+          paranagua:'release-port-paranagua',
+          'rio grande':'release-port-rio-grande',
+          santos:'release-port-santos',
+          imbituba:'release-port-imbituba'
+        }[key] || 'release-port-other';
+      };
       const renderRelease = () => {
-        // A tabela antiga ainda consulta `currentUser.role`. Preserve esse
-        // contrato local, mas derive-o da lista de funções para esta visão.
-        const currentUser = { role: currentHasRole('liberacao') ? 'liberacao' : '__without_release__' };
-        const canEdit = ['admin', 'liberacao'].includes(currentUser?.role); const normalizePort = value => normalizeSearchText(value); const deadlineOrder = p => { const stored = Date.parse(p.releaseDeadlineOrder || ''); if (Number.isFinite(stored)) return stored; const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/); if (!match) return Number.MAX_SAFE_INTEGER; const now = new Date(), date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4])); if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1); return date.getTime(); }; const filterSelect = el('releaseFilterSelect'); filterSelect.value = releaseFilter; filterSelect.onchange = () => { releaseFilter = filterSelect.value; void refreshSectionData('release'); }; renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => { if (filter?.clear) { releaseFilter = 'all'; releasePortFilter = 'all'; releaseSearchFilter = null; sectionSearchStates.release.filter = null; } else { releaseSearchFilter = filter; sectionSearchStates.release.filter = filter; } void refreshSectionData('release'); }); let portControls = el('releasePortFilters'); if (!portControls) { portControls = document.createElement('div'); portControls.id = 'releasePortFilters'; portControls.className = 'release-port-filters'; filterSelect.closest('.field').insertAdjacentElement('afterend', portControls); } const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos']; const knownPortMap = new Map(); [...standardPorts, ...sectionItems('release').map(p => String(p.origem || '').trim())].forEach(port => { const key=normalizePort(port); if(key&&!knownPortMap.has(key))knownPortMap.set(key,port); }); const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b,'pt-BR',{sensitivity:'base'})); portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`; portControls.querySelectorAll('[data-release-port]').forEach(button => button.onclick = () => { releasePortFilter = button.dataset.releasePort; void refreshSectionData('release'); }); const releaseProcesses = (releaseFilter === 'released' ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim') : releaseFilter === 'pending' ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim') : sectionItems('release')).filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter)).filter(process => matchesSectionSearch(process, releaseSearchFilter)).slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR'));
-        const options = p => ['Não', 'Sim'].map(status => `<option ${p.liberacaoStatus === status ? 'selected' : ''}>${status}</option>`).join('');
-        const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
-        // A liberação é organizada primeiro por porto e, dentro de cada grupo,
-        // pelo deadline mais próximo. Isso evita alternar a atenção entre
-        // terminais durante a operação.
-        const releaseGroups = new Map();
-        releaseProcesses.forEach(process => {
-          const port = String(process.origem || '').trim() || 'Porto não informado';
-          const key = normalizePort(port) || 'sem-porto';
-          if (!releaseGroups.has(key)) releaseGroups.set(key, { port, processes:[] });
-          releaseGroups.get(key).processes.push(process);
+        const canEdit = currentHasRole('liberacao');
+        const normalizePort = value => normalizeSearchText(value);
+        const deadlineOrder = p => {
+          const stored = Date.parse(p.releaseDeadlineOrder || '');
+          if (Number.isFinite(stored)) return stored;
+          const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
+          if (!match) return Number.MAX_SAFE_INTEGER;
+          const now = new Date();
+          const date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4]));
+          if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1);
+          return date.getTime();
+        };
+        const filterSelect = el('releaseFilterSelect');
+        filterSelect.value = releaseFilter;
+        filterSelect.onchange = () => {
+          releaseFilter = filterSelect.value;
+          void refreshSectionData('release');
+        };
+        renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => {
+          if (filter?.clear) {
+            releaseFilter = 'all';
+            releasePortFilter = 'all';
+            releaseSearchFilter = null;
+            sectionSearchStates.release.filter = null;
+          } else {
+            releaseSearchFilter = filter;
+            sectionSearchStates.release.filter = filter;
+          }
+          void refreshSectionData('release');
         });
-        const releaseRow = p => `<tr class="process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(p.origem || '—')}</td><td><input data-release-vessel="${p.id}" value="${esc(p.navio || '')}" ${canEdit ? '' : 'readonly'}></td><td><input data-release-schedule="${p.id}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><input data-release-deadline="${p.id}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><select data-release-channel="${p.id}" ${canEdit ? '' : 'disabled'}>${channels(p)}</select></td><td><select data-release-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td><input data-release-date="${p.id}" value="${esc(p.dataLiberacao || '')}" placeholder="dd/mm" ${canEdit ? '' : 'readonly'}></td></tr>`;
-        const releaseTable = processes => `<table class="release-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>PORTO DE ORIGEM</th><th>NAVIO</th><th>AGENDAMENTO</th><th>DEADLINE DE LIBERAÇÃO</th><th>CANAL</th><th>LIBERADO?</th><th>DATA DE LIBERAÇÃO</th></tr></thead><tbody>${processes.slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR')).map(releaseRow).join('')}</tbody></table>`;
-        el('releaseList').innerHTML = releaseProcesses.length ? `<div class="release-groups" role="list">${[...releaseGroups.values()].sort((a,b) => a.port.localeCompare(b.port,'pt-BR',{sensitivity:'base'})).map(group => `<section class="release-port-group" role="listitem"><header><div><span>PORTO DE ORIGEM</span><h2>${esc(group.port)}</h2></div><strong>${group.processes.length} processo${group.processes.length === 1 ? '' : 's'}</strong></header>${releaseTable(group.processes)}</section>`).join('')}</div>` : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
-        renderSectionPagination('release', el('releaseList'));
-        const releaseLabels = ['BOOKING','EXPORTADOR / IMPORTADOR','PORTO DE ORIGEM','NAVIO','AGENDAMENTO','DEADLINE DE LIBERAÇÃO','CANAL','LIBERADO?','DATA DE LIBERAÇÃO'];
-        el('releaseList').querySelectorAll('tbody tr').forEach(row => row.querySelectorAll('td').forEach((cell, index) => { cell.dataset.label = releaseLabels[index] || ''; }));
-        if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
-        if (canEdit) el('releaseList').querySelectorAll('[data-release-deadline]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); })); if (canEdit) el('releaseList').querySelectorAll('[data-release-date]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value); }));
-        if (canEdit) {
-          el('releaseList').querySelectorAll('select[data-release-status],select[data-release-channel]').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel, { renderView:false }); } catch (error) { toast.error(error.message); renderRelease(); } }));
-          el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-date]').forEach(input => input.addEventListener('input', () => {
-            const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseDate;
-            const schedule = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
-            const deadline = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDate = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
-            if ((schedule && !dateForDatabase(schedule, true)) || (deadline && !dateForDatabase(deadline, true)) || (releaseDate && !dateForDatabase(releaseDate))) return;
-            // O valor já está visível no próprio input. Salvar sem reconstruir
-            // a tabela mantém o foco e permite continuar digitando normalmente.
-            scheduleAutoSave(`release-${id}`, () => saveReleaseRow(id, { renderView:false }));
-          }));
+
+        let portControls = el('releasePortFilters');
+        if (!portControls) {
+          portControls = document.createElement('div');
+          portControls.id = 'releasePortFilters';
+          portControls.className = 'release-port-filters';
+          filterSelect.closest('.field').insertAdjacentElement('afterend', portControls);
         }
+        const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos'];
+        const knownPortMap = new Map();
+        [...standardPorts, ...sectionItems('release').map(p => String(p.origem || '').trim())].forEach(port => {
+          const key = normalizePort(port);
+          if (key && !knownPortMap.has(key)) knownPortMap.set(key, port);
+        });
+        const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b, 'pt-BR', { sensitivity:'base' }));
+        portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`;
+        portControls.querySelectorAll('[data-release-port]').forEach(button => {
+          button.onclick = () => {
+            releasePortFilter = button.dataset.releasePort;
+            void refreshSectionData('release');
+          };
+        });
+
+        const releaseProcesses = (releaseFilter === 'released'
+          ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim')
+          : releaseFilter === 'pending'
+            ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim')
+            : sectionItems('release'))
+          .filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter))
+          .filter(process => matchesSectionSearch(process, releaseSearchFilter))
+          .slice()
+          .sort((a,b) => normalizePort(a.origem).localeCompare(normalizePort(b.origem), 'pt-BR')
+            || deadlineOrder(a) - deadlineOrder(b)
+            || String(a.booking || '').localeCompare(String(b.booking || ''), 'pt-BR'));
+
+        const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
+        const assignees = p => {
+          const people = [...availableAssignees, ...(p.analistaFisico && !availableAssignees.some(person => person.username === p.analistaFisico) ? [{ username:p.analistaFisico }] : [])];
+          return `<option value="">Selecione</option>${people.map(person => `<option value="${esc(person.username)}" ${p.analistaFisico === person.username ? 'selected' : ''}>${esc(person.username)}</option>`).join('')}`;
+        };
+        const today = releaseTodayKey();
+        const releaseRow = p => {
+          const key = esc(p.id);
+          const booking = esc(p.booking || '—');
+          const seenToday = String(p.liberacaoVistoEm || '').slice(0, 10) === today;
+          const channelKey = normalizeSearchText(p.canalLiberacao || '') || 'sem-canal';
+          return `<tr class="release-sheet-row process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" data-release-row="${key}">
+            <td class="release-port-cell ${releasePortClass(p.origem)}">${esc(p.origem || '—')}</td>
+            <td class="release-client-cell" title="${esc(p.exportador || '—')}">${esc(p.exportador || '—')}</td>
+            <td class="release-booking-cell"><strong>${booking}</strong></td>
+            <td title="${esc(p.fatura || '')}">${esc(p.fatura || '—')}</td>
+            <td><input data-release-vessel="${key}" aria-label="Navio do booking ${booking}" value="${esc(p.navio || '')}" ${canEdit ? '' : 'readonly'}></td>
+            <td><input data-release-deadline="${key}" aria-label="Deadline do booking ${booking}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td>
+            <td><input data-release-schedule="${key}" aria-label="Agendamento do booking ${booking}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td>
+            <td class="${p.due ? '' : 'release-due-missing'}" title="${esc(p.due || '')}">${esc(p.due || 'Pendente')}</td>
+            <td><select data-release-analyst="${key}" aria-label="Onde está o processo físico do booking ${booking}" ${canEdit ? '' : 'disabled'}>${assignees(p)}</select></td>
+            <td class="release-seen-cell ${seenToday ? 'is-seen' : ''}"><label><input type="checkbox" data-release-seen="${key}" aria-label="Processo ${booking} visto hoje" ${seenToday ? 'checked' : ''} ${canEdit ? '' : 'disabled'}><span>${seenToday ? 'Visto' : 'Marcar'}</span></label></td>
+            <td class="release-channel-cell release-channel-${channelKey}"><select data-release-channel="${key}" aria-label="Canal do booking ${booking}" ${canEdit ? '' : 'disabled'}>${channels(p)}</select></td>
+            <td><input data-release-note="${key}" aria-label="Observação da liberação do booking ${booking}" maxlength="500" value="${esc(p.observacaoLiberacao || '')}" title="${esc(p.observacaoLiberacao || '')}" placeholder="Observação" ${canEdit ? '' : 'readonly'}></td>
+          </tr>`;
+        };
+        el('releaseList').innerHTML = releaseProcesses.length
+          ? `<div class="release-sheet-wrap"><table class="release-table release-sheet" aria-label="Planilha de liberação"><colgroup><col class="col-port"><col class="col-client"><col class="col-booking"><col class="col-invoice"><col class="col-vessel"><col class="col-deadline"><col class="col-schedule"><col class="col-due"><col class="col-location"><col class="col-seen"><col class="col-channel"><col class="col-note"></colgroup><thead><tr><th>PORTO</th><th>CLIENTE</th><th>BOOKING</th><th>FATURA</th><th>NAVIO</th><th>DEADLINE</th><th>AGENDAMENTO</th><th>DUE</th><th>ONDE ESTÁ</th><th>VISTO</th><th>CANAL</th><th>OBS</th></tr></thead><tbody>${releaseProcesses.map(releaseRow).join('')}</tbody></table></div>`
+          : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
+        renderSectionPagination('release', el('releaseList'));
+
+        if (!canEdit) return;
+        el('releaseList').querySelectorAll('[data-release-schedule],[data-release-deadline]').forEach(input => {
+          input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); });
+        });
+        el('releaseList').querySelectorAll('select[data-release-channel],select[data-release-analyst],input[data-release-seen]').forEach(input => {
+          input.addEventListener('change', async () => {
+            const id = input.dataset.releaseChannel || input.dataset.releaseAnalyst || input.dataset.releaseSeen;
+            if (input.dataset.releaseSeen) {
+              const cell = input.closest('.release-seen-cell');
+              cell?.classList.toggle('is-seen', input.checked);
+              const label = cell?.querySelector('span');
+              if (label) label.textContent = input.checked ? 'Visto' : 'Marcar';
+            }
+            if (input.dataset.releaseChannel) {
+              const cell = input.closest('.release-channel-cell');
+              if (cell) cell.className = `release-channel-cell release-channel-${normalizeSearchText(input.value) || 'sem-canal'}`;
+            }
+            try {
+              await saveReleaseRow(id, { renderView:false });
+            } catch (error) {
+              toast.error(error.message);
+              renderRelease();
+            }
+          });
+        });
+        el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-note]').forEach(input => {
+          input.addEventListener('change', async () => {
+            const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseNote;
+            try {
+              await saveReleaseRow(id, { renderView:false });
+            } catch (error) {
+              toast.error(error.message);
+              renderRelease();
+            }
+          });
+          input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              input.blur();
+            }
+          });
+        });
       };
       const renderPostShipment = () => {
         const canEdit = currentHasRole('pos_embarque');
@@ -501,7 +621,7 @@
           return visible.join('\n');
         }
         if (item.action === 'process.vgm_updated') return [details.vgmStatus && `Status VGM: ${details.vgmStatus}`, details.vgmSentTo && `Enviado para: ${details.vgmSentTo}`, details.physicalProcessAnalyst && `Processo físico com: ${details.physicalProcessAnalyst}`].filter(Boolean).join(' · ') || 'Controle de VGM atualizado.';
-        if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
+        if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`, details.physicalProcessAnalyst && `Onde está: ${details.physicalProcessAnalyst}`, details.releaseSeenToday && 'Visto hoje', details.releaseNote && `Observação: ${details.releaseNote}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
         if (item.action === 'process.followup_updated') return [details.followupStatus && `Status: ${details.followupStatus}`, details.followupNote && `Observação: ${details.followupNote}`].filter(Boolean).join(' · ') || 'Follow up atualizado.';
         return 'Alteração registrada no processo.';
       };
@@ -666,7 +786,7 @@
         const seals = Array.isArray(details) ? details.map(x => x.seal).filter(Boolean).join(' / ') : '';
         const newSeals = Array.isArray(details) ? details.map(x => x.new_seal).filter(Boolean).join(' / ') : '';
         const notes = Array.isArray(details) ? details.map(x => x.invoice_number).filter(Boolean).join(' / ') : '';
-        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), liberacaoVistoEm:p.release_seen_on || '', observacaoLiberacao:p.release_note || '', followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
         // HTMLInputElement converte `undefined` para o texto literal
         // "undefined". Normalize somente valores nulos da resposta; strings
         // realmente armazenadas continuam visíveis para uma auditoria posterior.
@@ -1888,25 +2008,27 @@
         }
       };
       const saveReleaseRow = async (id, { renderView=true } = {}) => {
-        let releaseStatus = el('releaseList').querySelector(`[data-release-status="${id}"]`)?.value;
         const releaseChannel = el('releaseList').querySelector(`[data-release-channel="${id}"]`)?.value;
-        if (releaseChannel === 'Verde') { releaseStatus = 'Sim'; const statusInput = el('releaseList').querySelector(`[data-release-status="${id}"]`); if (statusInput) statusInput.value = 'Sim'; }
+        const releaseStatus = releaseChannel === 'Verde' ? 'Sim' : 'Não';
         const vessel = el('releaseList').querySelector(`[data-release-vessel="${id}"]`)?.value;
         const scheduleValue = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
-        const deadlineValue = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDateValue = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
+        const deadlineValue = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value;
+        const physicalProcessAnalyst = el('releaseList').querySelector(`[data-release-analyst="${id}"]`)?.value;
+        const releaseSeenToday = Boolean(el('releaseList').querySelector(`[data-release-seen="${id}"]`)?.checked);
+        const releaseNote = el('releaseList').querySelector(`[data-release-note="${id}"]`)?.value || '';
         const releaseSchedule = dateForDatabase(scheduleValue, true);
-        const releaseDeadline = dateForDatabase(deadlineValue, true); const releaseDate = dateForDatabase(releaseDateValue);
+        const releaseDeadline = dateForDatabase(deadlineValue, true);
         if (scheduleValue && !releaseSchedule) throw new Error('Informe o agendamento no formato dd/mm hh:mm.');
-        if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.'); if (releaseDateValue && !releaseDate) throw new Error('Informe a data de liberação no formato dd/mm.');
+        if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.');
         const snapshot = snapshotVisibleProcess('release', id);
         const mutationVersion = beginSectionMutation(id);
         const currentReleaseDate = snapshot.section?.dataLiberacao || snapshot.main?.dataLiberacao || '';
-        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseDateValue || currentReleaseDate }, { renderView });
+        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseStatus === 'Sim' ? currentReleaseDate : '', analistaFisico:physicalProcessAnalyst || '', liberacaoVistoEm:releaseSeenToday ? releaseTodayKey() : '', observacaoLiberacao:releaseNote }, { renderView });
         try {
-          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) }));
+          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, physicalProcessAnalyst, releaseSeenToday, releaseNote }) }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
           reconcileVisibleProcess('release', id, updated, { renderView });
-          toast.success('Status de liberação atualizado.');
+          toast.success('Liberação atualizada.');
         } catch (error) {
           if (!isLatestSectionMutation(id, mutationVersion)) return;
           restoreVisibleProcess('release', id, snapshot);
@@ -2205,4 +2327,3 @@
       el('printBtn').onclick = () => printCoverFromDocumentModel(Object.fromEntries(new FormData(form)));
       restoreSession().finally(() => { if (!currentUser) el('loginDialog').showModal(); });
     })();
-  

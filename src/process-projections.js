@@ -27,7 +27,8 @@ export const processVgmSelect = `SELECT
   ${processRelations}`;
 
 export const processReleaseSelect = `SELECT
-  p.id,p.client_id,p.booking,p.importer,p.origin_port,p.vessel,
+  p.id,p.client_id,p.booking,p.invoice,p.due_number,p.importer,p.origin_port,p.vessel,
+  p.physical_process_analyst,p.release_seen_on,p.release_note,
   p.release_status,p.release_schedule,p.release_deadline,p.release_channel,
   p.release_date,p.analyst_id,p.created_at,p.updated_at,
   ${relationFields}

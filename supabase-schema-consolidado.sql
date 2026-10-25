@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS processes (
   release_deadline TIMESTAMP WITHOUT TIME ZONE,
   release_channel VARCHAR(10),
   release_date TIMESTAMP WITHOUT TIME ZONE,
+  release_seen_on DATE,
+  release_note VARCHAR(500),
   followup_status VARCHAR(15) NOT NULL DEFAULT 'Pendente',
   followup_note VARCHAR(500),
   physical_process_analyst VARCHAR(120),
@@ -142,6 +144,8 @@ ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_deadline TIMESTAMP WITHOU
 ALTER TABLE processes ALTER COLUMN release_deadline TYPE TIMESTAMP WITHOUT TIME ZONE USING release_deadline::timestamp;
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_channel VARCHAR(10);
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_date TIMESTAMP WITHOUT TIME ZONE;
+ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_seen_on DATE;
+ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_note VARCHAR(500);
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_status VARCHAR(15) NOT NULL DEFAULT 'Pendente';
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_note VARCHAR(500);
 ALTER TABLE processes ADD COLUMN IF NOT EXISTS physical_process_analyst VARCHAR(120);
