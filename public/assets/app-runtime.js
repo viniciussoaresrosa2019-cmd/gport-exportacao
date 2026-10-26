@@ -204,8 +204,10 @@
       };
       // VGM, Liberação e Follow up têm a própria página de dados. Assim a
       // busca dessas áreas não fica limitada aos 50 processos da planilha.
-      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup', 'braspine'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
+      const sectionSearchLimits = { release:5_000 };
+      const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup', 'braspine'].map(name => [name, { items:null, pagination:{ limit:sectionSearchLimits[name] || 50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
       let releaseColumnFilters = {};
+      let releaseColumnSort = null;
       const sectionItems = name => sectionSearchStates[name]?.items || [];
       // As páginas operacionais usam listas próprias e paginadas. Atualizar
       // somente `data` (a lista da página Processos) fazia VGM e Liberação
@@ -440,8 +442,8 @@
           if (key && !knownPortMap.has(key)) knownPortMap.set(key, port);
         });
         const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b, 'pt-BR', { sensitivity:'base' }));
-        const hasColumnFilters = Object.values(releaseColumnFilters).some(Boolean);
-        portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}${hasColumnFilters ? '<button type="button" class="btn secondary release-clear-column-filters" data-release-clear-columns>Limpar filtros da tabela</button>' : ''}`;
+        const hasColumnFilters = Object.keys(releaseColumnFilters).length > 0;
+        portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}${hasColumnFilters || releaseColumnSort ? '<button type="button" class="btn secondary release-clear-column-filters" data-release-clear-columns>Limpar filtros e ordenação</button>' : ''}`;
         portControls.querySelectorAll('[data-release-port]').forEach(button => {
           button.onclick = () => {
             releasePortFilter = button.dataset.releasePort;
@@ -450,6 +452,7 @@
         });
         portControls.querySelector('[data-release-clear-columns]')?.addEventListener('click', () => {
           releaseColumnFilters = {};
+          releaseColumnSort = null;
           renderRelease();
         });
 
@@ -493,12 +496,21 @@
         const releaseProcesses = releaseBaseProcesses
           .filter(process => releaseColumnDefinitions.every(definition => {
             const selected = releaseColumnFilters[definition.key];
-            return !selected || normalizePort(releaseColumnValue(process, definition.key)) === selected;
+            return !selected || selected.includes(normalizePort(releaseColumnValue(process, definition.key)));
           }))
           .slice()
-          .sort((a,b) => normalizePort(a.origem).localeCompare(normalizePort(b.origem), 'pt-BR')
-            || deadlineOrder(a) - deadlineOrder(b)
-            || String(a.booking || '').localeCompare(String(b.booking || ''), 'pt-BR'));
+          .sort((a,b) => {
+            if (releaseColumnSort) {
+              const direction = releaseColumnSort.direction === 'desc' ? -1 : 1;
+              const left = String(releaseColumnValue(a, releaseColumnSort.key));
+              const right = String(releaseColumnValue(b, releaseColumnSort.key));
+              const ordered = left.localeCompare(right, 'pt-BR', { sensitivity:'base', numeric:true });
+              if (ordered) return ordered * direction;
+            }
+            return normalizePort(a.origem).localeCompare(normalizePort(b.origem), 'pt-BR')
+              || deadlineOrder(a) - deadlineOrder(b)
+              || String(a.booking || '').localeCompare(String(b.booking || ''), 'pt-BR');
+          });
         const releaseColumnHeader = definition => {
           const values = new Map();
           releaseBaseProcesses.forEach(process => {
@@ -506,12 +518,13 @@
             const normalized = normalizePort(display);
             if (normalized && !values.has(normalized)) values.set(normalized, display);
           });
-          const selected = releaseColumnFilters[definition.key] || '';
-          const options = [...values.entries()]
-            .sort((left, right) => left[1].localeCompare(right[1], 'pt-BR', { sensitivity:'base', numeric:true }))
-            .map(([value, label]) => `<option value="${esc(value)}" ${selected === value ? 'selected' : ''}>${esc(label)}</option>`)
-            .join('');
-          return `<th scope="col"><div class="release-column-heading"><span>${definition.label}</span><label class="release-filter-control ${selected ? 'is-active' : ''}" title="Filtrar ${definition.label}"><span class="release-filter-icon" aria-hidden="true"></span><select data-release-column-filter="${definition.key}" aria-label="Filtrar coluna ${definition.label}"><option value="">Todos</option>${options}</select></label></div></th>`;
+          const selected = releaseColumnFilters[definition.key];
+          const entries = [...values.entries()]
+            .sort((left, right) => left[1].localeCompare(right[1], 'pt-BR', { sensitivity:'base', numeric:true }));
+          const options = entries.map(([value, label]) => `<label class="release-filter-option" data-release-option-label="${esc(normalizePort(label))}"><input type="checkbox" value="${esc(value)}" ${!selected || selected.includes(value) ? 'checked' : ''}><span>${esc(label)}</span></label>`).join('');
+          const activeSort = releaseColumnSort?.key === definition.key ? releaseColumnSort.direction : '';
+          const activeCount = selected ? selected.length : 0;
+          return `<th scope="col"><div class="release-column-heading"><span>${definition.label}</span><details class="release-filter-menu ${selected ? 'is-active' : ''} ${activeSort ? 'is-sorted' : ''}" data-release-filter-menu="${definition.key}"><summary aria-label="Filtrar e ordenar coluna ${definition.label}" title="Filtrar e ordenar ${definition.label}"><span class="release-filter-icon" aria-hidden="true"></span>${selected ? `<span class="release-filter-count">${activeCount}</span>` : ''}</summary><div class="release-filter-popover"><strong>${definition.label}</strong><div class="release-sort-actions"><button type="button" class="${activeSort === 'asc' ? 'active' : ''}" data-release-sort="${definition.key}" data-release-sort-direction="asc">Classificar A → Z</button><button type="button" class="${activeSort === 'desc' ? 'active' : ''}" data-release-sort="${definition.key}" data-release-sort-direction="desc">Classificar Z → A</button>${activeSort ? `<button type="button" data-release-sort-clear="${definition.key}">Remover ordenação</button>` : ''}</div><label class="release-filter-search"><span>Buscar valores</span><input type="search" data-release-option-search="${definition.key}" autocomplete="off" placeholder="Pesquisar…"></label><div class="release-filter-options" role="group" aria-label="Valores de ${definition.label}">${options || '<span class="release-filter-empty">Nenhum valor disponível</span>'}</div><div class="release-filter-selection-actions"><button type="button" data-release-select-all="${definition.key}">Todos</button><button type="button" data-release-select-none="${definition.key}">Nenhum</button><button type="button" class="release-filter-apply" data-release-filter-apply="${definition.key}">Aplicar</button></div></div></details></div></th>`;
         };
 
         const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
@@ -544,12 +557,42 @@
           : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
         renderSectionPagination('release', el('releaseList'));
 
-        el('releaseList').querySelectorAll('[data-release-column-filter]').forEach(select => {
-          select.addEventListener('change', () => {
+        el('releaseList').querySelectorAll('[data-release-filter-menu]').forEach(menu => {
+          menu.addEventListener('toggle', () => {
+            const wrapper = menu.closest('.release-sheet-wrap');
+            if (menu.open) el('releaseList').querySelectorAll('[data-release-filter-menu][open]').forEach(other => { if (other !== menu) other.open = false; });
+            wrapper?.classList.toggle('has-open-filter', Boolean(wrapper.querySelector('[data-release-filter-menu][open]')));
+          });
+          menu.querySelector('[data-release-option-search]')?.addEventListener('input', event => {
+            const term = normalizePort(event.target.value);
+            menu.querySelectorAll('[data-release-option-label]').forEach(option => { option.hidden = term && !option.dataset.releaseOptionLabel.includes(term); });
+          });
+          menu.querySelector('[data-release-select-all]')?.addEventListener('click', () => {
+            menu.querySelectorAll('.release-filter-option:not([hidden]) input').forEach(input => { input.checked = true; });
+          });
+          menu.querySelector('[data-release-select-none]')?.addEventListener('click', () => {
+            menu.querySelectorAll('.release-filter-option:not([hidden]) input').forEach(input => { input.checked = false; });
+          });
+          menu.querySelector('[data-release-filter-apply]')?.addEventListener('click', () => {
+            const key = menu.dataset.releaseFilterMenu;
+            const all = [...menu.querySelectorAll('.release-filter-option input')];
+            const checked = all.filter(input => input.checked).map(input => input.value);
             const nextFilters = { ...releaseColumnFilters };
-            if (select.value) nextFilters[select.dataset.releaseColumnFilter] = select.value;
-            else delete nextFilters[select.dataset.releaseColumnFilter];
+            if (checked.length === all.length) delete nextFilters[key];
+            else nextFilters[key] = checked;
             releaseColumnFilters = nextFilters;
+            renderRelease();
+          });
+        });
+        el('releaseList').querySelectorAll('[data-release-sort]').forEach(button => {
+          button.addEventListener('click', () => {
+            releaseColumnSort = { key:button.dataset.releaseSort, direction:button.dataset.releaseSortDirection };
+            renderRelease();
+          });
+        });
+        el('releaseList').querySelectorAll('[data-release-sort-clear]').forEach(button => {
+          button.addEventListener('click', () => {
+            if (releaseColumnSort?.key === button.dataset.releaseSortClear) releaseColumnSort = null;
             renderRelease();
           });
         });

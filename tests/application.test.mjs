@@ -785,7 +785,13 @@ test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto d
   assert.match(html, /\{ key:'location', label:'ONDE ESTÁ' \}/);
   assert.match(html, /\{ key:'note', label:'OBS' \}/);
   assert.doesNotMatch(html, /<th>RECEBIMENTO<\/th>/);
-  assert.match(html, /data-release-column-filter/);
+  assert.match(html, /sectionSearchLimits = \{ release:5_000 \}/);
+  assert.match(html, /data-release-filter-menu/);
+  assert.match(html, /data-release-filter-apply/);
+  assert.match(html, /data-release-select-all/);
+  assert.match(html, /data-release-sort-direction="asc"/);
+  assert.match(html, /data-release-sort-direction="desc"/);
+  assert.match(html, /selected\.includes\(normalizePort\(releaseColumnValue/);
   assert.match(html, /releaseColumnFilters = nextFilters/);
   assert.match(html, /data-release-clear-columns/);
   assert.match(html, /data-release-analyst/);
@@ -809,6 +815,8 @@ test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto d
   assert.match(sheetCss, /min-width:0!important/);
   assert.match(sheetCss, /background:var\(--navy\)!important/);
   assert.match(sheetCss, /\.release-filter-icon\{[\s\S]*clip-path:polygon/);
+  assert.match(sheetCss, /\.release-filter-popover\{[\s\S]*position:absolute/);
+  assert.match(sheetCss, /\.release-filter-options\{[\s\S]*overflow:auto/);
   assert.match(sheetCss, /\.release-port-cell\.release-port-itajai/);
   assert.match(sheetCss, /\.release-seen-cell\.is-seen/);
   assert.match(await read('public/assets/gport.css'), /\.followup-card\{display:grid/);

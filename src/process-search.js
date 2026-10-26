@@ -46,6 +46,7 @@ export const buildProcessSearchQuery = query => {
   const projection = String(query.projection || 'full').trim().toLowerCase();
   const limit = Number(query.limit || 50);
   const offset = Number(query.offset || 0);
+  const maximumLimit = view === 'release' ? 5_000 : 100;
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   if (rawTerm.length > 100 || status.length > 40 || clientName.length > 200 || originPort.length > 120
     || !['processes', 'vgm', 'release', 'followup', 'postshipment', 'braspine'].includes(view) || !supportedProcessProjections.has(projection)
@@ -53,7 +54,7 @@ export const buildProcessSearchQuery = query => {
     || !['', 'shipped', 'pending'].includes(postShipmentStatus)
     || (launchedFrom && !datePattern.test(launchedFrom)) || (launchedTo && !datePattern.test(launchedTo))
     || (launchedFrom && launchedTo && launchedFrom > launchedTo) || (clientId && !uuidPattern.test(clientId))
-    || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > 100
+    || !Object.hasOwn(processSearchFields, field) || !Number.isInteger(limit) || limit < 1 || limit > maximumLimit
     || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) throw invalidFilter();
 
   // Construa somente os predicados realmente solicitados. A versão anterior

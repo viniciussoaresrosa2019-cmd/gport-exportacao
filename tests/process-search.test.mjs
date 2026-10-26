@@ -38,6 +38,12 @@ test('filtros inválidos, termos longos e paginação excessiva são recusados',
   ]) assert.throws(() => buildProcessSearchQuery(input), error => error.code === 'INVALID_PROCESS_FILTER' && error.status === 400);
 });
 
+test('liberação permite carregar toda a fila em uma página sem ampliar os demais módulos', () => {
+  assert.equal(buildProcessSearchQuery({ view:'release', projection:'release', limit:5_000 }).limit, 5_000);
+  assert.throws(() => buildProcessSearchQuery({ view:'release', projection:'release', limit:5_001 }), error => error.code === 'INVALID_PROCESS_FILTER');
+  assert.throws(() => buildProcessSearchQuery({ view:'vgm', projection:'vgm', limit:101 }), error => error.code === 'INVALID_PROCESS_FILTER');
+});
+
 test('ordenação é estável e específica por tela', () => {
   assert.match(buildProcessSearchQuery({ view:'processes' }).itemsSql, /c\.name ASC,p\.created_at DESC,p\.id DESC/);
   assert.match(buildProcessSearchQuery({ view:'vgm' }).itemsSql, /vgm_sent_date DESC NULLS LAST/);
