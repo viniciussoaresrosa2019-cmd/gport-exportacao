@@ -47,6 +47,13 @@ test('ordenação é estável e específica por tela', () => {
   assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /c\.name ASC,p\.created_at DESC,p\.id DESC/);
 });
 
+test('liberações concluídas permanecem na fila somente no dia do canal Verde', () => {
+  const releaseQuery = buildProcessSearchQuery({ view:'release', projection:'release' }).itemsSql;
+  assert.match(releaseQuery, /COALESCE\(p\.release_status,'Não'\)<>'Sim'/);
+  assert.match(releaseQuery, /p\.release_date::date=\(CURRENT_TIMESTAMP AT TIME ZONE 'America\/Sao_Paulo'\)::date/);
+  assert.doesNotMatch(buildProcessSearchQuery({ view:'processes' }).itemsSql, /p\.release_date::date/);
+});
+
 test('filtro por exportador usa client_id direto e ordenação coberta pelo índice', () => {
   const query = buildProcessSearchQuery({
     view:'processes',

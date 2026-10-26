@@ -1103,7 +1103,7 @@ app.patch('/api/processes/bulk/release', authenticate, releaseManagerOnly, async
   const ids = validateBulkProcessIds(req.body.ids);
   const releaseStatus = String(req.body.releaseStatus || '');
   if (!['Não','Sim'].includes(releaseStatus)) return res.status(400).json({ error:'Status de liberação inválido.' });
-  const result = await query(`UPDATE processes SET release_status=$1,release_date=CASE WHEN $1='Sim' THEN COALESCE(release_date,NOW()) ELSE NULL END
+  const result = await query(`UPDATE processes SET release_status=$1,release_date=CASE WHEN $1='Sim' THEN COALESCE(release_date,(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')) ELSE NULL END
     WHERE id=ANY($2::uuid[]) RETURNING *`, [releaseStatus, ids]);
   await Promise.all(result.rows.map(process => audit(req.user.sub, 'process.release_bulk_updated', 'process', process.id, { releaseStatus })));
   result.rows.forEach(process => publishProcessChange(process, 'release-updated'));
@@ -1134,13 +1134,13 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
            release_deadline=$3,
            vessel=$4,
            release_channel=$5,
-            physical_process_analyst=$6,
-            release_seen_on=CASE WHEN $7::boolean THEN (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date ELSE NULL END,
-            release_note=$8,
+           physical_process_analyst=$6,
+           release_seen_on=CASE WHEN $7::boolean THEN (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date ELSE NULL END,
+           release_note=$8,
            release_date=CASE
              WHEN $1::varchar(10)='Não' THEN NULL
-              WHEN $9::timestamp IS NOT NULL THEN $9::timestamp
-             WHEN $1::varchar(10)='Sim' AND release_date IS NULL THEN NOW()
+             WHEN $9::timestamp IS NOT NULL THEN $9::timestamp
+             WHEN $1::varchar(10)='Sim' AND release_date IS NULL THEN (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
              ELSE release_date
            END
      WHERE id=$10

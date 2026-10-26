@@ -793,6 +793,8 @@ test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto d
   assert.match(html, /data-release-note/);
   assert.match(html, /releaseTodayKey/);
   assert.match(html, /timeZone:'America\/Sao_Paulo'/);
+  assert.match(html, /process\.liberacaoStatus !== 'Sim' \|\| String\(process\.diaLiberacao \|\| ''\)\.slice\(0, 10\) === today/);
+  assert.match(html, /currentReleaseDayKey = nextDayKey/);
   assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
   assert.match(html, /const knownPortMap = new Map\(\)/);
   assert.match(html, /if \(key && !knownPortMap\.has\(key\)\) knownPortMap\.set\(key, port\)/);
@@ -908,6 +910,7 @@ test('canal verde libera o processo automaticamente no servidor e na interface',
   const server = await read('src/server.js');
   const html = await readInterface();
   assert.match(server, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : requestedReleaseStatus/);
+  assert.match(server, /CURRENT_TIMESTAMP AT TIME ZONE 'America\/Sao_Paulo'/);
   assert.match(html, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : 'Não'/);
 });
 

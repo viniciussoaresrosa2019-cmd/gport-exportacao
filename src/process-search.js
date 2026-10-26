@@ -92,6 +92,13 @@ export const buildProcessSearchQuery = query => {
   if (releaseStatus) conditions.push(releaseStatus === 'released'
     ? "p.release_status='Sim'"
     : "COALESCE(p.release_status,'Não')<>'Sim'");
+  // Um processo liberado permanece na planilha apenas durante o dia em que
+  // recebeu o canal Verde. No dia seguinte ele continua no histórico e nas
+  // demais telas, mas deixa de ocupar a fila operacional de Liberação.
+  if (view === 'release') conditions.push(`(
+    COALESCE(p.release_status,'Não')<>'Sim'
+    OR p.release_date::date=(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date
+  )`);
   if (originPort) conditions.push(`${normalizedSearchExpression('p.origin_port')}=${addParam(originPort)}`);
   if (postShipmentStatus) conditions.push(postShipmentStatus === 'shipped'
     ? 'p.post_shipment_date IS NOT NULL'

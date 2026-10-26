@@ -374,6 +374,13 @@
         }).formatToParts(new Date()).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
         return `${parts.year}-${parts.month}-${parts.day}`;
       };
+      let currentReleaseDayKey = releaseTodayKey();
+      window.setInterval(() => {
+        const nextDayKey = releaseTodayKey();
+        if (nextDayKey === currentReleaseDayKey) return;
+        currentReleaseDayKey = nextDayKey;
+        if (!el('releasePage')?.hidden) void refreshSectionData('release', { page:1 });
+      }, 60 * 1000);
       const releasePortClass = value => {
         const key = normalizeSearchText(value);
         return {
@@ -481,7 +488,8 @@
             ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim')
             : sectionItems('release'))
           .filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter))
-          .filter(process => matchesSectionSearch(process, releaseSearchFilter));
+          .filter(process => matchesSectionSearch(process, releaseSearchFilter))
+          .filter(process => process.liberacaoStatus !== 'Sim' || String(process.diaLiberacao || '').slice(0, 10) === today);
         const releaseProcesses = releaseBaseProcesses
           .filter(process => releaseColumnDefinitions.every(definition => {
             const selected = releaseColumnFilters[definition.key];
@@ -850,7 +858,7 @@
         const seals = Array.isArray(details) ? details.map(x => x.seal).filter(Boolean).join(' / ') : '';
         const newSeals = Array.isArray(details) ? details.map(x => x.new_seal).filter(Boolean).join(' / ') : '';
         const notes = Array.isArray(details) ? details.map(x => x.invoice_number).filter(Boolean).join(' / ') : '';
-        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), liberacaoVistoEm:p.release_seen_on || '', observacaoLiberacao:p.release_note || '', followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), diaLiberacao:p.release_day || (p.release_date ? String(p.release_date).slice(0, 10) : ''), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), liberacaoVistoEm:p.release_seen_on || '', observacaoLiberacao:p.release_note || '', followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
         // HTMLInputElement converte `undefined` para o texto literal
         // "undefined". Normalize somente valores nulos da resposta; strings
         // realmente armazenadas continuam visíveis para uma auditoria posterior.
@@ -2087,7 +2095,7 @@
         const snapshot = snapshotVisibleProcess('release', id);
         const mutationVersion = beginSectionMutation(id);
         const currentReleaseDate = snapshot.section?.dataLiberacao || snapshot.main?.dataLiberacao || '';
-        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseStatus === 'Sim' ? currentReleaseDate : '', analistaFisico:physicalProcessAnalyst || '', liberacaoVistoEm:releaseSeenToday ? releaseTodayKey() : '', observacaoLiberacao:releaseNote }, { renderView });
+        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseStatus === 'Sim' ? currentReleaseDate : '', diaLiberacao:releaseStatus === 'Sim' ? releaseTodayKey() : '', analistaFisico:physicalProcessAnalyst || '', liberacaoVistoEm:releaseSeenToday ? releaseTodayKey() : '', observacaoLiberacao:releaseNote }, { renderView });
         try {
           const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, physicalProcessAnalyst, releaseSeenToday, releaseNote }) }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
