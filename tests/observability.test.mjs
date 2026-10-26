@@ -12,13 +12,17 @@ test('observabilidade cria correlação e agrega somente métricas técnicas', a
     statusCode:500,
     headers:{},
     setHeader(name, value) { this.headers[name] = value; },
+    hasHeader(name) { return Object.hasOwn(this.headers, name); },
+    writeHead() { this.headersWritten = true; },
     once(name, callback) { listeners[name] = callback; }
   };
   observability.middleware(request, response, () => {});
   await new Promise(resolve => setTimeout(resolve, 2));
+  response.writeHead(500);
   listeners.finish();
   const snapshot = observability.snapshot();
   assert.match(response.headers['X-Request-Id'], /^[0-9a-f-]{36}$/);
+  assert.match(response.headers['Server-Timing'], /^app;dur=\d+\.\d$/);
   assert.equal(snapshot.total, 1);
   assert.equal(snapshot.errors, 1);
   assert.equal(snapshot.routes[0].route, '/api/processes/:id');

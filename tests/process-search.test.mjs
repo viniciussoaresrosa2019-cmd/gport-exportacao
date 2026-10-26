@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildProcessSearchQuery, normalizeSearchTerm, processSearchFields } from '../src/process-search.js';
+import { buildProcessSearchQuery, executeProcessSearch, normalizeSearchTerm, processSearchFields } from '../src/process-search.js';
 
 test('busca normaliza acentos, caixa e espaços sem alterar SQL', () => {
   assert.equal(normalizeSearchTerm('  São   JOSÉ  '), 'sao jose');
@@ -8,7 +8,7 @@ test('busca normaliza acentos, caixa e espaços sem alterar SQL', () => {
   assert.equal(query.params[0], 'sao jose');
   assert.equal(query.limit, 25);
   assert.equal(query.offset, 50);
-  assert.equal(query.pageParams.at(-2), 25);
+  assert.equal(query.pageParams.at(-2), 26);
   assert.equal(query.pageParams.at(-1), 50);
   assert.match(query.itemsSql, /LIMIT \$2 OFFSET \$3/);
 });
@@ -24,8 +24,7 @@ test('busca cobre identificadores e campos operacionais esperados', () => {
   for (const field of ['todos','booking','exportador','importador','fatura','due','ruc','containers','tipobl','tipofrete','porto','navio','analista']) {
     assert.ok(processSearchFields[field], `campo ausente: ${field}`);
   }
-  assert.match(processSearchFields.todos, /process_number/);
-  assert.match(processSearchFields.todos, /container_details/);
+  assert.equal(processSearchFields.todos, 'p.search_text');
 });
 
 test('filtros inválidos, termos longos e paginação excessiva são recusados', () => {
@@ -48,6 +47,13 @@ test('ordenação é estável e específica por tela', () => {
   assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /c\.name ASC,p\.created_at DESC,p\.id DESC/);
 });
 
+test('liberações concluídas permanecem na fila somente no dia do canal Verde', () => {
+  const releaseQuery = buildProcessSearchQuery({ view:'release', projection:'release' }).itemsSql;
+  assert.match(releaseQuery, /COALESCE\(p\.release_status,'Não'\)<>'Sim'/);
+  assert.match(releaseQuery, /p\.release_date::date=\(CURRENT_TIMESTAMP AT TIME ZONE 'America\/Sao_Paulo'\)::date/);
+  assert.doesNotMatch(buildProcessSearchQuery({ view:'processes' }).itemsSql, /p\.release_date::date/);
+});
+
 test('filtro por exportador usa client_id direto e ordenação coberta pelo índice', () => {
   const query = buildProcessSearchQuery({
     view:'processes',
@@ -64,4 +70,43 @@ test('processos Apenas DU-E são separados da planilha, VGM e Braspine no banco'
   assert.match(buildProcessSearchQuery({ view:'processes' }).itemsSql, /COALESCE\(c\.due_only,false\)=FALSE/);
   assert.match(buildProcessSearchQuery({ view:'vgm', projection:'vgm' }).itemsSql, /COALESCE\(c\.due_only,false\)=FALSE/);
   assert.match(buildProcessSearchQuery({ view:'braspine', projection:'braspine' }).itemsSql, /COALESCE\(c\.due_only,false\)=TRUE/);
+});
+
+test('pesquisa descobre a próxima página com um item extra e sem contagem completa', async () => {
+  let calls = 0;
+  const result = await executeProcessSearch(async (sql, params) => {
+    calls++;
+    assert.doesNotMatch(sql, /COUNT\(\*\)/);
+    assert.match(sql, /LIMIT \$2 OFFSET \$3/);
+    assert.deepEqual(params, ['booking', 2, 1]);
+    return { rows:[{ id:'process-2', booking:'BOOKING' }, { id:'process-3', booking:'BOOKING' }] };
+  }, { search:'booking', field:'booking', limit:1, offset:1 });
+  assert.equal(calls, 1);
+  assert.deepEqual(result, {
+    items:[{ id:'process-2', booking:'BOOKING' }],
+    pagination:{ limit:1, offset:1, total:2, totalExact:false, hasMore:true }
+  });
+});
+
+test('primeira página vazia não dispara contagem redundante', async () => {
+  let calls = 0;
+  const result = await executeProcessSearch(async () => { calls++; return { rows:[] }; }, {});
+  assert.equal(calls, 1);
+  assert.equal(result.pagination.total, 0);
+  assert.equal(result.pagination.totalExact, true);
+  assert.equal(result.pagination.hasMore, false);
+});
+
+test('página além do fim não dispara uma contagem adicional', async () => {
+  let calls = 0;
+  const result = await executeProcessSearch(async () => {
+    calls++;
+    return { rows:[] };
+  }, { limit:2, offset:2 });
+  assert.equal(calls, 1);
+  assert.deepEqual(result.pagination, { limit:2, offset:2, total:2, totalExact:true, hasMore:false });
+});
+
+test('filtro inválido é rejeitado antes de consultar o banco', async () => {
+  await assert.rejects(executeProcessSearch(() => assert.fail('não deve consultar'), { field:'injection' }), { status:400 });
 });

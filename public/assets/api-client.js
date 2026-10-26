@@ -9,7 +9,12 @@
 
   const mutationMethods = new Set(['POST', 'PATCH', 'DELETE']);
   const transientStatuses = new Set([502, 503, 504]);
-  const wait = milliseconds => new Promise(resolve => window.setTimeout(resolve, milliseconds));
+  const wait = (milliseconds, signal) => new Promise((resolve, reject) => {
+    const abort = () => { window.clearTimeout(timer); reject(signal.reason || new DOMException('Busca cancelada.', 'AbortError')); };
+    const timer = window.setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, milliseconds);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once:true });
+  });
 
   const create = ({ isAuthenticated = () => false, onUnauthorized = () => {} } = {}) => async (url, options = {}) => {
     const method = String(options.method || 'GET').toUpperCase();
@@ -28,6 +33,8 @@
         });
         if (!transientStatuses.has(response.status) || attempt === attempts - 1) break;
       } catch (cause) {
+        // Cancelamento por uma busca mais recente não é falha de conexão.
+        if (options.signal?.aborted || cause?.name === 'AbortError') throw cause;
         if (attempt === attempts - 1) {
           const error = new Error('Não foi possível comunicar com o sistema. Verifique a conexão e tente novamente.');
           error.status = 0;
@@ -35,7 +42,7 @@
           throw error;
         }
       }
-      await wait(350 * (attempt + 1));
+      await wait(350 * (attempt + 1), options.signal);
     }
     const body = response.status === 204 ? null : await response.json().catch(() => ({}));
     if (!response.ok) {

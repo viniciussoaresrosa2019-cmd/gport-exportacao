@@ -13,7 +13,7 @@ import { createObservability } from './observability.js';
 import { createErrorHandler } from './error-handler.js';
 import { validateAttachmentInput } from './attachment-validator.js';
 import { processCalendarSelect, processDetailSelect } from './process-projections.js';
-import { buildProcessSearchQuery } from './process-search.js';
+import { executeProcessSearch } from './process-search.js';
 import { createStructuredLogger } from './structured-logger.js';
 import { createAlertDispatcher } from './alerts.js';
 import { createResourceMonitor } from './resource-monitor.js';
@@ -275,19 +275,50 @@ const apiLimit = asyncRoute(async (req, res, next) => {
 });
 app.use('/api', apiLimit);
 
+const authenticatedUserCache = new Map();
+const authenticatedUserLoads = new Map();
+const authenticatedUserCacheMs = Math.min(60_000, Math.max(5_000, Number(process.env.AUTH_USER_CACHE_MS || 30_000)));
+const authenticatedUserCacheKey = (id, version) => `${id}:${version}`;
+const invalidateAuthenticatedUser = id => {
+  const prefix = `${id}:`;
+  for (const key of authenticatedUserCache.keys()) if (key.startsWith(prefix)) authenticatedUserCache.delete(key);
+  for (const key of authenticatedUserLoads.keys()) if (key.startsWith(prefix)) authenticatedUserLoads.delete(key);
+};
+const cacheAuthenticatedUser = user => {
+  if (!user?.id) return;
+  invalidateAuthenticatedUser(user.id);
+  authenticatedUserCache.set(authenticatedUserCacheKey(user.id, user.token_version || 0), { user:{ ...user }, expiresAt:Date.now() + authenticatedUserCacheMs });
+};
+const loadAuthenticatedUser = claims => {
+  const key = authenticatedUserCacheKey(claims.sub, claims.ver || 0);
+  const cached = authenticatedUserCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.user);
+  if (cached) authenticatedUserCache.delete(key);
+  if (authenticatedUserLoads.has(key)) return authenticatedUserLoads.get(key);
+  const pending = query('SELECT id,username,role,roles,active,created_at,token_version FROM users WHERE id=$1', [claims.sub])
+    .then(result => {
+      const user = result.rows[0] || null;
+      if (user) authenticatedUserCache.set(key, { user:{ ...user }, expiresAt:Date.now() + authenticatedUserCacheMs });
+      return user;
+    })
+    .finally(() => authenticatedUserLoads.delete(key));
+  authenticatedUserLoads.set(key, pending);
+  return pending;
+};
+
 function authenticate(req, res, next) {
   const token = parseCookies(req)[sessionCookie];
   if (!token) return res.status(401).json({ error: 'Autenticação obrigatória.' });
   let claims;
   try { claims = jwt.verify(token, jwtSecret, { issuer: 'gport-export', audience: 'gport-web' }); }
   catch { return res.status(401).json({ error: 'Sessão inválida ou expirada.' }); }
-  query('SELECT id,username,role,roles,active,token_version FROM users WHERE id=$1', [claims.sub])
-    .then(result => {
-      const user = result.rows[0];
+  loadAuthenticatedUser(claims)
+    .then(user => {
       if (!user?.active || user.token_version !== claims.ver) return res.status(401).json({ error: 'Usuário inativo ou sessão expirada.' });
       // O cargo vem do banco, não apenas do token antigo. Assim exclusões e
       // mudanças de função passam a valer imediatamente.
       const roles = rolesFor(user);
+      req.authenticatedUser = user;
       req.user = { sub: user.id, username: user.username, role: roles[0], roles, csrfToken: claims.csrf };
       next();
     })
@@ -366,6 +397,7 @@ app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
   // autenticação válida. Caso a infraestrutura de rate limit esteja lenta,
   // o contador expira normalmente e a proteção continua ativa.
   void clearLoginFailures(req);
+  cacheAuthenticatedUser(user);
   setSession(res, user);
   res.json({ user: publicUser(user) });
 }));
@@ -373,17 +405,37 @@ app.post('/api/auth/login', loginLimit, asyncRoute(async (req, res) => {
 app.post('/api/auth/logout', authenticate, asyncRoute(async (req, res) => {
   // Invalida também uma cópia de cookie eventualmente roubada.
   await query('UPDATE users SET token_version=token_version+1 WHERE id=$1', [req.user.sub]);
+  invalidateAuthenticatedUser(req.user.sub);
   clearSession(res);
   res.status(204).end();
 }));
 
 app.get('/api/me', authenticate, asyncRoute(async (req, res) => {
-  const user = (await query('SELECT id,username,role,roles,active,created_at,token_version FROM users WHERE id=$1', [req.user.sub])).rows[0];
+  const user = req.authenticatedUser;
   if (!user?.active) return res.status(401).json({ error: 'Usuário inativo.' });
   // Expiração deslizante: uma aba realmente em uso renova a sessão sem trocar
   // o CSRF em andamento e sem obrigar o usuário a atualizar a página.
   setSession(res, user, req.user.csrfToken);
   res.json({ user: publicUser(user) });
+}));
+
+// A abertura da aplicação precisa das mesmas quatro informações em todos
+// os acessos. Agrupar a sessão, a primeira página e as referências elimina
+// viagens HTTP sequenciais sem alterar os contratos das rotas existentes.
+app.get('/api/bootstrap', authenticate, asyncRoute(async (req, res) => {
+  const filters = { view:'processes', projection:'summary', limit:req.query.limit || 50, offset:0 };
+  const [processes, clientsResult, assigneesResult] = await Promise.all([
+    executeProcessSearch(query, filters),
+    query('SELECT * FROM clients ORDER BY active DESC, name'),
+    query('SELECT id,username FROM users WHERE active=true ORDER BY username')
+  ]);
+  setSession(res, req.authenticatedUser, req.user.csrfToken);
+  res.json({
+    user:publicUser(req.authenticatedUser),
+    processes,
+    clients:clientsResult.rows,
+    assignees:assigneesResult.rows
+  });
 }));
 
 app.get('/api/users', authenticate, adminOnly, asyncRoute(async (_req, res) => {
@@ -421,6 +473,7 @@ app.patch('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res)
     throw error;
   }
   if (!result.rowCount) return res.status(404).json({ error: 'Usuário não encontrado.' });
+  invalidateAuthenticatedUser(req.params.id);
   await audit(req.user.sub, 'user.updated', 'user', req.params.id, { username, roles, active, passwordReset: !!password });
   publishReferenceChange('users', 'updated');
   res.json({ user: publicUser(result.rows[0]) });
@@ -433,6 +486,7 @@ app.delete('/api/users/:id', authenticate, adminOnly, asyncRoute(async (req, res
   const admins = (await query("SELECT COUNT(*)::int AS total FROM users WHERE active=true AND roles @> ARRAY['admin']::varchar[]")).rows[0].total;
   if (hasRole(target, 'admin') && admins === 1) return res.status(400).json({ error: 'O sistema precisa manter um administrador ativo.' });
   await query('UPDATE users SET active=false WHERE id=$1', [target.id]);
+  invalidateAuthenticatedUser(target.id);
   await audit(req.user.sub, 'user.deactivated', 'user', target.id);
   publishReferenceChange('users', 'deactivated');
   res.status(204).end();
@@ -806,12 +860,7 @@ app.patch('/api/notifications/:id/read', authenticate, asyncRoute(async (req, re
   res.status(204).end();
 }));
 app.get('/api/processes', authenticate, asyncRoute(async (req, res) => {
-  const search = buildProcessSearchQuery(req.query);
-  const [items, total] = await Promise.all([
-    query(search.itemsSql, search.pageParams),
-    query(search.countSql, search.params)
-  ]);
-  res.json({ items:items.rows, pagination:{ limit:search.limit, offset:search.offset, total:total.rows[0].total, hasMore:search.offset + items.rowCount < total.rows[0].total } });
+  res.json(await executeProcessSearch(query, req.query));
 }));
 app.get('/api/calendar', authenticate, asyncRoute(async (req, res) => {
   const from = String(req.query.from || '').trim();
@@ -910,8 +959,11 @@ app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (r
     const booking = String(body.booking || '').trim();
     body.processNumber = booking || `SEM-BOOKING-${Date.now()}`;
   }
-  const p = toDbProcess(validatedProcess(body, await processClientSettings(body.clientId)));
-  const analystId = await resolveProcessAnalystId(body.analystId, req.user.sub);
+  const [clientSettings, analystId] = await Promise.all([
+    processClientSettings(body.clientId),
+    resolveProcessAnalystId(body.analystId, req.user.sub)
+  ]);
+  const p = toDbProcess(validatedProcess(body, clientSettings));
   const placeholders = processColumns.map((_, i) => `$${i + 1}`).join(',');
   const insertProcess = process => {
     const processValues = processColumns.map(key => process[key] ?? null);
@@ -943,9 +995,16 @@ app.post('/api/processes', authenticate, processCreatorOnly, asyncRoute(async (r
 }));
 app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Identificador de processo inválido.' });
-  const previous = (await query('SELECT * FROM processes WHERE id=$1', [req.params.id])).rows[0];
-  if (!previous) return res.status(404).json({ error: 'Processo não encontrado.' });
   const body = { ...req.body };
+  if (!validId(body.clientId)) return res.status(400).json({ error:'Exportador inválido.' });
+  // Carregue o estado anterior e as regras do exportador na mesma viagem ao
+  // banco. A validação continua usando dados atuais, sem cache de permissões.
+  const existing = (await query(`SELECT p.*,c.id AS validation_client_id,
+    c.ruc_manual AS validation_ruc_manual,c.due_only AS validation_due_only
+    FROM processes p LEFT JOIN clients c ON c.id=$2::uuid WHERE p.id=$1`, [req.params.id, body.clientId])).rows[0];
+  if (!existing) return res.status(404).json({ error: 'Processo não encontrado.' });
+  const { validation_client_id, validation_ruc_manual, validation_due_only, ...previous } = existing;
+  if (!validation_client_id) return res.status(400).json({ error:'Exportador inválido.' });
   if (body.updatedAt && previous.updated_at && new Date(body.updatedAt).getTime() !== new Date(previous.updated_at).getTime()) {
     return res.status(409).json({ error: 'Este processo foi alterado por outro usuário. Feche, abra novamente e confira os dados antes de salvar.' });
   }
@@ -953,13 +1012,28 @@ app.patch('/api/processes/:id', authenticate, processEditorOnly, asyncRoute(asyn
   // interface. Preservá-lo em toda edição evita colisões de unicidade quando
   // o usuário altera booking ou outros campos do processo.
   body.processNumber = previous.process_number;
-  const p = toDbProcess(validatedProcess(body, await processClientSettings(body.clientId))); const values = processColumns.map(key => p[key] ?? null);
+  const clientSettings = { rucManual:validation_ruc_manual === true, dueOnly:validation_due_only === true };
   const analystId = await resolveProcessAnalystId(body.analystId, previous.analyst_id);
+  const p = toDbProcess(validatedProcess(body, clientSettings)); const values = processColumns.map(key => p[key] ?? null);
   const set = processColumns.map((key, i) => `${key}=$${i + 1}`).join(',');
-  const result = await query(`UPDATE processes SET ${set}, analyst_id=$${values.length + 1} WHERE id=$${values.length + 2} RETURNING *`, [...values, analystId, req.params.id]);
   const changes = processChanges(previous, p);
   if (previous.analyst_id !== analystId) changes.analyst_id = { before: previous.analyst_id, after: analystId };
-  await audit(req.user.sub, 'process.updated', 'process', req.params.id, { changes });
+  const analystParameter = values.length + 1;
+  const idParameter = values.length + 2;
+  const userParameter = values.length + 3;
+  const detailsParameter = values.length + 4;
+  // Atualização e auditoria formam uma única instrução atômica. Isso
+  // remove uma viagem até o PostgreSQL e impede que uma alteração exista
+  // sem seu registro de auditoria.
+  const result = await query(`WITH updated AS (
+      UPDATE processes SET ${set}, analyst_id=$${analystParameter} WHERE id=$${idParameter} RETURNING *
+    ), audit_entry AS (
+      INSERT INTO audit_log(user_id,action,entity,entity_id,details)
+      SELECT $${userParameter},'process.updated','process',updated.id,$${detailsParameter}::jsonb FROM updated
+      RETURNING entity_id
+    )
+    SELECT updated.* FROM updated INNER JOIN audit_entry ON audit_entry.entity_id=updated.id`,
+  [...values, analystId, req.params.id, req.user.sub, JSON.stringify({ changes })]);
   notifyProcessChange(result.rows[0], 'updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'updated');
   res.json(result.rows[0]);
@@ -1029,7 +1103,7 @@ app.patch('/api/processes/bulk/release', authenticate, releaseManagerOnly, async
   const ids = validateBulkProcessIds(req.body.ids);
   const releaseStatus = String(req.body.releaseStatus || '');
   if (!['Não','Sim'].includes(releaseStatus)) return res.status(400).json({ error:'Status de liberação inválido.' });
-  const result = await query(`UPDATE processes SET release_status=$1,release_date=CASE WHEN $1='Sim' THEN COALESCE(release_date,NOW()) ELSE NULL END
+  const result = await query(`UPDATE processes SET release_status=$1,release_date=CASE WHEN $1='Sim' THEN COALESCE(release_date,(CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')) ELSE NULL END
     WHERE id=ANY($2::uuid[]) RETURNING *`, [releaseStatus, ids]);
   await Promise.all(result.rows.map(process => audit(req.user.sub, 'process.release_bulk_updated', 'process', process.id, { releaseStatus })));
   result.rows.forEach(process => publishProcessChange(process, 'release-updated'));
@@ -1044,6 +1118,9 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
   const vessel = cleanText(req.body.vessel, 160, 'Navio');
   const releaseChannel = String(req.body.releaseChannel || '').trim() || null;
   const releaseDate = cleanOptionalDate(req.body.releaseDate, 'Data de liberação');
+  const physicalProcessAnalyst = cleanText(req.body.physicalProcessAnalyst, 120, 'Onde está');
+  const releaseSeenToday = req.body.releaseSeenToday === true;
+  const releaseNote = cleanText(req.body.releaseNote, 500, 'Observação da liberação');
   if (!['Não', 'Sim'].includes(requestedReleaseStatus)) return res.status(400).json({ error: 'Status de liberação inválido.' });
   if (releaseChannel && !['Verde', 'Laranja', 'Vermelho'].includes(releaseChannel)) return res.status(400).json({ error: 'Canal de liberação inválido.' });
   // Canal Verde representa desembaraço concluído. A regra também fica no
@@ -1057,17 +1134,20 @@ app.patch('/api/processes/:id/release', authenticate, releaseManagerOnly, asyncR
            release_deadline=$3,
            vessel=$4,
            release_channel=$5,
+           physical_process_analyst=$6,
+           release_seen_on=CASE WHEN $7::boolean THEN (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date ELSE NULL END,
+           release_note=$8,
            release_date=CASE
              WHEN $1::varchar(10)='Não' THEN NULL
-             WHEN $6::timestamp IS NOT NULL THEN $6::timestamp
-             WHEN $1::varchar(10)='Sim' AND release_date IS NULL THEN NOW()
+             WHEN $9::timestamp IS NOT NULL THEN $9::timestamp
+             WHEN $1::varchar(10)='Sim' AND release_date IS NULL THEN (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
              ELSE release_date
            END
-     WHERE id=$7
+     WHERE id=$10
      RETURNING *
-  `, [releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate, req.params.id]);
+  `, [releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, physicalProcessAnalyst, releaseSeenToday, releaseNote, releaseDate, req.params.id]);
   if (!result.rowCount) return res.status(404).json({ error: 'Processo não encontrado.' });
-  await audit(req.user.sub, 'process.release_updated', 'process', req.params.id, { releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, releaseDate: result.rows[0].release_date });
+  await audit(req.user.sub, 'process.release_updated', 'process', req.params.id, { releaseStatus, releaseSchedule, releaseDeadline, vessel, releaseChannel, physicalProcessAnalyst, releaseSeenToday, releaseNote, releaseDate: result.rows[0].release_date });
   notifyProcessChange(result.rows[0], 'release-updated', req.user.sub).catch(() => {});
   publishProcessChange(result.rows[0], 'release-updated');
   res.json(result.rows[0]);
@@ -1275,6 +1355,8 @@ const legacyEnsureProcessFields = async () => {
   await query('ALTER TABLE processes ALTER COLUMN release_deadline TYPE TIMESTAMP WITHOUT TIME ZONE USING release_deadline::timestamp');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_channel VARCHAR(10)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_date TIMESTAMP WITHOUT TIME ZONE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_seen_on DATE');
+  await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS release_note VARCHAR(500)');
   await query("ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_status VARCHAR(15) NOT NULL DEFAULT 'Pendente'");
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS followup_note VARCHAR(500)');
   await query('ALTER TABLE processes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');

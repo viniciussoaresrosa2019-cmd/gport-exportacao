@@ -82,6 +82,8 @@ CREATE TABLE processes (
   release_deadline TIMESTAMP WITHOUT TIME ZONE,
   release_channel VARCHAR(10) CHECK (release_channel IN ('Verde', 'Laranja', 'Vermelho')),
   release_date TIMESTAMP WITHOUT TIME ZONE,
+  release_seen_on DATE,
+  release_note VARCHAR(500),
   followup_status VARCHAR(15) NOT NULL DEFAULT 'Pendente' CHECK (followup_status IN ('Pendente', 'Concluído')),
   followup_note VARCHAR(500),
   physical_process_analyst VARCHAR(120),

@@ -205,6 +205,7 @@
       // VGM, Liberação e Follow up têm a própria página de dados. Assim a
       // busca dessas áreas não fica limitada aos 50 processos da planilha.
       const sectionSearchStates = Object.fromEntries(['vgm', 'release', 'postShipment', 'followup', 'braspine'].map(name => [name, { items:null, pagination:{ limit:50, total:0, page:1 }, filter:null, loading:false, controller:null, version:0 }]));
+      let releaseColumnFilters = {};
       const sectionItems = name => sectionSearchStates[name]?.items || [];
       // As páginas operacionais usam listas próprias e paginadas. Atualizar
       // somente `data` (a lista da página Processos) fazia VGM e Liberação
@@ -281,16 +282,22 @@
         const state = sectionSearchStates[name]; if (!state || !anchor) return;
         let navigation = el(`${name}SearchPagination`);
         if (!navigation) { navigation = document.createElement('nav'); navigation.id = `${name}SearchPagination`; navigation.className = 'process-pagination section-pagination'; navigation.setAttribute('aria-label', `Paginação de ${name}`); anchor.insertAdjacentElement('afterend', navigation); }
+        const totalExact = state.pagination.totalExact !== false;
         const totalPages = Math.max(1, Math.ceil(Number(state.pagination.total || 0) / Number(state.pagination.limit || 50)));
-        if (totalPages <= 1) { navigation.hidden = true; navigation.replaceChildren(); return; }
+        if (Number(state.pagination.page || 1) === 1 && !state.pagination.hasMore) { navigation.hidden = true; navigation.replaceChildren(); return; }
         navigation.hidden = false; navigation.replaceChildren();
         const current = Number(state.pagination.page || 1);
         const button = (label, page, disabled=false) => { const item = document.createElement('button'); item.type = 'button'; item.className = `btn secondary pagination-button${page === current ? ' active' : ''}`; item.textContent = label; item.disabled = disabled; item.setAttribute('aria-label', `Ir para a página ${page}`); if (page === current) item.setAttribute('aria-current', 'page'); item.onclick = () => { if (!disabled) void refreshSectionData(name, { page }); }; return item; };
         navigation.append(button('‹', Math.max(1,current-1), current === 1));
-        const pages = new Set([1,totalPages,current-1,current,current+1]);
-        [...pages].filter(page => page >= 1 && page <= totalPages).sort((a,b) => a-b).forEach(page => navigation.append(button(String(page), page)));
-        navigation.append(button('›', Math.min(totalPages,current+1), current === totalPages));
-        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = `Página ${current} de ${totalPages} · ${state.pagination.total} resultado(s)`; navigation.append(info);
+        if (totalExact) {
+          const pages = new Set([1,totalPages,current-1,current,current+1]);
+          [...pages].filter(page => page >= 1 && page <= totalPages).sort((a,b) => a-b).forEach(page => navigation.append(button(String(page), page)));
+        } else navigation.append(button(String(current), current));
+        navigation.append(button('›', current + 1, !state.pagination.hasMore));
+        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = totalExact
+          ? `Página ${current} de ${totalPages} · ${state.pagination.total} resultado(s)`
+          : `Página ${current} · mais de ${state.pagination.total} resultado(s)`;
+        navigation.append(info);
       };
       async function refreshSectionData(name, { page=1 } = {}) {
         const state = sectionSearchStates[name]; if (!state) return false;
@@ -311,7 +318,7 @@
           if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
           return true;
         } catch (error) {
-          if (error?.name === 'AbortError') return false;
+          if (error?.name === 'AbortError' || version !== state.version) return false;
           state.loading = false;
           if (name === 'vgm') renderVgm(); else if (name === 'release') renderRelease(); else if (name === 'postShipment') renderPostShipment(); else if (name === 'braspine') renderBraspine(); else renderFollowup();
           toast.error(error.message || 'Não foi possível atualizar a busca. Tente novamente.');
@@ -361,43 +368,234 @@
         document.querySelectorAll('[data-vgm-report-day]').forEach(button => button.onclick = () => selectVgmDay(button.dataset.vgmReportDay));
         el('clearVgmReportDay')?.addEventListener('click', () => { selectedVgmReportDay = null; renderVgmReport(); });
       };
+      const releaseTodayKey = () => {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('pt-BR', {
+          timeZone:'America/Sao_Paulo', year:'numeric', month:'2-digit', day:'2-digit'
+        }).formatToParts(new Date()).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+        return `${parts.year}-${parts.month}-${parts.day}`;
+      };
+      let currentReleaseDayKey = releaseTodayKey();
+      window.setInterval(() => {
+        const nextDayKey = releaseTodayKey();
+        if (nextDayKey === currentReleaseDayKey) return;
+        currentReleaseDayKey = nextDayKey;
+        if (!el('releasePage')?.hidden) void refreshSectionData('release', { page:1 });
+      }, 60 * 1000);
+      const releasePortClass = value => {
+        const key = normalizeSearchText(value);
+        return {
+          itajai:'release-port-itajai',
+          itapoa:'release-port-itapoa',
+          navegantes:'release-port-navegantes',
+          paranagua:'release-port-paranagua',
+          'rio grande':'release-port-rio-grande',
+          santos:'release-port-santos',
+          imbituba:'release-port-imbituba'
+        }[key] || 'release-port-other';
+      };
       const renderRelease = () => {
-        // A tabela antiga ainda consulta `currentUser.role`. Preserve esse
-        // contrato local, mas derive-o da lista de funções para esta visão.
-        const currentUser = { role: currentHasRole('liberacao') ? 'liberacao' : '__without_release__' };
-        const canEdit = ['admin', 'liberacao'].includes(currentUser?.role); const normalizePort = value => normalizeSearchText(value); const deadlineOrder = p => { const stored = Date.parse(p.releaseDeadlineOrder || ''); if (Number.isFinite(stored)) return stored; const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/); if (!match) return Number.MAX_SAFE_INTEGER; const now = new Date(), date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4])); if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1); return date.getTime(); }; const filterSelect = el('releaseFilterSelect'); filterSelect.value = releaseFilter; filterSelect.onchange = () => { releaseFilter = filterSelect.value; void refreshSectionData('release'); }; renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => { if (filter?.clear) { releaseFilter = 'all'; releasePortFilter = 'all'; releaseSearchFilter = null; sectionSearchStates.release.filter = null; } else { releaseSearchFilter = filter; sectionSearchStates.release.filter = filter; } void refreshSectionData('release'); }); let portControls = el('releasePortFilters'); if (!portControls) { portControls = document.createElement('div'); portControls.id = 'releasePortFilters'; portControls.className = 'release-port-filters'; filterSelect.closest('.field').insertAdjacentElement('afterend', portControls); } const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos']; const knownPortMap = new Map(); [...standardPorts, ...sectionItems('release').map(p => String(p.origem || '').trim())].forEach(port => { const key=normalizePort(port); if(key&&!knownPortMap.has(key))knownPortMap.set(key,port); }); const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b,'pt-BR',{sensitivity:'base'})); portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}`; portControls.querySelectorAll('[data-release-port]').forEach(button => button.onclick = () => { releasePortFilter = button.dataset.releasePort; void refreshSectionData('release'); }); const releaseProcesses = (releaseFilter === 'released' ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim') : releaseFilter === 'pending' ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim') : sectionItems('release')).filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter)).filter(process => matchesSectionSearch(process, releaseSearchFilter)).slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR'));
-        const options = p => ['Não', 'Sim'].map(status => `<option ${p.liberacaoStatus === status ? 'selected' : ''}>${status}</option>`).join('');
-        const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
-        // A liberação é organizada primeiro por porto e, dentro de cada grupo,
-        // pelo deadline mais próximo. Isso evita alternar a atenção entre
-        // terminais durante a operação.
-        const releaseGroups = new Map();
-        releaseProcesses.forEach(process => {
-          const port = String(process.origem || '').trim() || 'Porto não informado';
-          const key = normalizePort(port) || 'sem-porto';
-          if (!releaseGroups.has(key)) releaseGroups.set(key, { port, processes:[] });
-          releaseGroups.get(key).processes.push(process);
+        const canEdit = currentHasRole('liberacao');
+        const normalizePort = value => normalizeSearchText(value);
+        const deadlineOrder = p => {
+          const stored = Date.parse(p.releaseDeadlineOrder || '');
+          if (Number.isFinite(stored)) return stored;
+          const match = String(p.deadlineLiberacao || '').match(/^(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
+          if (!match) return Number.MAX_SAFE_INTEGER;
+          const now = new Date();
+          const date = new Date(now.getFullYear(), Number(match[2])-1, Number(match[1]), Number(match[3]), Number(match[4]));
+          if (date.getTime() < now.getTime() - 36e5*12) date.setFullYear(date.getFullYear()+1);
+          return date.getTime();
+        };
+        const filterSelect = el('releaseFilterSelect');
+        filterSelect.value = releaseFilter;
+        filterSelect.onchange = () => {
+          releaseFilter = filterSelect.value;
+          void refreshSectionData('release');
+        };
+        renderSectionSearch('releaseSearchControls', filterSelect.closest('.field'), releaseSearchFilter, filter => {
+          if (filter?.clear) {
+            releaseFilter = 'all';
+            releasePortFilter = 'all';
+            releaseColumnFilters = {};
+            releaseSearchFilter = null;
+            sectionSearchStates.release.filter = null;
+          } else {
+            releaseSearchFilter = filter;
+            sectionSearchStates.release.filter = filter;
+          }
+          void refreshSectionData('release');
         });
-        const releaseRow = p => `<tr class="process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}"><td><strong>${esc(p.booking || '—')}</strong></td><td>${esc(p.exportador || '—')}<span class="sub">${esc(p.importador || '')}</span></td><td>${esc(p.origem || '—')}</td><td><input data-release-vessel="${p.id}" value="${esc(p.navio || '')}" ${canEdit ? '' : 'readonly'}></td><td><input data-release-schedule="${p.id}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><input data-release-deadline="${p.id}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td><td><select data-release-channel="${p.id}" ${canEdit ? '' : 'disabled'}>${channels(p)}</select></td><td><select data-release-status="${p.id}" ${canEdit ? '' : 'disabled'}>${options(p)}</select></td><td><input data-release-date="${p.id}" value="${esc(p.dataLiberacao || '')}" placeholder="dd/mm" ${canEdit ? '' : 'readonly'}></td></tr>`;
-        const releaseTable = processes => `<table class="release-table"><thead><tr><th>BOOKING</th><th>EXPORTADOR / IMPORTADOR</th><th>PORTO DE ORIGEM</th><th>NAVIO</th><th>AGENDAMENTO</th><th>DEADLINE DE LIBERAÇÃO</th><th>CANAL</th><th>LIBERADO?</th><th>DATA DE LIBERAÇÃO</th></tr></thead><tbody>${processes.slice().sort((a,b) => deadlineOrder(a) - deadlineOrder(b) || String(a.booking || '').localeCompare(String(b.booking || ''),'pt-BR')).map(releaseRow).join('')}</tbody></table>`;
-        el('releaseList').innerHTML = releaseProcesses.length ? `<div class="release-groups" role="list">${[...releaseGroups.values()].sort((a,b) => a.port.localeCompare(b.port,'pt-BR',{sensitivity:'base'})).map(group => `<section class="release-port-group" role="listitem"><header><div><span>PORTO DE ORIGEM</span><h2>${esc(group.port)}</h2></div><strong>${group.processes.length} processo${group.processes.length === 1 ? '' : 's'}</strong></header>${releaseTable(group.processes)}</section>`).join('')}</div>` : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
-        renderSectionPagination('release', el('releaseList'));
-        const releaseLabels = ['BOOKING','EXPORTADOR / IMPORTADOR','PORTO DE ORIGEM','NAVIO','AGENDAMENTO','DEADLINE DE LIBERAÇÃO','CANAL','LIBERADO?','DATA DE LIBERAÇÃO'];
-        el('releaseList').querySelectorAll('tbody tr').forEach(row => row.querySelectorAll('td').forEach((cell, index) => { cell.dataset.label = releaseLabels[index] || ''; }));
-        if (canEdit) el('releaseList').querySelectorAll('[data-release-schedule]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); }));
-        if (canEdit) el('releaseList').querySelectorAll('[data-release-deadline]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); })); if (canEdit) el('releaseList').querySelectorAll('[data-release-date]').forEach(input => input.addEventListener('input', () => { input.value = formatDateTyping(input.value); }));
-        if (canEdit) {
-          el('releaseList').querySelectorAll('select[data-release-status],select[data-release-channel]').forEach(input => input.addEventListener('change', async () => { try { await saveReleaseRow(input.dataset.releaseStatus || input.dataset.releaseChannel); } catch (error) { toast.error(error.message); renderRelease(); } }));
-          el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-date]').forEach(input => input.addEventListener('input', () => {
-            const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseDate;
-            const schedule = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
-            const deadline = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDate = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
-            if ((schedule && !dateForDatabase(schedule, true)) || (deadline && !dateForDatabase(deadline, true)) || (releaseDate && !dateForDatabase(releaseDate))) return;
-            // O valor já está visível no próprio input. Salvar sem reconstruir
-            // a tabela mantém o foco e permite continuar digitando normalmente.
-            scheduleAutoSave(`release-${id}`, () => saveReleaseRow(id, { renderView:false }));
-          }));
+
+        let portControls = el('releasePortFilters');
+        if (!portControls) {
+          portControls = document.createElement('div');
+          portControls.id = 'releasePortFilters';
+          portControls.className = 'release-port-filters';
+          filterSelect.closest('.field').insertAdjacentElement('afterend', portControls);
         }
+        const standardPorts = ['Imbituba','Itajaí','Itapoá','Navegantes','Paranaguá','Rio Grande','Santos'];
+        const knownPortMap = new Map();
+        [...standardPorts, ...sectionItems('release').map(p => String(p.origem || '').trim())].forEach(port => {
+          const key = normalizePort(port);
+          if (key && !knownPortMap.has(key)) knownPortMap.set(key, port);
+        });
+        const knownPorts = [...knownPortMap.values()].sort((a,b) => a.localeCompare(b, 'pt-BR', { sensitivity:'base' }));
+        const hasColumnFilters = Object.values(releaseColumnFilters).some(Boolean);
+        portControls.innerHTML = `<span>Porto de origem:</span><button type="button" class="btn secondary ${releasePortFilter === 'all' ? 'active' : ''}" data-release-port="all" aria-pressed="${releasePortFilter === 'all'}">Todos</button>${knownPorts.map(port => `<button type="button" class="btn secondary ${normalizePort(port) === normalizePort(releasePortFilter) ? 'active' : ''}" data-release-port="${esc(port)}" aria-pressed="${normalizePort(port) === normalizePort(releasePortFilter)}">${esc(port)}</button>`).join('')}${hasColumnFilters ? '<button type="button" class="btn secondary release-clear-column-filters" data-release-clear-columns>Limpar filtros da tabela</button>' : ''}`;
+        portControls.querySelectorAll('[data-release-port]').forEach(button => {
+          button.onclick = () => {
+            releasePortFilter = button.dataset.releasePort;
+            void refreshSectionData('release');
+          };
+        });
+        portControls.querySelector('[data-release-clear-columns]')?.addEventListener('click', () => {
+          releaseColumnFilters = {};
+          renderRelease();
+        });
+
+        const today = releaseTodayKey();
+        const releaseColumnDefinitions = [
+          { key:'port', label:'PORTO' },
+          { key:'client', label:'CLIENTE' },
+          { key:'booking', label:'BOOKING' },
+          { key:'invoice', label:'FATURA' },
+          { key:'vessel', label:'NAVIO' },
+          { key:'deadline', label:'DEADLINE' },
+          { key:'schedule', label:'AGENDAMENTO' },
+          { key:'due', label:'DUE' },
+          { key:'location', label:'ONDE ESTÁ' },
+          { key:'seen', label:'VISTO' },
+          { key:'channel', label:'CANAL' },
+          { key:'note', label:'OBS' }
+        ];
+        const releaseColumnValue = (process, key) => ({
+          port:process.origem || 'Não informado',
+          client:process.exportador || 'Não informado',
+          booking:process.booking || 'Não informado',
+          invoice:process.fatura || 'Não informado',
+          vessel:process.navio || 'Não informado',
+          deadline:process.deadlineLiberacao || 'Não informado',
+          schedule:process.agendamentoLiberacao || 'Não informado',
+          due:process.due || 'Pendente',
+          location:process.analistaFisico || 'Não definido',
+          seen:String(process.liberacaoVistoEm || '').slice(0, 10) === today ? 'Visto' : 'Não visto',
+          channel:process.canalLiberacao || 'Sem canal',
+          note:process.observacaoLiberacao || 'Sem observação'
+        })[key] || '';
+        const releaseBaseProcesses = (releaseFilter === 'released'
+          ? sectionItems('release').filter(p => p.liberacaoStatus === 'Sim')
+          : releaseFilter === 'pending'
+            ? sectionItems('release').filter(p => p.liberacaoStatus !== 'Sim')
+            : sectionItems('release'))
+          .filter(p => releasePortFilter === 'all' || normalizePort(p.origem) === normalizePort(releasePortFilter))
+          .filter(process => matchesSectionSearch(process, releaseSearchFilter))
+          .filter(process => process.liberacaoStatus !== 'Sim' || String(process.diaLiberacao || '').slice(0, 10) === today);
+        const releaseProcesses = releaseBaseProcesses
+          .filter(process => releaseColumnDefinitions.every(definition => {
+            const selected = releaseColumnFilters[definition.key];
+            return !selected || normalizePort(releaseColumnValue(process, definition.key)) === selected;
+          }))
+          .slice()
+          .sort((a,b) => normalizePort(a.origem).localeCompare(normalizePort(b.origem), 'pt-BR')
+            || deadlineOrder(a) - deadlineOrder(b)
+            || String(a.booking || '').localeCompare(String(b.booking || ''), 'pt-BR'));
+        const releaseColumnHeader = definition => {
+          const values = new Map();
+          releaseBaseProcesses.forEach(process => {
+            const display = String(releaseColumnValue(process, definition.key));
+            const normalized = normalizePort(display);
+            if (normalized && !values.has(normalized)) values.set(normalized, display);
+          });
+          const selected = releaseColumnFilters[definition.key] || '';
+          const options = [...values.entries()]
+            .sort((left, right) => left[1].localeCompare(right[1], 'pt-BR', { sensitivity:'base', numeric:true }))
+            .map(([value, label]) => `<option value="${esc(value)}" ${selected === value ? 'selected' : ''}>${esc(label)}</option>`)
+            .join('');
+          return `<th scope="col"><div class="release-column-heading"><span>${definition.label}</span><label class="release-filter-control ${selected ? 'is-active' : ''}" title="Filtrar ${definition.label}"><span class="release-filter-icon" aria-hidden="true"></span><select data-release-column-filter="${definition.key}" aria-label="Filtrar coluna ${definition.label}"><option value="">Todos</option>${options}</select></label></div></th>`;
+        };
+
+        const channels = p => `<option value="">Selecione</option>${['Laranja','Verde','Vermelho'].map(channel => `<option value="${channel}" ${p.canalLiberacao === channel ? 'selected' : ''}>${channel}</option>`).join('')}`;
+        const assignees = p => {
+          const people = [...availableAssignees, ...(p.analistaFisico && !availableAssignees.some(person => person.username === p.analistaFisico) ? [{ username:p.analistaFisico }] : [])];
+          return `<option value="">Selecione</option>${people.map(person => `<option value="${esc(person.username)}" ${p.analistaFisico === person.username ? 'selected' : ''}>${esc(person.username)}</option>`).join('')}`;
+        };
+        const releaseRow = p => {
+          const key = esc(p.id);
+          const booking = esc(p.booking || '—');
+          const seenToday = String(p.liberacaoVistoEm || '').slice(0, 10) === today;
+          const channelKey = normalizeSearchText(p.canalLiberacao || '') || 'sem-canal';
+          return `<tr class="release-sheet-row process-status-row ${p.canalLiberacao ? `process-channel-${String(p.canalLiberacao).toLowerCase()}` : ''}" data-release-row="${key}">
+            <td class="release-port-cell ${releasePortClass(p.origem)}">${esc(p.origem || '—')}</td>
+            <td class="release-client-cell" title="${esc(p.exportador || '—')}">${esc(p.exportador || '—')}</td>
+            <td class="release-booking-cell"><strong>${booking}</strong></td>
+            <td title="${esc(p.fatura || '')}">${esc(p.fatura || '—')}</td>
+            <td><input data-release-vessel="${key}" aria-label="Navio do booking ${booking}" value="${esc(p.navio || '')}" ${canEdit ? '' : 'readonly'}></td>
+            <td><input data-release-deadline="${key}" aria-label="Deadline do booking ${booking}" value="${esc(p.deadlineLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td>
+            <td><input data-release-schedule="${key}" aria-label="Agendamento do booking ${booking}" value="${esc(p.agendamentoLiberacao || '')}" placeholder="dd/mm hh:mm" ${canEdit ? '' : 'readonly'}></td>
+            <td class="${p.due ? '' : 'release-due-missing'}" title="${esc(p.due || '')}">${esc(p.due || 'Pendente')}</td>
+            <td><select data-release-analyst="${key}" aria-label="Onde está o processo físico do booking ${booking}" ${canEdit ? '' : 'disabled'}>${assignees(p)}</select></td>
+            <td class="release-seen-cell ${seenToday ? 'is-seen' : ''}"><label><input type="checkbox" data-release-seen="${key}" aria-label="Processo ${booking} visto hoje" ${seenToday ? 'checked' : ''} ${canEdit ? '' : 'disabled'}><span>${seenToday ? 'Visto' : 'Marcar'}</span></label></td>
+            <td class="release-channel-cell release-channel-${channelKey}"><select data-release-channel="${key}" aria-label="Canal do booking ${booking}" ${canEdit ? '' : 'disabled'}>${channels(p)}</select></td>
+            <td><input data-release-note="${key}" aria-label="Observação da liberação do booking ${booking}" maxlength="500" value="${esc(p.observacaoLiberacao || '')}" title="${esc(p.observacaoLiberacao || '')}" placeholder="Observação" ${canEdit ? '' : 'readonly'}></td>
+          </tr>`;
+        };
+        el('releaseList').innerHTML = releaseProcesses.length
+          ? `<div class="release-sheet-wrap"><table class="release-table release-sheet" aria-label="Planilha de liberação"><colgroup><col class="col-port"><col class="col-client"><col class="col-booking"><col class="col-invoice"><col class="col-vessel"><col class="col-deadline"><col class="col-schedule"><col class="col-due"><col class="col-location"><col class="col-seen"><col class="col-channel"><col class="col-note"></colgroup><thead><tr>${releaseColumnDefinitions.map(releaseColumnHeader).join('')}</tr></thead><tbody>${releaseProcesses.map(releaseRow).join('')}</tbody></table></div>`
+          : `<div class="empty">${sectionSearchStates.release.loading ? 'Buscando processos…' : 'Nenhum resultado encontrado.'}</div>`;
+        renderSectionPagination('release', el('releaseList'));
+
+        el('releaseList').querySelectorAll('[data-release-column-filter]').forEach(select => {
+          select.addEventListener('change', () => {
+            const nextFilters = { ...releaseColumnFilters };
+            if (select.value) nextFilters[select.dataset.releaseColumnFilter] = select.value;
+            else delete nextFilters[select.dataset.releaseColumnFilter];
+            releaseColumnFilters = nextFilters;
+            renderRelease();
+          });
+        });
+
+        if (!canEdit) return;
+        el('releaseList').querySelectorAll('[data-release-schedule],[data-release-deadline]').forEach(input => {
+          input.addEventListener('input', () => { input.value = formatDateTyping(input.value, true); });
+        });
+        el('releaseList').querySelectorAll('select[data-release-channel],select[data-release-analyst],input[data-release-seen]').forEach(input => {
+          input.addEventListener('change', async () => {
+            const id = input.dataset.releaseChannel || input.dataset.releaseAnalyst || input.dataset.releaseSeen;
+            if (input.dataset.releaseSeen) {
+              const cell = input.closest('.release-seen-cell');
+              cell?.classList.toggle('is-seen', input.checked);
+              const label = cell?.querySelector('span');
+              if (label) label.textContent = input.checked ? 'Visto' : 'Marcar';
+            }
+            if (input.dataset.releaseChannel) {
+              const cell = input.closest('.release-channel-cell');
+              if (cell) cell.className = `release-channel-cell release-channel-${normalizeSearchText(input.value) || 'sem-canal'}`;
+            }
+            try {
+              await saveReleaseRow(id, { renderView:false });
+            } catch (error) {
+              toast.error(error.message);
+              renderRelease();
+            }
+          });
+        });
+        el('releaseList').querySelectorAll('input[data-release-vessel],input[data-release-schedule],input[data-release-deadline],input[data-release-note]').forEach(input => {
+          input.addEventListener('change', async () => {
+            const id = input.dataset.releaseVessel || input.dataset.releaseSchedule || input.dataset.releaseDeadline || input.dataset.releaseNote;
+            try {
+              await saveReleaseRow(id, { renderView:false });
+            } catch (error) {
+              toast.error(error.message);
+              renderRelease();
+            }
+          });
+          input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              input.blur();
+            }
+          });
+        });
       };
       const renderPostShipment = () => {
         const canEdit = currentHasRole('pos_embarque');
@@ -495,7 +693,7 @@
           return visible.join('\n');
         }
         if (item.action === 'process.vgm_updated') return [details.vgmStatus && `Status VGM: ${details.vgmStatus}`, details.vgmSentTo && `Enviado para: ${details.vgmSentTo}`, details.physicalProcessAnalyst && `Processo físico com: ${details.physicalProcessAnalyst}`].filter(Boolean).join(' · ') || 'Controle de VGM atualizado.';
-        if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
+        if (item.action === 'process.release_updated') return [details.releaseStatus && `Status: ${details.releaseStatus}`, details.releaseChannel && `Canal: ${details.releaseChannel}`, details.vessel && `Navio: ${details.vessel}`, details.releaseSchedule && `Agendamento: ${dateForField(details.releaseSchedule,true)}`, details.releaseDeadline && `Deadline: ${dateForField(details.releaseDeadline,true)}`, details.physicalProcessAnalyst && `Onde está: ${details.physicalProcessAnalyst}`, details.releaseSeenToday && 'Visto hoje', details.releaseNote && `Observação: ${details.releaseNote}`].filter(Boolean).join(' · ') || 'Controle de liberação atualizado.';
         if (item.action === 'process.followup_updated') return [details.followupStatus && `Status: ${details.followupStatus}`, details.followupNote && `Observação: ${details.followupNote}`].filter(Boolean).join(' · ') || 'Follow up atualizado.';
         return 'Alteração registrada no processo.';
       };
@@ -660,7 +858,7 @@
         const seals = Array.isArray(details) ? details.map(x => x.seal).filter(Boolean).join(' / ') : '';
         const newSeals = Array.isArray(details) ? details.map(x => x.new_seal).filter(Boolean).join(' / ') : '';
         const notes = Array.isArray(details) ? details.map(x => x.invoice_number).filter(Boolean).join(' / ') : '';
-        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
+        const view = { id:p.id, numero:p.process_number, numeroProcesso:p.display_process_number || '', status:p.status, clientId:p.client_id, analystId:p.analyst_id || '', exportador:p.exporter, ovacao:p.client_ovacao === true, importador:p.importer, fatura:p.invoice, booking:p.booking, due:p.due_number, dueEmissao:dateForField(p.due_issue_date), ruc:p.ruc_number, origem:p.origin_port, destino:p.destination_port, navio:p.vessel, agencia:p.agency, armador:p.carrier, tipoEmbarque:p.shipment_type || '', tipoBL:p.bl_type, tipoFrete:p.freight_type, vistoriaMapa:p.mapa_inspection ? 'Sim' : 'Não', isfLacey:p.isf_lacey ? 'Sim' : 'Não', vgmStatus:p.vgm_status || 'Não', vgmEnviadoPara:p.vgm_sent_to || '', dataEnvioVgm:dateForField(p.vgm_sent_date), dataEnvioVgmOrdenacao:p.vgm_sent_date || '', liberacaoStatus:p.release_status || 'Não', canalLiberacao:p.release_channel || '', dataLiberacao:dateForField(p.release_date), diaLiberacao:p.release_day || (p.release_date ? String(p.release_date).slice(0, 10) : ''), agendamentoLiberacao:dateForField(p.release_schedule, true), deadlineLiberacao:dateForField(p.release_deadline, true), liberacaoVistoEm:p.release_seen_on || '', observacaoLiberacao:p.release_note || '', followupStatus:p.followup_status || 'Pendente', followupNote:p.followup_note || '', analistaFisico:p.physical_process_analyst || '', prazo:dateForField(p.deadline, true), envio:p.shipping_date, dataPosEmbarque:p.post_shipment_date || '', coleta:p.container_collection_date, terminal:p.collection_terminal, freetime:p.free_time_days, incoterm:p.incoterm, qtdContainers:p.container_quantity, tipoContainer:p.container_type, containers:numbers, tara:taras, lacre:seals, lacreNovo:newSeals, notasFiscais:notes, metragem:decimalForInput(p.cubic_meters), pesoLiquido:decimalForInput(p.net_weight_kg), pesoBruto:decimalForInput(p.gross_weight_kg), volumes:p.packages_quantity, valor:p.cargo_value, moeda:p.currency || 'USD', analista:p.analyst };
         // HTMLInputElement converte `undefined` para o texto literal
         // "undefined". Normalize somente valores nulos da resposta; strings
         // realmente armazenadas continuam visíveis para uma auditoria posterior.
@@ -750,7 +948,20 @@
         syncSelectedName();
       };
       const nativeOpenProcess = open;
+      const rememberCurrentProcessSnapshot = processId => {
+        try {
+          syncContainerDetails();
+          const values = Object.fromEntries(new FormData(form));
+          lastSavedProcessSnapshot = { id:processId, value:JSON.stringify(toApiProcess(values)) };
+        } catch {
+          // Se um processo histórico não puder ser normalizado, mantenha o
+          // fluxo tradicional e deixe a API validar quando houver salvamento.
+          lastSavedProcessSnapshot = null;
+        }
+      };
       open = p => {
+        lastSavedProcessSnapshot = null;
+        window.clearTimeout(processAutoSaveTimer);
         processFormHasPersistedDetails = !p || p.__persistedDetails === true;
         editingProcessUpdatedAt = p?.updatedAt || null;
         // Os campos dos contêineres são gerados dinamicamente. Limpe a tela
@@ -795,6 +1006,9 @@
         form.elements.envio.value = dateForField(p.envio);
         form.elements.coleta.value = dateForField(p.coleta);
         syncDueOnlyLaunchFields();
+        // O processo acabou de vir do servidor. Registrar o estado inicial
+        // permite fechar pelo botão Salvar sem enviar um PATCH sem alterações.
+        rememberCurrentProcessSnapshot(p.id);
         form.dispatchEvent(new Event('gport:review-update'));
         form.dispatchEvent(new CustomEvent('gport:process-form-opened', { detail:{ mode:'edit' } }));
       };
@@ -827,15 +1041,51 @@
       };
       // A listagem usa uma projeção enxuta. Edição e capa buscam o contrato
       // completo somente quando o usuário executa a ação correspondente.
-      const loadPersistedProcess = async id => {
-        const persisted = await request(`/api/processes/${id}`);
-        return {
-          ...toViewProcess(persisted),
-          createdAt:persisted.created_at || '',
-          updatedAt:persisted.updated_at || '',
-          __persistedDetails:true
-        };
+      const processDetailCache = new Map();
+      const processDetailLoads = new Map();
+      const processDetailVersions = new Map();
+      const processDetailCacheMs = 30_000;
+      const cachePersistedProcess = process => {
+        if (!process?.id) return process;
+        const cached = { ...process, __persistedDetails:true };
+        processDetailCache.set(process.id, { process:cached, expiresAt:Date.now() + processDetailCacheMs });
+        return cached;
       };
+      const invalidatePersistedProcess = id => {
+        processDetailVersions.set(id, Number(processDetailVersions.get(id) || 0) + 1);
+        processDetailCache.delete(id);
+        processDetailLoads.delete(id);
+      };
+      const loadPersistedProcess = id => {
+        const cached = processDetailCache.get(id);
+        if (cached?.expiresAt > Date.now()) return Promise.resolve(cached.process);
+        if (cached) processDetailCache.delete(id);
+        if (processDetailLoads.has(id)) return processDetailLoads.get(id);
+        const version = Number(processDetailVersions.get(id) || 0);
+        const pending = request(`/api/processes/${id}`)
+          .then(persisted => {
+            const process = {
+              ...toViewProcess(persisted),
+              createdAt:persisted.created_at || '',
+              updatedAt:persisted.updated_at || '',
+              __persistedDetails:true
+            };
+            return Number(processDetailVersions.get(id) || 0) === version ? cachePersistedProcess(process) : process;
+          })
+          .finally(() => { if (processDetailLoads.get(id) === pending) processDetailLoads.delete(id); });
+        processDetailLoads.set(id, pending);
+        return pending;
+      };
+      const prefetchPersistedProcess = event => {
+        const id = event.target.closest?.('tr[data-id]')?.dataset.id;
+        if (id) void loadPersistedProcess(id).catch(() => {});
+      };
+      // No desktop o tempo entre apontar e clicar normalmente basta para
+      // buscar os detalhes. No toque, pointerdown inicia a mesma requisição e
+      // o clique reutiliza a Promise em andamento, sem duplicar tráfego.
+      el('rows').addEventListener('pointerover', prefetchPersistedProcess, { passive:true });
+      el('rows').addEventListener('pointerdown', prefetchPersistedProcess, { passive:true });
+      el('rows').addEventListener('focusin', prefetchPersistedProcess);
       el('rows').onclick = async event => {
         const pdfButton = event.target.closest('[data-pdf]');
         const row = event.target.closest('tr[data-id]');
@@ -1087,9 +1337,12 @@
           const panel = document.querySelector('#processesPage .process-board');
           if (panel) panel.after(navigation);
         }
+        const totalExact = processPagination.totalExact !== false;
         const totalPages = Math.max(1, Math.ceil(Number(processPagination.total || 0) / Number(processPagination.limit || 50)));
-        const current = Math.min(Math.max(1, Number(processPagination.page || 1)), totalPages);
-        if (totalPages <= 1) { navigation.hidden = true; navigation.replaceChildren(); return; }
+        const current = totalExact
+          ? Math.min(Math.max(1, Number(processPagination.page || 1)), totalPages)
+          : Math.max(1, Number(processPagination.page || 1));
+        if (current === 1 && !processPagination.hasMore) { navigation.hidden = true; navigation.replaceChildren(); return; }
         navigation.hidden = false; navigation.replaceChildren();
         const createButton = (label, page, { currentPage=false, disabled=false } = {}) => {
           const button = document.createElement('button'); button.type = 'button'; button.className = `btn secondary pagination-button${currentPage ? ' active' : ''}`;
@@ -1099,15 +1352,20 @@
           return button;
         };
         navigation.appendChild(createButton('‹', current - 1, { disabled:current === 1 }));
-        const visiblePages = new Set([1, totalPages]);
-        for (let page = Math.max(1, current - 2); page <= Math.min(totalPages, current + 2); page += 1) visiblePages.add(page);
-        let previous = 0;
-        [...visiblePages].sort((a, b) => a - b).forEach(page => {
-          if (page - previous > 1) { const gap = document.createElement('span'); gap.className = 'pagination-gap'; gap.textContent = '…'; navigation.appendChild(gap); }
-          navigation.appendChild(createButton(String(page), page, { currentPage:page === current })); previous = page;
-        });
-        navigation.appendChild(createButton('›', current + 1, { disabled:current === totalPages }));
-        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = `Página ${current} de ${totalPages}`; navigation.appendChild(info);
+        if (totalExact) {
+          const visiblePages = new Set([1, totalPages]);
+          for (let page = Math.max(1, current - 2); page <= Math.min(totalPages, current + 2); page += 1) visiblePages.add(page);
+          let previous = 0;
+          [...visiblePages].sort((a, b) => a - b).forEach(page => {
+            if (page - previous > 1) { const gap = document.createElement('span'); gap.className = 'pagination-gap'; gap.textContent = '…'; navigation.appendChild(gap); }
+            navigation.appendChild(createButton(String(page), page, { currentPage:page === current })); previous = page;
+          });
+        } else navigation.appendChild(createButton(String(current), current, { currentPage:true }));
+        navigation.appendChild(createButton('›', current + 1, { disabled:!processPagination.hasMore }));
+        const info = document.createElement('span'); info.className = 'pagination-info'; info.textContent = totalExact
+          ? `Página ${current} de ${totalPages}`
+          : `Página ${current} · mais de ${processPagination.total} resultado(s)`;
+        navigation.appendChild(info);
       };
       const processFilterSessionKey = 'gport:process-filter:v1';
       let serverProcessFilter = null;
@@ -1132,11 +1390,14 @@
         const summary = el('processListMeta');
         if (summary) {
           const total = Number(processPagination.total || data.length);
+          const totalExact = processPagination.totalExact !== false;
           const totalPages = Math.max(1, Math.ceil(total / Number(processPagination.limit || 50)));
-          summary.textContent = `${total} processo${total === 1 ? '' : 's'} na visualização · página ${processPagination.page || 1} de ${totalPages}`;
+          summary.textContent = totalExact
+            ? `${total} processo${total === 1 ? '' : 's'} na visualização · página ${processPagination.page || 1} de ${totalPages}`
+            : `Mais de ${total} processos na visualização · página ${processPagination.page || 1}`;
         }
         const totalProcesses = el('totalProcesses');
-        if (totalProcesses) totalProcesses.textContent = String(Number(processPagination.total || data.length));
+        if (totalProcesses) totalProcesses.textContent = `${Number(processPagination.total || data.length)}${processPagination.totalExact === false ? '+' : ''}`;
       };
       // O cartão mostra somente os pré-lançamentos pessoais ainda pendentes.
       // Processos definitivos não entram neste indicador operacional.
@@ -1150,14 +1411,33 @@
         limit.setHours(23, 59, 59, 999);
         return deadlineTime >= now.getTime() && deadlineTime <= limit.getTime();
       };
-      const refreshPersonalDeadlineStat = async () => {
+      let personalDeadlineStatExpiresAt = 0;
+      let personalDeadlineStatUserId = null;
+      let personalDeadlineStatRequest = null;
+      let personalDeadlineStatVersion = 0;
+      const refreshPersonalDeadlineStat = async ({ force = true } = {}) => {
+        const userId = currentUser?.id;
+        if (!force && personalDeadlineStatUserId === userId && Date.now() < personalDeadlineStatExpiresAt) return;
         try {
-          const prelaunches = await request('/api/prelaunches');
+          // Pesquisar processos não altera a agenda. Reutilize a consulta em
+          // andamento e renove o contador no máximo uma vez por minuto.
+          if (force || !personalDeadlineStatRequest || personalDeadlineStatRequest.userId !== userId) {
+            const pending = { userId, version:++personalDeadlineStatVersion };
+            pending.promise = request('/api/prelaunches').finally(() => {
+              if (personalDeadlineStatRequest === pending) personalDeadlineStatRequest = null;
+            });
+            personalDeadlineStatRequest = pending;
+          }
+          const pending = personalDeadlineStatRequest;
+          const prelaunches = await pending.promise;
+          if (currentUser?.id !== userId || pending.version !== personalDeadlineStatVersion) return;
           const prelaunchDeadlines = prelaunches.filter(prelaunch => isDeadlineInNextSevenDays(prelaunch.deadline)).length;
           const total = prelaunchDeadlines;
           const counter = el('dueSoon');
           counter.textContent = total;
           counter.setAttribute('aria-label', `${total} pré-lançamento(s) pessoal(is) com deadline de draft nos próximos 7 dias.`);
+          personalDeadlineStatExpiresAt = Date.now() + 60_000;
+          personalDeadlineStatUserId = userId;
         } catch {
           // Falha transitória na agenda não deve apagar o total já renderizado.
         }
@@ -1171,7 +1451,7 @@
         emptyState.innerHTML = '<strong>Carregando processos…</strong><span class="skeleton-line"></span><span class="skeleton-line"></span><span class="skeleton-line"></span>';
         emptyState.hidden = false;
         el('totalProcesses').textContent = '—';
-        el('dueSoon').textContent = '—';
+        if (personalDeadlineStatUserId !== currentUser?.id || Date.now() >= personalDeadlineStatExpiresAt) el('dueSoon').textContent = '—';
       };
       const applyProcessPage = (remoteProcesses, pageNumber = 1) => {
         const page = Array.isArray(remoteProcesses)
@@ -1183,7 +1463,7 @@
         el('empty')?.removeAttribute('aria-busy');
         processPagination = { ...page.pagination, page:pageNumber };
         renderProcessPage();
-        void refreshPersonalDeadlineStat();
+        void refreshPersonalDeadlineStat({ force:false });
         if (!data.length) {
           el('empty').textContent = 'Nenhum processo encontrado.';
           el('empty').hidden = false;
@@ -1289,6 +1569,7 @@
           clients = remoteClients.map(toViewClient); availableAssignees = remoteAssignees;
           if (dialog.open) setupProcessAssigneeSelector(form.elements.analystId?.value || '', form.elements.analista?.value || '');
           if (remoteUsers) users = remoteUsers;
+          for (const id of new Set([...processDetailCache.keys(), ...processDetailLoads.keys()])) invalidatePersistedProcess(id);
           referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
           renderClients(); if (currentHasRole('admin')) renderUsers();
         } catch { /* o cache atual permanece utilizável até a próxima tentativa */ }
@@ -1299,6 +1580,7 @@
         // VGM/Liberação. Ignorar o eco imediato do SSE evita uma nova consulta
         // e impede que inputs sejam reconstruídos durante a digitação.
         if (Number(localProcessMutationQuietUntil.get(event.id) || 0) > Date.now()) return;
+        invalidatePersistedProcess(event.id);
         const position = data.findIndex(item => item.id === event.id);
         if (event.change === 'deleted') {
           if (position >= 0) data = data.filter(item => item.id !== event.id);
@@ -1320,7 +1602,7 @@
           if (event.change !== 'created') return;
           try {
             const remote = await request(`/api/processes/${event.id}`);
-            const view = { ...toViewProcess(remote), updatedAt:remote.updated_at || '' };
+            const view = cachePersistedProcess({ ...toViewProcess(remote), updatedAt:remote.updated_at || '' });
             if (processPagination.offset === 0) {
               const visibleCount = Math.max(data.length, processPagination.limit);
               data = [view, ...data].slice(0, visibleCount);
@@ -1333,7 +1615,7 @@
         try {
           const remote = await request(`/api/processes/${event.id}`);
           const previous = data[position];
-          const view = { ...toViewProcess(remote), updatedAt:remote.updated_at || '' };
+          const view = cachePersistedProcess({ ...toViewProcess(remote), updatedAt:remote.updated_at || '' });
           data = data.map(item => item.id === event.id ? { ...previous, ...view } : item);
           renderAffectedViews();
           if (event.change !== 'updated') setRealtimeNotice('Processo atualizado automaticamente.');
@@ -1406,7 +1688,7 @@
           const applied = await refreshData();
           if (!applied || `${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` !== filterKey) return;
           const periodText = launchedFrom || launchedTo ? ` no período selecionado` : '';
-          summary.textContent = `${processPagination.total} processo(s) encontrado(s)${periodText}.`;
+          summary.textContent = `${processPagination.totalExact === false ? 'Mais de ' : ''}${processPagination.total} processo(s) encontrado(s)${periodText}.`;
         }
         catch (error) { toast.error(error.message); }
         finally { if (`${serverProcessFilter?.field || ''}:${serverProcessFilter?.value || ''}:${serverProcessFilter?.launchedFrom || ''}:${serverProcessFilter?.launchedTo || ''}` === filterKey) summary.removeAttribute('aria-busy'); }
@@ -1472,29 +1754,49 @@
         turnstileWidgetId = null;
         window.initializeTurnstile();
       });
-      async function signIn(credentials, persist) {
-        if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
-        if (turnstileSiteKey) credentials.turnstileToken = turnstileToken;
-        const result = await request('/api/auth/login', { method:'POST', body:JSON.stringify(credentials) });
-        currentUser = result.user;
+      const activateAuthenticatedUser = user => {
+        currentUser = user;
         sessionRecoveryRequired = false; lastSessionCheckAt = Date.now();
         el('currentUserName').textContent = currentUser.username;
         el('usersNav').hidden = !currentHasRole('admin');
         applyRoleTabs();
+      };
+      let secondaryModulePreloadScheduled = false;
+      const scheduleSecondaryModulePreload = () => {
+        if (secondaryModulePreloadScheduled || !currentHasRole('admin')) return;
+        secondaryModulePreloadScheduled = true;
+        const preload = () => void window.gportModules.loadReports().catch(() => { secondaryModulePreloadScheduled = false; });
+        if ('requestIdleCallback' in window) window.requestIdleCallback(preload, { timeout:3_000 });
+        else window.setTimeout(preload, 1_500);
+      };
+      const applyBootstrapPayload = payload => {
+        activateAuthenticatedUser(payload.user);
+        clients = payload.clients.map(toViewClient);
+        availableAssignees = payload.assignees;
+        referenceDataCache.expiresAt = Date.now() + referenceDataTtlMs;
+        applyProcessPage(payload.processes, 1);
+        renderClients();
+        scheduleSecondaryModulePreload();
+      };
+      async function signIn(credentials, persist) {
+        if (turnstileSiteKey && !turnstileToken) throw new Error('Conclua a verificação de segurança antes de entrar.');
+        if (turnstileSiteKey) credentials.turnstileToken = turnstileToken;
+        const result = await request('/api/auth/login', { method:'POST', body:JSON.stringify(credentials) });
+        activateAuthenticatedUser(result.user);
         // A sessão já está válida neste ponto. Fechamos o login e exibimos
         // feedback imediato; processos e referências continuam em paralelo.
         el('loginDialog').close(); showProcessLoading(); connectRealtime();
-        void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('A sessão foi iniciada, mas os processos ainda estão carregando.'));
+        void request(`/api/bootstrap?limit=${processPagination.limit || 50}`)
+          .then(applyBootstrapPayload)
+          .catch(() => refreshData({ refreshReferenceData:true }))
+          .catch(() => toast.warning('A sessão foi iniciada, mas os processos ainda estão carregando.'));
         toast.success('Login realizado com sucesso.');
       }
       async function restoreSession() {
         try {
-          const result = await request('/api/me'); currentUser = result.user; lastSessionCheckAt = Date.now();
-          el('currentUserName').textContent = currentUser.username;
-          el('usersNav').hidden = !currentHasRole('admin');
-          applyRoleTabs();
-          el('loginDialog').close(); showProcessLoading(); connectRealtime();
-          void refreshData({ refreshReferenceData:true }).catch(() => toast.warning('Não foi possível atualizar os processos agora. Tente novamente em instantes.'));
+          const result = await request(`/api/bootstrap?limit=${processPagination.limit || 50}`);
+          applyBootstrapPayload(result);
+          el('loginDialog').close(); connectRealtime();
         } catch { currentUser = null; }
       }
       el('loginForm').onsubmit = async e => {
@@ -1571,6 +1873,7 @@
         catch (error) { toast.error(error.message); }
       };
       let processAutoSaveTimer = null, processSaveBusy = false, processSavePending = false, newProcessIdempotencyKey = null;
+      let lastSavedProcessSnapshot = null;
       // A validação é tratada pela própria rotina de salvamento, que apresenta
       // mensagens claras. Isso evita o bloqueio silencioso do navegador.
       form.noValidate = true;
@@ -1597,6 +1900,7 @@
         return reason ? `Não foi possível ${action} processo. Motivo: ${reason}` : `Não foi possível ${action} processo. Tente novamente.`;
       };
       const persistProcessForm = async ({ closeAfter = false, quiet = false } = {}) => {
+        window.clearTimeout(processAutoSaveTimer);
         if (processSaveBusy) { processSavePending = true; return false; }
         if (processIdFromForm() && !processFormHasPersistedDetails) {
           if (!quiet) toast.error('Os detalhes completos do processo não foram carregados. Feche e abra o processo novamente.');
@@ -1640,14 +1944,26 @@
           processSaveBusy = true;
           if (button) { button.disabled = true; showProcessSaveState('Salvando…'); }
           const payload = toApiProcess(values);
+          const snapshot = JSON.stringify(payload);
+          // O autosave pode já ter confirmado exatamente estes dados. O botão
+          // Salvar fecha o formulário sem repetir a gravação e a auditoria.
+          if (processId && lastSavedProcessSnapshot?.id === processId && lastSavedProcessSnapshot.value === snapshot) {
+            if (closeAfter) { dialog.close(); render(); editingProcessId = null; toast.success('Alterações já salvas.'); }
+            else showProcessSaveState('Salvo automaticamente');
+            return true;
+          }
           payload.updatedAt = values.updatedAt;
           if (isNewProcess) payload.idempotencyKey ||= (newProcessIdempotencyKey ||= crypto.randomUUID());
           if (!payload.clientId) throw new Error('Selecione um exportador cadastrado.');
           const saved = await request(processId ? `/api/processes/${processId}` : '/api/processes', { method:processId ? 'PATCH' : 'POST', body:JSON.stringify(payload) });
+          lastSavedProcessSnapshot = { id:saved.id, value:snapshot };
+          localProcessMutationQuietUntil.set(saved.id, Date.now() + 5_000);
           const client = clients.find(item => item.id === payload.clientId);
           const previous = data.find(item => item.id === processId) || {};
           const assignee = availableAssignees.find(person => person.id === payload.analystId);
           const view = { ...toViewProcess({ ...saved, exporter:client?.nome || previous.exportador || '', analyst:assignee?.username || previous.analista || currentUser?.username || '' }), updatedAt:saved.updated_at || '' };
+          invalidatePersistedProcess(view.id);
+          cachePersistedProcess(view);
           const isDueOnlyProcess = client?.dueOnly === true;
           if (!isDueOnlyProcess) {
             data = processId ? data.map(item => item.id === processId ? { ...item, ...view } : item) : [view, ...data].slice(0, Math.max(data.length, processPagination.limit));
@@ -1693,7 +2009,9 @@
       const scheduleProcessAutoSave = () => {
         if (!processIdFromForm()) return;
         window.clearTimeout(processAutoSaveTimer);
-        processAutoSaveTimer = window.setTimeout(() => { persistProcessForm({ quiet:true }); }, 900);
+        // Consolida mudanças consecutivas em uma única gravação. O botão
+        // Salvar continua imediato e não depende deste intervalo.
+        processAutoSaveTimer = window.setTimeout(() => { persistProcessForm({ quiet:true }); }, 1800);
       };
       form.addEventListener('input', scheduleProcessAutoSave);
       form.addEventListener('change', scheduleProcessAutoSave);
@@ -1747,11 +2065,11 @@
         const mutationVersion = beginSectionMutation(id);
         // A tela responde imediatamente. Se o servidor recusar a alteração,
         // restauramos a lista exatamente como estava antes do envio.
-        updateVisibleProcess('vgm', id, { vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' });
+        updateVisibleProcess('vgm', id, { vgmStatus:status, vgmEnviadoPara:vgmSentTo || '', analistaFisico:physicalProcessAnalyst || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '' }, { renderView:false });
         try {
           const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/vgm`, { method:'PATCH', body:JSON.stringify({ vgmStatus:status, vgmSentTo, physicalProcessAnalyst, releaseSchedule, releaseDeadline }) }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
-          reconcileVisibleProcess('vgm', id, updated);
+          reconcileVisibleProcess('vgm', id, updated, { renderView:false });
           toast.success('Status de VGM atualizado.');
         } catch (error) {
           if (!isLatestSectionMutation(id, mutationVersion)) return;
@@ -1762,25 +2080,27 @@
         }
       };
       const saveReleaseRow = async (id, { renderView=true } = {}) => {
-        let releaseStatus = el('releaseList').querySelector(`[data-release-status="${id}"]`)?.value;
         const releaseChannel = el('releaseList').querySelector(`[data-release-channel="${id}"]`)?.value;
-        if (releaseChannel === 'Verde') { releaseStatus = 'Sim'; const statusInput = el('releaseList').querySelector(`[data-release-status="${id}"]`); if (statusInput) statusInput.value = 'Sim'; }
+        const releaseStatus = releaseChannel === 'Verde' ? 'Sim' : 'Não';
         const vessel = el('releaseList').querySelector(`[data-release-vessel="${id}"]`)?.value;
         const scheduleValue = el('releaseList').querySelector(`[data-release-schedule="${id}"]`)?.value;
-        const deadlineValue = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value; const releaseDateValue = el('releaseList').querySelector(`[data-release-date="${id}"]`)?.value;
+        const deadlineValue = el('releaseList').querySelector(`[data-release-deadline="${id}"]`)?.value;
+        const physicalProcessAnalyst = el('releaseList').querySelector(`[data-release-analyst="${id}"]`)?.value;
+        const releaseSeenToday = Boolean(el('releaseList').querySelector(`[data-release-seen="${id}"]`)?.checked);
+        const releaseNote = el('releaseList').querySelector(`[data-release-note="${id}"]`)?.value || '';
         const releaseSchedule = dateForDatabase(scheduleValue, true);
-        const releaseDeadline = dateForDatabase(deadlineValue, true); const releaseDate = dateForDatabase(releaseDateValue);
+        const releaseDeadline = dateForDatabase(deadlineValue, true);
         if (scheduleValue && !releaseSchedule) throw new Error('Informe o agendamento no formato dd/mm hh:mm.');
-        if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.'); if (releaseDateValue && !releaseDate) throw new Error('Informe a data de liberação no formato dd/mm.');
+        if (deadlineValue && !releaseDeadline) throw new Error('Informe o deadline de liberação no formato dd/mm hh:mm.');
         const snapshot = snapshotVisibleProcess('release', id);
         const mutationVersion = beginSectionMutation(id);
         const currentReleaseDate = snapshot.section?.dataLiberacao || snapshot.main?.dataLiberacao || '';
-        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseDateValue || currentReleaseDate }, { renderView });
+        updateVisibleProcess('release', id, { liberacaoStatus:releaseStatus, canalLiberacao:releaseChannel || '', navio:vessel || '', agendamentoLiberacao:scheduleValue || '', deadlineLiberacao:deadlineValue || '', dataLiberacao:releaseStatus === 'Sim' ? currentReleaseDate : '', diaLiberacao:releaseStatus === 'Sim' ? releaseTodayKey() : '', analistaFisico:physicalProcessAnalyst || '', liberacaoVistoEm:releaseSeenToday ? releaseTodayKey() : '', observacaoLiberacao:releaseNote }, { renderView });
         try {
-          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, releaseDate }) }));
+          const updated = await enqueueProcessMutation(id, () => request(`/api/processes/${id}/release`, { method:'PATCH', body:JSON.stringify({ releaseStatus, releaseChannel, vessel, releaseSchedule, releaseDeadline, physicalProcessAnalyst, releaseSeenToday, releaseNote }) }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
           reconcileVisibleProcess('release', id, updated, { renderView });
-          toast.success('Status de liberação atualizado.');
+          toast.success('Liberação atualizada.');
         } catch (error) {
           if (!isLatestSectionMutation(id, mutationVersion)) return;
           restoreVisibleProcess('release', id, snapshot);
@@ -1800,7 +2120,7 @@
             method:'PATCH', body:JSON.stringify({ postShipmentDate })
           }));
           if (!isLatestSectionMutation(id, mutationVersion)) return;
-          reconcileVisibleProcess('postShipment', id, updated);
+          reconcileVisibleProcess('postShipment', id, updated, { renderView:false });
           toast.success(postShipmentDate ? 'Data de embarque registrada.' : 'Data de embarque removida.');
         } catch (error) {
           if (!isLatestSectionMutation(id, mutationVersion)) return;
@@ -2079,4 +2399,3 @@
       el('printBtn').onclick = () => printCoverFromDocumentModel(Object.fromEntries(new FormData(form)));
       restoreSession().finally(() => { if (!currentUser) el('loginDialog').showModal(); });
     })();
-  

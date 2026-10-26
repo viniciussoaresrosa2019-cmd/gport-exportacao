@@ -27,7 +27,7 @@ test('projeção completa permanece padrão para consumidores existentes', () =>
 test('VGM, Liberação e Follow up recebem somente os campos consumidos por cada tela', () => {
   const contracts = [
     [processVgmSelect, ['p.vgm_status', 'p.vgm_sent_to', 'p.physical_process_analyst', 'p.release_deadline']],
-    [processReleaseSelect, ['p.origin_port', 'p.vessel', 'p.release_status', 'p.release_channel']],
+    [processReleaseSelect, ['p.origin_port', 'p.vessel', 'p.release_status', 'p.release_channel', 'p.release_date::date AS release_day']],
     [processFollowupSelect, ['p.invoice', 'p.vessel', 'p.followup_status', 'p.followup_note']]
   ];
   for (const [projection, fields] of contracts) {

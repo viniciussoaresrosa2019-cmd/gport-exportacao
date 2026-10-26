@@ -41,6 +41,13 @@ export const createObservability = ({
     request.correlationId = randomUUID();
     request.observabilityStartedAt = performance.now();
     response.setHeader('X-Request-Id', request.correlationId);
+    const originalWriteHead = response.writeHead;
+    response.writeHead = function (...args) {
+      if (request.path.startsWith('/api/') && !response.hasHeader('Server-Timing')) {
+        response.setHeader('Server-Timing', `app;dur=${Math.max(0, performance.now() - request.observabilityStartedAt).toFixed(1)}`);
+      }
+      return originalWriteHead.apply(this, args);
+    };
     if (request.path.startsWith('/api/')) {
       response.once('finish', () => record(
         request,

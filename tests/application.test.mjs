@@ -268,6 +268,9 @@ test('configuração do banco não aceita TLS inseguro remotamente', async () =>
   assert.match(db, /DB_SSL_CA/);
   assert.match(db, /DB_SSL_CA_BASE64/);
   assert.match(db, /ALLOW_UNVERIFIED_DATABASE_TLS/);
+  assert.match(db, /DB_POOL_MIN \|\| 1/);
+  assert.match(db, /DB_POOL_IDLE_MS \|\| 300_000/);
+  assert.match(db, /min: poolMin/);
   const migration = await read('database/migrations/2026-07-26-session-security.sql');
   assert.match(migration, /token_version/);
   assert.match(migration, /REVOKE ALL/);
@@ -301,7 +304,7 @@ test('interface possui notificações toast acessíveis para ações principais'
   for (const type of ['success', 'error', 'warning', 'info']) assert.match(html, new RegExp(`${type}: message => createToast`));
   assert.match(html, /toast\.success\('Login realizado com sucesso\.'/);
   assert.match(html, /toast\.success\('Status de VGM atualizado\.'/);
-  assert.match(html, /toast\.success\('Status de liberação atualizado\.'/);
+  assert.match(html, /toast\.success\('Liberação atualizada\.'/);
   assert.match(html, /toast\.warning\('Selecione um campo para buscar\.'/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /#toastRegion \.toast\{[\s\S]*pointer-events:none/);
@@ -313,6 +316,10 @@ test('interface possui notificações toast acessíveis para ações principais'
   assert.doesNotMatch(toastCss, /gport-toast-progress/);
   assert.match(toastCss, /#toastRegion\{[\s\S]*position:fixed/);
   assert.match(toastCss, /prefers-reduced-motion:reduce/);
+  assert.match(html, /let activeSelection = null/);
+  assert.match(html, /if \(activeSelection\?\.isConnected\)/);
+  assert.match(html, /deferredToasts\.push/);
+  assert.match(html, /window\.setTimeout\(flushDeferredToasts, 80\)/);
 });
 
 test('VGM e Liberação refletem alterações imediatamente sem depender da troca de aba', async () => {
@@ -324,6 +331,9 @@ test('VGM e Liberação refletem alterações imediatamente sem depender da troc
   assert.match(html, /enqueueProcessMutation\(id, \(\) => request\(`\/api\/processes\/\$\{id\}\/vgm`/);
   assert.match(html, /enqueueProcessMutation\(id, \(\) => request\(`\/api\/processes\/\$\{id\}\/release`/);
   assert.match(html, /saveReleaseRow\(id, \{ renderView:false \}\)/);
+  assert.match(html, /updateVisibleProcess\('vgm',[\s\S]*?\{ renderView:false \}\)/);
+  assert.match(html, /reconcileVisibleProcess\('vgm', id, updated, \{ renderView:false \}\)/);
+  assert.match(html, /reconcileVisibleProcess\('postShipment', id, updated, \{ renderView:false \}\)/);
   assert.match(html, /localProcessMutationQuietUntil\.get\(event\.id\)/);
 });
 
@@ -494,7 +504,7 @@ test('listagem paginada compartilha processos entre usuários autenticados', asy
   const search = await read('src/process-search.js');
   assert.match(server, /const canReadAllProcesses = \(\) => true/);
   assert.ok(search.includes('LIMIT $${next} OFFSET $${next + 1}'));
-  assert.match(server, /pagination:\{ limit:search\.limit, offset:search\.offset, total:/);
+  assert.match(search, /pagination:\{ limit:search\.limit, offset:search\.offset, total,/);
   assert.match(search, /processSearchFields/);
 });
 
@@ -504,7 +514,13 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   const projections = await read('src/process-projections.js');
   const search = await read('src/process-search.js');
   assert.match(runtime, /projection:'summary'/);
-  assert.match(runtime, /loadPersistedProcess = async id => \{[\s\S]*?persisted = await request\(`\/api\/processes\/\$\{id\}`\)[\s\S]*?toViewProcess\(persisted\)[\s\S]*?updatedAt:persisted\.updated_at[\s\S]*?__persistedDetails:true/);
+  assert.match(runtime, /const processDetailCache = new Map\(\)/);
+  assert.match(runtime, /const processDetailCacheMs = 30_000/);
+  assert.match(runtime, /if \(cached\?\.expiresAt > Date\.now\(\)\) return Promise\.resolve\(cached\.process\)/);
+  assert.match(runtime, /processDetailLoads\.has\(id\)/);
+  assert.match(runtime, /request\(`\/api\/processes\/\$\{id\}`\)[\s\S]*?toViewProcess\(persisted\)[\s\S]*?updatedAt:persisted\.updated_at/);
+  assert.match(runtime, /addEventListener\('pointerover', prefetchPersistedProcess/);
+  assert.match(runtime, /addEventListener\('pointerdown', prefetchPersistedProcess/);
   assert.equal((runtime.match(/el\('rows'\)\.onclick\s*=/g) || []).length, 1, 'a tabela deve possuir somente um manipulador final de abertura');
   assert.match(runtime, /const process = await loadPersistedProcess\(id\)/);
   assert.match(runtime, /if \(pdfButton\) printCoverFromDocumentModel\(process\)/);
@@ -512,11 +528,12 @@ test('planilha usa projeção resumida e detalhes continuam no endpoint individu
   assert.match(runtime, /const openCalendarProcess = async id => \{\s*try \{ const item = await loadPersistedProcess\(id\)/);
   assert.match(runtime, /processFormHasPersistedDetails/);
   assert.match(runtime, /values\.updatedAt = editingProcessUpdatedAt \|\| data\.find/);
-  assert.match(server, /buildProcessSearchQuery\(req\.query\)/);
+  assert.match(runtime, /rememberCurrentProcessSnapshot\(p\.id\)/);
+  assert.match(server, /executeProcessSearch\(query, req\.query\)/);
   assert.match(search, /processProjection\(projection\)/);
   assert.match(search, /supportedProcessProjections\.has\(projection\)/);
   assert.match(projections, /processDetailSelect = `SELECT p\.\*/);
-  assert.doesNotMatch(projections.match(/processSummarySelect[\s\S]*?`;\n/)[0], /container_details/);
+  assert.doesNotMatch(projections.match(/processSummarySelect[\s\S]*?`;\r?\n/)[0], /container_details/);
 });
 
 test('camadas de entrada impedem undefined de virar dado do processo', async () => {
@@ -659,6 +676,8 @@ test('relatórios possuem módulo próprio sem alterar o contrato da interface a
   assert.match(loader, /loadReports/);
   assert.match(loader, /pending = new Map\(\)/);
   assert.match(html, /await window\.gportModules\.loadReports\(\)/);
+  assert.match(html, /requestIdleCallback' in window/);
+  assert.match(html, /scheduleSecondaryModulePreload\(\)/);
   assert.match(html, /reportsPage'\)\.setAttribute\('aria-busy', 'true'\)/);
   assert.match(reports, /window\.gportRequest\(`\/api\/reports\?\$\{params\}`\)/);
   assert.match(reports, /window\.gportReports = \{ render: renderReports, syncView: syncReportView \}/);
@@ -745,28 +764,53 @@ test('relatório de VGM permite abrir os processos enviados em cada dia', async 
   assert.match(html, /class="vgm-report-day-card/);
   assert.match(html, /class="vgm-day-process process-status-row/);
   assert.match(html, /class="process-status-row \$\{p\.canalLiberacao/);
-  assert.match(html, /const releaseGroups = new Map\(\)/);
-  assert.match(html, /class="release-port-group"/);
+  assert.match(html, /class="release-sheet-row process-status-row/);
   assert.match(html, /followupProcesses\.map\(p => `<article class="followup-card process-status-row/);
   assert.match(await read('public/assets/gport.css'), /\.process-status-row\.process-channel-verde td:first-child\{box-shadow:inset 4px 0 #16a34a/);
   assert.match(await read('public/assets/gport.css'), /\.vgm-report-panel\{display:grid;grid-template-columns/);
   assert.match(await read('public/assets/legacy-ui.js'), /class="report-rank-list" role="list"/);
 });
 
-test('liberação permite filtrar por porto e ordena pelo deadline crescente', async () => {
+test('liberação usa planilha compacta, filtra por porto e mantém VGM, visto diário e observação conectados', async () => {
   const html = await readInterface();
+  const server = await read('src/server.js');
+  const projection = await read('src/process-projections.js');
+  const migration = await read('database/migrations/2026-10-25-001-release-sheet-layout.sql');
+  const sheetCss = await read('public/assets/release-sheet.css');
   assert.match(html, /releasePortFilter='all'/);
   assert.match(html, /releasePortFilters/);
   assert.match(html, /data-release-port/);
   assert.match(html, /deadlineOrder\(a\) - deadlineOrder\(b\)/);
-  assert.match(html, /const releaseLabels = \['BOOKING','EXPORTADOR \/ IMPORTADOR'/);
-  assert.match(html, /cell\.dataset\.label = releaseLabels\[index\]/);
-  assert.match(await read('public/assets/gport.css'), /\.release-table tbody tr\{display:grid;grid-template-columns:repeat\(4/);
+  assert.match(html, /\{ key:'port', label:'PORTO' \}/);
+  assert.match(html, /\{ key:'location', label:'ONDE ESTÁ' \}/);
+  assert.match(html, /\{ key:'note', label:'OBS' \}/);
+  assert.doesNotMatch(html, /<th>RECEBIMENTO<\/th>/);
+  assert.match(html, /data-release-column-filter/);
+  assert.match(html, /releaseColumnFilters = nextFilters/);
+  assert.match(html, /data-release-clear-columns/);
+  assert.match(html, /data-release-analyst/);
+  assert.match(html, /data-release-seen/);
+  assert.match(html, /data-release-note/);
+  assert.match(html, /releaseTodayKey/);
+  assert.match(html, /timeZone:'America\/Sao_Paulo'/);
+  assert.match(html, /process\.liberacaoStatus !== 'Sim' \|\| String\(process\.diaLiberacao \|\| ''\)\.slice\(0, 10\) === today/);
+  assert.match(html, /currentReleaseDayKey = nextDayKey/);
   assert.match(html, /Date\.parse\(p\.releaseDeadlineOrder/);
   assert.match(html, /const knownPortMap = new Map\(\)/);
-  assert.match(html, /if\(key&&!knownPortMap\.has\(key\)\)knownPortMap\.set\(key,port\)/);
-  assert.match(html, /releaseGroups\.get\(key\)\.processes\.push\(process\)/);
-  assert.match(await read('public/assets/gport.css'), /\.release-port-group\{overflow:hidden/);
+  assert.match(html, /if \(key && !knownPortMap\.has\(key\)\) knownPortMap\.set\(key, port\)/);
+  assert.match(projection, /p\.physical_process_analyst,p\.release_seen_on,p\.release_note/);
+  assert.match(server, /physical_process_analyst=\$6/);
+  assert.match(server, /CURRENT_TIMESTAMP AT TIME ZONE 'America\/Sao_Paulo'/);
+  assert.match(server, /release_note=\$8/);
+  assert.match(migration, /release_seen_on DATE/);
+  assert.match(migration, /release_note VARCHAR\(500\)/);
+  assert.match(sheetCss, /\.release-sheet-wrap \.release-sheet th\{[\s\S]*position:sticky/);
+  assert.match(sheetCss, /\.release-sheet-wrap\{[\s\S]*overflow:hidden/);
+  assert.match(sheetCss, /min-width:0!important/);
+  assert.match(sheetCss, /background:var\(--navy\)!important/);
+  assert.match(sheetCss, /\.release-filter-icon\{[\s\S]*clip-path:polygon/);
+  assert.match(sheetCss, /\.release-port-cell\.release-port-itajai/);
+  assert.match(sheetCss, /\.release-seen-cell\.is-seen/);
   assert.match(await read('public/assets/gport.css'), /\.followup-card\{display:grid/);
   assert.doesNotMatch(html, /new Set\(\[\.\.\.standardPorts/);
 });
@@ -822,8 +866,8 @@ test('busca operacional é normalizada, paginada no servidor e cancela consultas
   const html = await readInterface();
   assert.match(search, /normalizeSearchTerm/);
   assert.match(search, /escapeLikeTerm/);
-  assert.match(search, /p\.due_number,p\.ruc_number/);
-  assert.match(search, /p\.container_details::text/);
+  assert.match(search, /todos:'p\.search_text'/);
+  assert.match(search, /gport_normalize_search_text/);
   assert.match(search, /vgmStatus/);
   assert.match(search, /releaseStatus/);
   assert.match(search, /postShipmentStatus/);
@@ -849,7 +893,7 @@ test('processos históricos não somem quando referências falham e qualquer usu
   const search = await read('src/process-search.js');
   const html = await readInterface();
   assert.match(server, /app\.post\('\/api\/clients', authenticate, clientCreatorOnly/);
-  assert.match(search, /FROM processes p LEFT JOIN clients c ON c\.id=p\.client_id LEFT JOIN users u ON u\.id=p\.analyst_id/);
+  assert.match(await read('src/process-projections.js'), /FROM processes p\s+LEFT JOIN clients c ON c\.id=p\.client_id\s+LEFT JOIN users u ON u\.id=p\.analyst_id/);
   assert.match(html, /remoteProcesses = await processRequest/);
   assert.match(html, /Promise\.allSettled\(\[\s*request\('\/api\/clients'\), request\('\/api\/assignees'\)/);
 });
@@ -866,7 +910,8 @@ test('canal verde libera o processo automaticamente no servidor e na interface',
   const server = await read('src/server.js');
   const html = await readInterface();
   assert.match(server, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : requestedReleaseStatus/);
-  assert.match(html, /if \(releaseChannel === 'Verde'\) \{ releaseStatus = 'Sim'/);
+  assert.match(server, /CURRENT_TIMESTAMP AT TIME ZONE 'America\/Sao_Paulo'/);
+  assert.match(html, /const releaseStatus = releaseChannel === 'Verde' \? 'Sim' : 'Não'/);
 });
 
 test('edição preserva o identificador técnico único do processo', async () => {
@@ -895,6 +940,11 @@ test('login e carregamento inicial não aguardam dados auxiliares para exibir pr
   assert.match(html, /applyProcessPage\(remoteProcesses, requestedPage\)/);
   assert.match(html, /showProcessLoading\(\)/);
   assert.match(html, /void referenceRequests\.then/);
+  assert.match(server, /app\.get\('\/api\/bootstrap', authenticate/);
+  assert.match(server, /const \[processes, clientsResult, assigneesResult\] = await Promise\.all/);
+  assert.match(html, /request\(`\/api\/bootstrap\?limit=\$\{processPagination\.limit \|\| 50\}`\)/);
+  assert.match(server, /authenticatedUserCacheMs/);
+  assert.match(server, /invalidateAuthenticatedUser\(req\.params\.id\)/);
 });
 
 test('rate limit distribuído tem fallback local e não exige segredo no cliente', async () => {
@@ -926,7 +976,7 @@ test('capa do processo segue o modelo operacional com checklist e grade de cont�
   assert.match(runtime, /analystId:p\.analyst_id/);
   assert.match(runtime, /analystId:p\.analystId \|\| currentUser\?\.id/);
   assert.match(server, /const resolveProcessAnalystId = async/);
-  assert.match(server, /analyst_id=\$\$\{values\.length \+ 1\}/);
+  assert.match(server, /analyst_id=\$\$\{analystParameter\}/);
   assert.doesNotMatch(runtime, /function printOperationalCover\(p\)/);
   assert.match(html, /DEADLINES \/ PRAZOS/);
   assert.match(html, /CHECK LIST/);
